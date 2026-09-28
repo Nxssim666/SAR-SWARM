@@ -73,13 +73,24 @@ class Station:
         timeout_s: float,
         what: str,
     ) -> dict[str, Any]:
-        """Wait until the aircraft's live telemetry satisfies ``check``."""
+        """Wait until the aircraft's live telemetry satisfies ``check``.
+
+        On timeout the error shows the last state seen (link and telemetry), which is often
+        all a CI log has to explain why.
+        """
+        seen: dict[str, Any] = {}
 
         async def probe() -> dict[str, Any] | None:
-            telemetry = await self.telemetry(aircraft_id)
-            return telemetry if telemetry is not None and check(telemetry) else None
+            state = await self.aircraft(aircraft_id)
+            seen.update(link=state["link"], telemetry=state["telemetry"])
+            telemetry: dict[str, Any] | None = state["telemetry"]
+            live = state["link"] == "live" and telemetry is not None
+            return telemetry if live and telemetry is not None and check(telemetry) else None
 
-        return await until(probe, timeout_s, what)
+        try:
+            return await until(probe, timeout_s, what)
+        except AssertionError as error:
+            raise AssertionError(f"{error}; last seen: {seen}") from None
 
     async def command(self, kind: str, aircraft_ids: list[str], **params: Any) -> dict[str, Any]:
         """Send a command, confirming it if the station asks to; return the outcome."""

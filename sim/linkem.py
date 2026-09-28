@@ -78,6 +78,10 @@ class LinkEmulator:
         self._random = random.Random(self.seed)  # noqa: S311 - emulation, not security
         self._vehicles: asyncio.DatagramTransport | None = None
         self._uplinks: dict[Address, asyncio.DatagramTransport] = {}
+        # Vehicles whose uplink socket is being opened, with what they sent meanwhile: one
+        # socket per vehicle however fast its first datagrams arrive.
+        self._opening: dict[Address, list[bytes]] = {}
+        self._tasks: set[asyncio.Task[None]] = set()
         self._pending: set[asyncio.TimerHandle] = set()
 
     async def __aenter__(self) -> "LinkEmulator":
@@ -101,6 +105,10 @@ class LinkEmulator:
 
     def close(self) -> None:
         """Close every socket; datagrams in flight are dropped."""
+        for task in self._tasks:
+            task.cancel()  # a cancelled create_datagram_endpoint closes its own socket
+        self._tasks.clear()
+        self._opening.clear()
         for handle in self._pending:
             handle.cancel()
         self._pending.clear()
@@ -112,6 +120,11 @@ class LinkEmulator:
             self._vehicles = None
 
     @property
+    def uplink_count(self) -> int:
+        """Station-facing sockets open, one per vehicle heard."""
+        return len(self._uplinks)
+
+    @property
     def port(self) -> int:
         """The vehicle-facing port actually bound (useful with port 0)."""
         assert self._vehicles is not None  # noqa: S101
@@ -120,22 +133,30 @@ class LinkEmulator:
 
     def _from_vehicle(self, data: bytes, vehicle: Address) -> None:
         uplink = self._uplinks.get(vehicle)
-        if uplink is None:
-            asyncio.get_running_loop().create_task(self._open_uplink(vehicle, data))
+        if uplink is not None:
+            self._relay(data, lambda: uplink.sendto(data, self.forward), up=True)
             return
-        self._relay(data, lambda: uplink.sendto(data, self.forward), up=True)
+        backlog = self._opening.get(vehicle)
+        if backlog is not None:
+            backlog.append(data)
+            return
+        self._opening[vehicle] = [data]
+        task = asyncio.get_running_loop().create_task(self._open_uplink(vehicle))
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
-    async def _open_uplink(self, vehicle: Address, first: bytes) -> None:
-        if vehicle in self._uplinks:
-            self._from_vehicle(first, vehicle)
-            return
+    async def _open_uplink(self, vehicle: Address) -> None:
         loop = asyncio.get_running_loop()
         transport, _ = await loop.create_datagram_endpoint(
             lambda: _Receiver(lambda data, _addr: self._from_station(data, vehicle)),
             local_addr=(self.listen[0], 0),
         )
+        if self._vehicles is None:  # closed meanwhile
+            transport.close()
+            return
         self._uplinks[vehicle] = transport
-        self._from_vehicle(first, vehicle)
+        for data in self._opening.pop(vehicle, []):
+            self._from_vehicle(data, vehicle)
 
     def _from_station(self, data: bytes, vehicle: Address) -> None:
         vehicles = self._vehicles

@@ -200,6 +200,7 @@ async def test_a_fixed_wing_takes_off_and_returns(station: Station) -> None:
 
     await arm(station, [plane])
     takeoff = await station.command("takeoff", [plane], altitude_relative_m=40.0)
+    assert takeoff["targets"][0]["state"] == "acked", takeoff["targets"]
     airborne = await station.wait_for(
         plane,
         lambda t: t["in_air"] is True and (t["altitude_relative_m"] or 0) > 10.0,

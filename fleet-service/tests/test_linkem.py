@@ -82,6 +82,19 @@ async def test_traffic_is_relayed_both_ways_per_vehicle(rig: Rig) -> None:
     assert (await second.next())[0] == b"to-2"
 
 
+async def test_a_burst_from_a_new_vehicle_opens_one_uplink(rig: Rig) -> None:
+    link, station, first, _ = rig
+    relay = ("127.0.0.1", link.port)
+
+    for i in range(20):  # all before the vehicle's uplink socket can be opened
+        first.send(str(i).encode(), relay)
+    received = [await station.next() for _ in range(20)]
+
+    assert sorted(int(data) for data, _, _ in received) == list(range(20))
+    assert len({peer for _, peer, _ in received}) == 1
+    assert link.uplink_count == 1
+
+
 async def test_a_blackout_drops_everything_until_restored(rig: Rig) -> None:
     link, station, first, _ = rig
     relay = ("127.0.0.1", link.port)
