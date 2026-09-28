@@ -25,6 +25,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    false,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -324,6 +325,8 @@ class Command(OpsBase):
     request_hash: Mapped[str] = mapped_column(String(64))
     state: Mapped[CommandState] = mapped_column(enum_type(CommandState))
     confirmation_required: Mapped[bool] = mapped_column(Boolean)
+    confirmation_expires_at: Mapped[datetime | None]
+    override: Mapped[bool] = mapped_column(Boolean, server_default=false())
     confirmed_at: Mapped[datetime | None]
     created_at: Mapped[datetime]
     completed_at: Mapped[datetime | None]
@@ -339,6 +342,7 @@ class CommandTarget(OpsBase):
     )
     aircraft_id: Mapped[str] = mapped_column(ForeignKey("aircraft.id"), primary_key=True)
     state: Mapped[CommandTargetState] = mapped_column(enum_type(CommandTargetState))
+    reason_code: Mapped[str | None] = mapped_column(String(32))
     reason: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime]
 
@@ -420,3 +424,4 @@ class TelemetrySample(TelemetryBase):
     satellites: Mapped[int | None] = mapped_column(Integer)
     flight_mode: Mapped[str | None] = mapped_column(String(32))
     armed: Mapped[bool | None] = mapped_column(Boolean)
+    in_air: Mapped[bool | None] = mapped_column(Boolean)

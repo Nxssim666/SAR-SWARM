@@ -1,0 +1,1711 @@
+{
+  "asyncapi": "3.0.0",
+  "info": {
+    "title": "SAR Fleet Service WebSocket API",
+    "version": "0.1.0",
+    "description": "Live telemetry, alerts, commands and control changes. Connect, send `auth` with a session token within 5 s, then `subscribe`. Close codes: 4400 malformed message, 4401 not authenticated or session ended, 4403 not permitted, 4408 timeout, 4429 too slow (reconnect and resync)."
+  },
+  "servers": {
+    "station": {
+      "host": "{station}",
+      "protocol": "wss",
+      "pathname": "/api/v1/ws",
+      "description": "The ground station, behind its gateway (ADR 0016).",
+      "variables": {
+        "station": {
+          "default": "localhost"
+        }
+      }
+    }
+  },
+  "channels": {
+    "fleet": {
+      "address": "/api/v1/ws",
+      "messages": {
+        "AuthMessage": {
+          "$ref": "#/components/messages/AuthMessage"
+        },
+        "SubscribeMessage": {
+          "$ref": "#/components/messages/SubscribeMessage"
+        },
+        "UnsubscribeMessage": {
+          "$ref": "#/components/messages/UnsubscribeMessage"
+        },
+        "PingMessage": {
+          "$ref": "#/components/messages/PingMessage"
+        },
+        "WelcomeMessage": {
+          "$ref": "#/components/messages/WelcomeMessage"
+        },
+        "TelemetrySnapshot": {
+          "$ref": "#/components/messages/TelemetrySnapshot"
+        },
+        "AlertsSnapshot": {
+          "$ref": "#/components/messages/AlertsSnapshot"
+        },
+        "CommandsSnapshot": {
+          "$ref": "#/components/messages/CommandsSnapshot"
+        },
+        "ControlSnapshot": {
+          "$ref": "#/components/messages/ControlSnapshot"
+        },
+        "TelemetryEvent": {
+          "$ref": "#/components/messages/TelemetryEvent"
+        },
+        "AlertEvent": {
+          "$ref": "#/components/messages/AlertEvent"
+        },
+        "CommandEvent": {
+          "$ref": "#/components/messages/CommandEvent"
+        },
+        "ControlEvent": {
+          "$ref": "#/components/messages/ControlEvent"
+        },
+        "PongMessage": {
+          "$ref": "#/components/messages/PongMessage"
+        },
+        "ErrorMessage": {
+          "$ref": "#/components/messages/ErrorMessage"
+        },
+        "SessionEndedMessage": {
+          "$ref": "#/components/messages/SessionEndedMessage"
+        }
+      }
+    }
+  },
+  "operations": {
+    "receiveFromConsole": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/fleet"
+      },
+      "summary": "Messages a console sends to the station.",
+      "messages": [
+        {
+          "$ref": "#/channels/fleet/messages/AuthMessage"
+        },
+        {
+          "$ref": "#/channels/fleet/messages/SubscribeMessage"
+        },
+        {
+          "$ref": "#/channels/fleet/messages/UnsubscribeMessage"
+        },
+        {
+          "$ref": "#/channels/fleet/messages/PingMessage"
+        }
+      ]
+    },
+    "sendToConsole": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/fleet"
+      },
+      "summary": "Messages the station sends to a console.",
+      "messages": [
+        {
+          "$ref": "#/channels/fleet/messages/WelcomeMessage"
+        },
+        {
+          "$ref": "#/channels/fleet/messages/TelemetrySnapshot"
+        },
+        {
+          "$ref": "#/channels/fleet/messages/AlertsSnapshot"
+        },
+        {
+          "$ref": "#/channels/fleet/messages/CommandsSnapshot"
+        },
+        {
+          "$ref": "#/channels/fleet/messages/ControlSnapshot"
+        },
+        {
+          "$ref": "#/channels/fleet/messages/TelemetryEvent"
+        },
+        {
+          "$ref": "#/channels/fleet/messages/AlertEvent"
+        },
+        {
+          "$ref": "#/channels/fleet/messages/CommandEvent"
+        },
+        {
+          "$ref": "#/channels/fleet/messages/ControlEvent"
+        },
+        {
+          "$ref": "#/channels/fleet/messages/PongMessage"
+        },
+        {
+          "$ref": "#/channels/fleet/messages/ErrorMessage"
+        },
+        {
+          "$ref": "#/channels/fleet/messages/SessionEndedMessage"
+        }
+      ]
+    }
+  },
+  "components": {
+    "messages": {
+      "AuthMessage": {
+        "name": "AuthMessage",
+        "title": "AuthMessage",
+        "summary": "First message: the session token from POST /api/v1/auth/login.",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/AuthMessage"
+        }
+      },
+      "SubscribeMessage": {
+        "name": "SubscribeMessage",
+        "title": "SubscribeMessage",
+        "summary": "Start receiving topics: a snapshot of each, then events.",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/SubscribeMessage"
+        }
+      },
+      "UnsubscribeMessage": {
+        "name": "UnsubscribeMessage",
+        "title": "UnsubscribeMessage",
+        "summary": "Stop receiving topics.",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/UnsubscribeMessage"
+        }
+      },
+      "PingMessage": {
+        "name": "PingMessage",
+        "title": "PingMessage",
+        "summary": "Keep-alive; also tells the station the operator is still here (ADR 0011 presence).",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/PingMessage"
+        }
+      },
+      "WelcomeMessage": {
+        "name": "WelcomeMessage",
+        "title": "WelcomeMessage",
+        "summary": "Authentication succeeded.",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/WelcomeMessage"
+        }
+      },
+      "TelemetrySnapshot": {
+        "name": "TelemetrySnapshot",
+        "title": "TelemetrySnapshot",
+        "summary": "Every aircraft's live state, on subscribing to fleet.telemetry.",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/TelemetrySnapshot"
+        }
+      },
+      "AlertsSnapshot": {
+        "name": "AlertsSnapshot",
+        "title": "AlertsSnapshot",
+        "summary": "Open alerts, on subscribing to alerts.",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/AlertsSnapshot"
+        }
+      },
+      "CommandsSnapshot": {
+        "name": "CommandsSnapshot",
+        "title": "CommandsSnapshot",
+        "summary": "Recent commands, on subscribing to commands.",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/CommandsSnapshot"
+        }
+      },
+      "ControlSnapshot": {
+        "name": "ControlSnapshot",
+        "title": "ControlSnapshot",
+        "summary": "Control leases, on subscribing to control.",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/ControlSnapshot"
+        }
+      },
+      "TelemetryEvent": {
+        "name": "TelemetryEvent",
+        "title": "TelemetryEvent",
+        "summary": "Aircraft whose live state changed, at most ``telemetry_hz`` times per second.",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/TelemetryEvent"
+        }
+      },
+      "AlertEvent": {
+        "name": "AlertEvent",
+        "title": "AlertEvent",
+        "summary": "An alert was raised, acknowledged or cleared.",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/AlertEvent"
+        }
+      },
+      "CommandEvent": {
+        "name": "CommandEvent",
+        "title": "CommandEvent",
+        "summary": "A command changed state (confirmation, dispatch, outcome, verification).",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/CommandEvent"
+        }
+      },
+      "ControlEvent": {
+        "name": "ControlEvent",
+        "title": "ControlEvent",
+        "summary": "A control lease changed.",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/ControlEvent"
+        }
+      },
+      "PongMessage": {
+        "name": "PongMessage",
+        "title": "PongMessage",
+        "summary": "Answer to ping.",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/PongMessage"
+        }
+      },
+      "ErrorMessage": {
+        "name": "ErrorMessage",
+        "title": "ErrorMessage",
+        "summary": "A message could not be processed; the connection stays open unless closed after.",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/ErrorMessage"
+        }
+      },
+      "SessionEndedMessage": {
+        "name": "SessionEndedMessage",
+        "title": "SessionEndedMessage",
+        "summary": "The session was revoked or expired; the connection closes with 4401.",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/SessionEndedMessage"
+        }
+      }
+    },
+    "schemas": {
+      "AircraftLive": {
+        "description": "One aircraft's live state: link, latest telemetry, controller.",
+        "properties": {
+          "aircraft_id": {
+            "title": "Aircraft Id",
+            "type": "string"
+          },
+          "callsign": {
+            "title": "Callsign",
+            "type": "string"
+          },
+          "airframe": {
+            "$ref": "#/components/schemas/Airframe"
+          },
+          "link": {
+            "$ref": "#/components/schemas/LinkState"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          },
+          "telemetry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TelemetryView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "controller": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeaseView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "aircraft_id",
+          "callsign",
+          "airframe",
+          "link",
+          "last_seen_at",
+          "telemetry",
+          "controller"
+        ],
+        "title": "AircraftLive",
+        "type": "object"
+      },
+      "Airframe": {
+        "description": "Aircraft type; drives planning constraints (turn radius, hover ability).",
+        "enum": [
+          "fixed_wing",
+          "multirotor_hexa",
+          "multirotor_quad"
+        ],
+        "title": "Airframe",
+        "type": "string"
+      },
+      "AlertEvent": {
+        "description": "An alert was raised, acknowledged or cleared.",
+        "properties": {
+          "seq": {
+            "description": "Per-connection sequence number; gaps never occur.",
+            "minimum": 1,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "type": {
+            "const": "event",
+            "default": "event",
+            "title": "Type",
+            "type": "string"
+          },
+          "topic": {
+            "const": "alerts",
+            "default": "alerts",
+            "title": "Topic",
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AlertView"
+          }
+        },
+        "required": [
+          "seq",
+          "ts",
+          "data"
+        ],
+        "title": "AlertEvent",
+        "type": "object"
+      },
+      "AlertKind": {
+        "description": "What an alert is about (engine from M1b/M4).",
+        "enum": [
+          "link_stale",
+          "link_lost",
+          "battery_low",
+          "battery_critical",
+          "gps_lost",
+          "geofence_breach",
+          "mission_complete",
+          "route_deviation",
+          "deconfliction_risk",
+          "command_timeout",
+          "command_unverified",
+          "control_orphaned",
+          "video_down"
+        ],
+        "title": "AlertKind",
+        "type": "string"
+      },
+      "AlertSeverity": {
+        "description": "How urgently an operator must look.",
+        "enum": [
+          "info",
+          "warning",
+          "critical"
+        ],
+        "title": "AlertSeverity",
+        "type": "string"
+      },
+      "AlertState": {
+        "description": "Alert lifecycle.",
+        "enum": [
+          "active",
+          "acknowledged",
+          "cleared"
+        ],
+        "title": "AlertState",
+        "type": "string"
+      },
+      "AlertView": {
+        "description": "An operator-facing alert.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AlertKind"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/AlertSeverity"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AlertState"
+          },
+          "aircraft_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aircraft Id"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "raised_at": {
+            "format": "date-time",
+            "title": "Raised At",
+            "type": "string"
+          },
+          "acknowledged_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acknowledged By"
+          },
+          "acknowledged_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acknowledged At"
+          },
+          "cleared_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cleared At"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "severity",
+          "state",
+          "aircraft_id",
+          "message",
+          "raised_at",
+          "acknowledged_by",
+          "acknowledged_at",
+          "cleared_at"
+        ],
+        "title": "AlertView",
+        "type": "object"
+      },
+      "AlertsSnapshot": {
+        "description": "Open alerts, on subscribing to alerts.",
+        "properties": {
+          "seq": {
+            "description": "Per-connection sequence number; gaps never occur.",
+            "minimum": 1,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "type": {
+            "const": "snapshot",
+            "default": "snapshot",
+            "title": "Type",
+            "type": "string"
+          },
+          "topic": {
+            "const": "alerts",
+            "default": "alerts",
+            "title": "Topic",
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AlertsSnapshotData"
+          }
+        },
+        "required": [
+          "seq",
+          "ts",
+          "data"
+        ],
+        "title": "AlertsSnapshot",
+        "type": "object"
+      },
+      "AlertsSnapshotData": {
+        "description": "Every open (active or acknowledged) alert.",
+        "properties": {
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/AlertView"
+            },
+            "title": "Alerts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "alerts"
+        ],
+        "title": "AlertsSnapshotData",
+        "type": "object"
+      },
+      "AuthMessage": {
+        "additionalProperties": false,
+        "description": "First message: the session token from POST /api/v1/auth/login.",
+        "properties": {
+          "type": {
+            "const": "auth",
+            "title": "Type",
+            "type": "string"
+          },
+          "token": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "token"
+        ],
+        "title": "AuthMessage",
+        "type": "object"
+      },
+      "CommandEvent": {
+        "description": "A command changed state (confirmation, dispatch, outcome, verification).",
+        "properties": {
+          "seq": {
+            "description": "Per-connection sequence number; gaps never occur.",
+            "minimum": 1,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "type": {
+            "const": "event",
+            "default": "event",
+            "title": "Type",
+            "type": "string"
+          },
+          "topic": {
+            "const": "commands",
+            "default": "commands",
+            "title": "Topic",
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/CommandView"
+          }
+        },
+        "required": [
+          "seq",
+          "ts",
+          "data"
+        ],
+        "title": "CommandEvent",
+        "type": "object"
+      },
+      "CommandKind": {
+        "description": "Commands the GCS can send (ADR 0002 scope; no flight termination).",
+        "enum": [
+          "arm",
+          "disarm",
+          "takeoff",
+          "hold",
+          "resume",
+          "return_to_launch",
+          "land",
+          "goto",
+          "mission_upload",
+          "mission_start",
+          "mission_pause",
+          "geofence_upload"
+        ],
+        "title": "CommandKind",
+        "type": "string"
+      },
+      "CommandState": {
+        "description": "Overall state of a (possibly bulk) command (ADR 0011).",
+        "enum": [
+          "awaiting_confirmation",
+          "in_progress",
+          "completed",
+          "rejected",
+          "expired"
+        ],
+        "title": "CommandState",
+        "type": "string"
+      },
+      "CommandTargetState": {
+        "description": "Outcome of a command for one aircraft.",
+        "enum": [
+          "pending",
+          "dispatched",
+          "acked",
+          "nacked",
+          "timeout",
+          "rejected",
+          "verified",
+          "unverified"
+        ],
+        "title": "CommandTargetState",
+        "type": "string"
+      },
+      "CommandTargetView": {
+        "description": "The outcome of a command for one aircraft.",
+        "properties": {
+          "aircraft_id": {
+            "title": "Aircraft Id",
+            "type": "string"
+          },
+          "callsign": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Callsign"
+          },
+          "state": {
+            "$ref": "#/components/schemas/CommandTargetState"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "aircraft_id",
+          "callsign",
+          "state",
+          "reason_code",
+          "reason",
+          "updated_at"
+        ],
+        "title": "CommandTargetView",
+        "type": "object"
+      },
+      "CommandView": {
+        "description": "A command and its per-aircraft outcome.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/CommandKind"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "issued_by": {
+            "title": "Issued By",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/CommandState"
+          },
+          "override": {
+            "title": "Override",
+            "type": "boolean"
+          },
+          "confirmation_required": {
+            "title": "Confirmation Required",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/CommandTargetView"
+            },
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "params",
+          "issued_by",
+          "state",
+          "override",
+          "confirmation_required",
+          "created_at",
+          "confirmed_at",
+          "completed_at",
+          "targets"
+        ],
+        "title": "CommandView",
+        "type": "object"
+      },
+      "CommandsSnapshot": {
+        "description": "Recent commands, on subscribing to commands.",
+        "properties": {
+          "seq": {
+            "description": "Per-connection sequence number; gaps never occur.",
+            "minimum": 1,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "type": {
+            "const": "snapshot",
+            "default": "snapshot",
+            "title": "Type",
+            "type": "string"
+          },
+          "topic": {
+            "const": "commands",
+            "default": "commands",
+            "title": "Topic",
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/CommandsSnapshotData"
+          }
+        },
+        "required": [
+          "seq",
+          "ts",
+          "data"
+        ],
+        "title": "CommandsSnapshot",
+        "type": "object"
+      },
+      "CommandsSnapshotData": {
+        "description": "The most recent commands, newest first.",
+        "properties": {
+          "commands": {
+            "items": {
+              "$ref": "#/components/schemas/CommandView"
+            },
+            "title": "Commands",
+            "type": "array"
+          }
+        },
+        "required": [
+          "commands"
+        ],
+        "title": "CommandsSnapshotData",
+        "type": "object"
+      },
+      "ControlChange": {
+        "description": "A change of an aircraft's control lease (the lease after it, or null if none).",
+        "properties": {
+          "aircraft_id": {
+            "title": "Aircraft Id",
+            "type": "string"
+          },
+          "change": {
+            "title": "Change",
+            "type": "string"
+          },
+          "lease": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeaseView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "aircraft_id",
+          "change",
+          "lease"
+        ],
+        "title": "ControlChange",
+        "type": "object"
+      },
+      "ControlEvent": {
+        "description": "A control lease changed.",
+        "properties": {
+          "seq": {
+            "description": "Per-connection sequence number; gaps never occur.",
+            "minimum": 1,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "type": {
+            "const": "event",
+            "default": "event",
+            "title": "Type",
+            "type": "string"
+          },
+          "topic": {
+            "const": "control",
+            "default": "control",
+            "title": "Topic",
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ControlChange"
+          }
+        },
+        "required": [
+          "seq",
+          "ts",
+          "data"
+        ],
+        "title": "ControlEvent",
+        "type": "object"
+      },
+      "ControlSnapshot": {
+        "description": "Control leases, on subscribing to control.",
+        "properties": {
+          "seq": {
+            "description": "Per-connection sequence number; gaps never occur.",
+            "minimum": 1,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "type": {
+            "const": "snapshot",
+            "default": "snapshot",
+            "title": "Type",
+            "type": "string"
+          },
+          "topic": {
+            "const": "control",
+            "default": "control",
+            "title": "Topic",
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ControlSnapshotData"
+          }
+        },
+        "required": [
+          "seq",
+          "ts",
+          "data"
+        ],
+        "title": "ControlSnapshot",
+        "type": "object"
+      },
+      "ControlSnapshotData": {
+        "description": "Every control lease.",
+        "properties": {
+          "leases": {
+            "items": {
+              "$ref": "#/components/schemas/LeaseView"
+            },
+            "title": "Leases",
+            "type": "array"
+          }
+        },
+        "required": [
+          "leases"
+        ],
+        "title": "ControlSnapshotData",
+        "type": "object"
+      },
+      "ErrorMessage": {
+        "description": "A message could not be processed; the connection stays open unless closed after.",
+        "properties": {
+          "seq": {
+            "description": "Per-connection sequence number; gaps never occur.",
+            "minimum": 1,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "type": {
+            "const": "error",
+            "default": "error",
+            "title": "Type",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seq",
+          "ts",
+          "code",
+          "message"
+        ],
+        "title": "ErrorMessage",
+        "type": "object"
+      },
+      "FlightMode": {
+        "description": "Autopilot-agnostic flight mode shown to operators (drivers map to it).",
+        "enum": [
+          "hold",
+          "takeoff",
+          "goto",
+          "mission",
+          "return",
+          "land",
+          "manual",
+          "unknown"
+        ],
+        "title": "FlightMode",
+        "type": "string"
+      },
+      "GeoPoint": {
+        "additionalProperties": false,
+        "description": "A WGS84 position with explicit keys (never a bare pair).",
+        "properties": {
+          "latitude": {
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Longitude",
+            "type": "number"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude"
+        ],
+        "title": "GeoPoint",
+        "type": "object"
+      },
+      "GpsFix": {
+        "description": "GNSS fix quality; MAVLink GPS_FIX_TYPE codes are kept for storage.",
+        "enum": [
+          "none",
+          "2d",
+          "3d",
+          "dgps",
+          "rtk_float",
+          "rtk_fixed"
+        ],
+        "title": "GpsFix",
+        "type": "string"
+      },
+      "HandoverRequestView": {
+        "description": "A pending request to take over control.",
+        "properties": {
+          "requested_by": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "requested_at": {
+            "format": "date-time",
+            "title": "Requested At",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requested_by",
+          "requested_at",
+          "expires_at"
+        ],
+        "title": "HandoverRequestView",
+        "type": "object"
+      },
+      "LeaseState": {
+        "description": "Control lease of an aircraft (ADR 0011).",
+        "enum": [
+          "held",
+          "orphaned"
+        ],
+        "title": "LeaseState",
+        "type": "string"
+      },
+      "LeaseView": {
+        "description": "Who controls an aircraft (ADR 0011).",
+        "properties": {
+          "aircraft_id": {
+            "title": "Aircraft Id",
+            "type": "string"
+          },
+          "holder": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "state": {
+            "$ref": "#/components/schemas/LeaseState"
+          },
+          "acquired_at": {
+            "format": "date-time",
+            "title": "Acquired At",
+            "type": "string"
+          },
+          "pending_request": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HandoverRequestView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "aircraft_id",
+          "holder",
+          "state",
+          "acquired_at",
+          "pending_request"
+        ],
+        "title": "LeaseView",
+        "type": "object"
+      },
+      "LinkState": {
+        "description": "Freshness of an aircraft's telemetry (ADR 0010).",
+        "enum": [
+          "live",
+          "stale",
+          "lost",
+          "offline"
+        ],
+        "title": "LinkState",
+        "type": "string"
+      },
+      "Permission": {
+        "description": "Something a session may be allowed to do.",
+        "enum": [
+          "fleet.view",
+          "missions.plan",
+          "alerts.ack",
+          "aircraft.hold",
+          "aircraft.command",
+          "control.override",
+          "fleet.manage",
+          "incidents.manage",
+          "geofences.manage",
+          "users.view",
+          "audit.read",
+          "users.manage"
+        ],
+        "title": "Permission",
+        "type": "string"
+      },
+      "PingMessage": {
+        "additionalProperties": false,
+        "description": "Keep-alive; also tells the station the operator is still here (ADR 0011 presence).",
+        "properties": {
+          "type": {
+            "const": "ping",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "PingMessage",
+        "type": "object"
+      },
+      "PongMessage": {
+        "description": "Answer to ping.",
+        "properties": {
+          "seq": {
+            "description": "Per-connection sequence number; gaps never occur.",
+            "minimum": 1,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "type": {
+            "const": "pong",
+            "default": "pong",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seq",
+          "ts"
+        ],
+        "title": "PongMessage",
+        "type": "object"
+      },
+      "Role": {
+        "description": "Operator roles, lowest to highest authority (ADR 0009).",
+        "enum": [
+          "observer",
+          "operator",
+          "supervisor",
+          "admin"
+        ],
+        "title": "Role",
+        "type": "string"
+      },
+      "SessionEndedMessage": {
+        "description": "The session was revoked or expired; the connection closes with 4401.",
+        "properties": {
+          "seq": {
+            "description": "Per-connection sequence number; gaps never occur.",
+            "minimum": 1,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "type": {
+            "const": "session_ended",
+            "default": "session_ended",
+            "title": "Type",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seq",
+          "ts",
+          "reason"
+        ],
+        "title": "SessionEndedMessage",
+        "type": "object"
+      },
+      "SubscribeMessage": {
+        "additionalProperties": false,
+        "description": "Start receiving topics: a snapshot of each, then events.",
+        "properties": {
+          "type": {
+            "const": "subscribe",
+            "title": "Type",
+            "type": "string"
+          },
+          "topics": {
+            "items": {
+              "enum": [
+                "fleet.telemetry",
+                "alerts",
+                "commands",
+                "control"
+              ],
+              "type": "string"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Topics",
+            "type": "array",
+            "uniqueItems": true
+          },
+          "telemetry_hz": {
+            "default": 4.0,
+            "description": "Rate of fleet.telemetry batches (newest state per aircraft).",
+            "maximum": 10.0,
+            "minimum": 0.5,
+            "title": "Telemetry Hz",
+            "type": "number"
+          }
+        },
+        "required": [
+          "type",
+          "topics"
+        ],
+        "title": "SubscribeMessage",
+        "type": "object"
+      },
+      "TelemetryBatch": {
+        "description": "Live states of aircraft (all of them in a snapshot, the changed ones in an event).",
+        "properties": {
+          "aircraft": {
+            "items": {
+              "$ref": "#/components/schemas/AircraftLive"
+            },
+            "title": "Aircraft",
+            "type": "array"
+          }
+        },
+        "required": [
+          "aircraft"
+        ],
+        "title": "TelemetryBatch",
+        "type": "object"
+      },
+      "TelemetryEvent": {
+        "description": "Aircraft whose live state changed, at most ``telemetry_hz`` times per second.",
+        "properties": {
+          "seq": {
+            "description": "Per-connection sequence number; gaps never occur.",
+            "minimum": 1,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "type": {
+            "const": "event",
+            "default": "event",
+            "title": "Type",
+            "type": "string"
+          },
+          "topic": {
+            "const": "fleet.telemetry",
+            "default": "fleet.telemetry",
+            "title": "Topic",
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/TelemetryBatch"
+          }
+        },
+        "required": [
+          "seq",
+          "ts",
+          "data"
+        ],
+        "title": "TelemetryEvent",
+        "type": "object"
+      },
+      "TelemetrySnapshot": {
+        "description": "Every aircraft's live state, on subscribing to fleet.telemetry.",
+        "properties": {
+          "seq": {
+            "description": "Per-connection sequence number; gaps never occur.",
+            "minimum": 1,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "type": {
+            "const": "snapshot",
+            "default": "snapshot",
+            "title": "Type",
+            "type": "string"
+          },
+          "topic": {
+            "const": "fleet.telemetry",
+            "default": "fleet.telemetry",
+            "title": "Topic",
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/TelemetryBatch"
+          }
+        },
+        "required": [
+          "seq",
+          "ts",
+          "data"
+        ],
+        "title": "TelemetrySnapshot",
+        "type": "object"
+      },
+      "TelemetryView": {
+        "description": "The latest telemetry of an aircraft; unknown values are null (ADR 0002, S7).",
+        "properties": {
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GeoPoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "altitude_amsl_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Altitude Amsl M"
+          },
+          "altitude_relative_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Altitude Relative M"
+          },
+          "heading_deg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heading Deg"
+          },
+          "groundspeed_mps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Groundspeed Mps"
+          },
+          "climb_rate_mps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Climb Rate Mps"
+          },
+          "battery_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Pct"
+          },
+          "battery_v": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery V"
+          },
+          "gps_fix": {
+            "$ref": "#/components/schemas/GpsFix"
+          },
+          "satellites": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Satellites"
+          },
+          "flight_mode": {
+            "$ref": "#/components/schemas/FlightMode"
+          },
+          "armed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Armed"
+          },
+          "in_air": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Air"
+          },
+          "home": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GeoPoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "ts",
+          "source",
+          "position",
+          "altitude_amsl_m",
+          "altitude_relative_m",
+          "heading_deg",
+          "groundspeed_mps",
+          "climb_rate_mps",
+          "battery_pct",
+          "battery_v",
+          "gps_fix",
+          "satellites",
+          "flight_mode",
+          "armed",
+          "in_air",
+          "home"
+        ],
+        "title": "TelemetryView",
+        "type": "object"
+      },
+      "UnsubscribeMessage": {
+        "additionalProperties": false,
+        "description": "Stop receiving topics.",
+        "properties": {
+          "type": {
+            "const": "unsubscribe",
+            "title": "Type",
+            "type": "string"
+          },
+          "topics": {
+            "items": {
+              "enum": [
+                "fleet.telemetry",
+                "alerts",
+                "commands",
+                "control"
+              ],
+              "type": "string"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Topics",
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "type",
+          "topics"
+        ],
+        "title": "UnsubscribeMessage",
+        "type": "object"
+      },
+      "UserRef": {
+        "description": "A user, as shown next to what they do.",
+        "properties": {
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "username",
+          "display_name"
+        ],
+        "title": "UserRef",
+        "type": "object"
+      },
+      "WelcomeMessage": {
+        "description": "Authentication succeeded.",
+        "properties": {
+          "seq": {
+            "description": "Per-connection sequence number; gaps never occur.",
+            "minimum": 1,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "type": {
+            "const": "welcome",
+            "default": "welcome",
+            "title": "Type",
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "permissions": {
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "session_expires_at": {
+            "format": "date-time",
+            "title": "Session Expires At",
+            "type": "string"
+          },
+          "simulation": {
+            "title": "Simulation",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "seq",
+          "ts",
+          "user",
+          "role",
+          "permissions",
+          "session_expires_at",
+          "simulation"
+        ],
+        "title": "WelcomeMessage",
+        "type": "object"
+      }
+    }
+  }
+}

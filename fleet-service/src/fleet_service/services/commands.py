@@ -1,0 +1,707 @@
+"""
+The command pipeline (ADR 0011, ADR 0020).
+
+    receive -> idempotency -> authorize + preconditions (per aircraft)
+            -> confirmation (428 + token)      when the command is risky or bulk
+            -> dispatch (per aircraft, concurrent, bounded by the timeout)
+            -> outcome: acked / nacked / timeout / rejected (per aircraft)
+            -> effect verification from telemetry: verified / unverified
+
+Every stage is audited. The database transaction is committed before waiting for
+aircraft, so no connection is held while radios answer (ADR 0019). Authorization and
+preconditions run again when a confirmed command is dispatched: whatever changed during
+the confirmation window can only reject more aircraft, never add risk.
+"""
+
+import asyncio
+import hashlib
+import hmac
+import logging
+import secrets
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from typing import Any
+
+from pydantic import AwareDatetime, BaseModel
+from shapely import Polygon
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from fleet_service.auth.permissions import Permission
+from fleet_service.auth.principal import Principal
+from fleet_service.bus import COMMANDS, EventBus
+from fleet_service.clock import Clock
+from fleet_service.db.models import Command, CommandTarget, Geofence, Incident
+from fleet_service.domain.commands import (
+    GotoTarget,
+    Limits,
+    Rejection,
+    authority,
+    confirmation_reasons,
+    expected_effect,
+    precondition,
+    warnings,
+)
+from fleet_service.domain.enums import (
+    AlertKind,
+    AlertSeverity,
+    CommandKind,
+    CommandState,
+    CommandTargetState,
+    IncidentStatus,
+)
+from fleet_service.domain.geo import GeoPoint, distance_m
+from fleet_service.domain.geofence import Fence, GeofenceSet
+from fleet_service.domain.telemetry import TelemetrySample
+from fleet_service.drivers.base import DriverCommand, Outcome
+from fleet_service.errors import Conflict, InvalidRequest, ProblemError
+from fleet_service.services import audit
+from fleet_service.services.alerts import AlertService
+from fleet_service.services.audit import Actor
+from fleet_service.services.fleet import FleetRegistry
+from fleet_service.services.leases import LeaseService
+from fleet_service.services.views import CommandTargetView, CommandView
+
+log = logging.getLogger(__name__)
+SYSTEM_ACTOR = Actor(user_id=None, username="system:commands")
+
+
+@dataclass(frozen=True)
+class CommandSpec:
+    """A validated command request, as the API received it."""
+
+    command_id: str
+    kind: CommandKind
+    aircraft_ids: tuple[str, ...]
+    params: dict[str, Any]
+    request_hash: str
+    confirmation_token: str | None
+    takeoff_altitude_m: float | None = None
+    goto: GotoTarget | None = None
+
+    def driver_command(self) -> DriverCommand:
+        """What each aircraft is told."""
+        return DriverCommand(
+            self.kind,
+            altitude_relative_m=(
+                self.goto.altitude_relative_m if self.goto else self.takeoff_altitude_m
+            ),
+            latitude=self.goto.latitude if self.goto else None,
+            longitude=self.goto.longitude if self.goto else None,
+        )
+
+
+class SummaryAircraft(BaseModel):
+    """An aircraft the command would be sent to, with what the operator should notice."""
+
+    aircraft_id: str
+    callsign: str
+    warnings: list[str]
+
+
+class SummaryRejection(BaseModel):
+    """An aircraft the command will not be sent to, and why."""
+
+    aircraft_id: str
+    callsign: str | None
+    code: str
+    message: str
+
+
+class ConfirmationSummary(BaseModel):
+    """What the operator is asked to confirm, computed by the server."""
+
+    kind: CommandKind
+    params: dict[str, Any]
+    reasons: list[str]
+    override: bool
+    aircraft: list[SummaryAircraft]
+    rejected: list[SummaryRejection]
+
+
+class ConfirmationRequiredError(ProblemError):
+    """428: re-send the same request with ``confirmation_token`` to execute it."""
+
+    status, slug, title = 428, "confirmation-required", "Confirmation required"
+
+    def __init__(
+        self,
+        detail: str,
+        command_id: str,
+        token: str,
+        expires_at: datetime,
+        summary: ConfirmationSummary,
+    ) -> None:
+        super().__init__(
+            detail,
+            extensions={
+                "command_id": command_id,
+                "confirmation_token": token,
+                "expires_at": expires_at.isoformat(),
+                "summary": summary.model_dump(mode="json"),
+            },
+        )
+
+
+class ConfirmationProblem(BaseModel):
+    """The 428 response body (documented in the OpenAPI document)."""
+
+    type: str
+    title: str
+    status: int
+    detail: str | None = None
+    instance: str | None = None
+    command_id: str
+    confirmation_token: str
+    expires_at: AwareDatetime
+    summary: ConfirmationSummary
+
+
+@dataclass
+class _Plan:
+    accepted: list[str] = field(default_factory=list)
+    rejected: dict[str, Rejection] = field(default_factory=dict)
+    warnings: dict[str, list[str]] = field(default_factory=dict)
+    override: bool = False
+    reasons: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class _Verification:
+    command_id: str
+    aircraft_id: str
+    effect: Callable[[TelemetrySample], bool]
+    acked_at: datetime
+    deadline: datetime
+
+
+class CommandService:
+    """Runs commands from request to verified effect."""
+
+    def __init__(
+        self,
+        *,
+        bus: EventBus,
+        clock: Clock,
+        registry: FleetRegistry,
+        leases: LeaseService,
+        alerts: AlertService,
+        limits: Limits,
+        battery_low_pct: float,
+        timeout_s: float,
+        effect_timeout_s: float,
+        min_interval_s: float,
+        confirmation_ttl_s: float,
+    ) -> None:
+        self._bus = bus
+        self._clock = clock
+        self._registry = registry
+        self._leases = leases
+        self._alerts = alerts
+        self._limits = limits
+        self._battery_low = battery_low_pct
+        self._timeout = timeout_s
+        self._effect_timeout = timedelta(seconds=effect_timeout_s)
+        self._min_interval = timedelta(seconds=min_interval_s)
+        self._ttl = timedelta(seconds=confirmation_ttl_s)
+        self._secret = secrets.token_bytes(32)  # tokens do not survive a restart, by design
+        self._last_dispatch: dict[str, datetime] = {}
+        self._verifications: list[_Verification] = []
+
+    # --- entry point --------------------------------------------------------------------------
+
+    async def submit(
+        self, db: AsyncSession, principal: Principal, actor: Actor, spec: CommandSpec
+    ) -> CommandView:
+        """Run a command request through the pipeline; see the module docstring."""
+        now = self._clock.now()
+        existing = await db.get(Command, spec.command_id)
+        if existing is not None:
+            if (
+                existing.issued_by != principal.user_id
+                or existing.request_hash != spec.request_hash
+            ):
+                raise Conflict(
+                    "This command_id was already used for a different request; generate a new one.",
+                    slug="command-id-reused",
+                )
+            waiting = (CommandState.AWAITING_CONFIRMATION, CommandState.EXPIRED)
+            if existing.state not in waiting:
+                return await self.view(db, existing)  # idempotent replay
+        unknown = sorted(a for a in spec.aircraft_ids if self._registry.get(a) is None)
+        if unknown:
+            raise InvalidRequest(
+                f"Unknown aircraft: {', '.join(unknown)}.",
+                slug="unknown-reference",
+                extensions={"field": "aircraft_ids", "unknown_ids": unknown},
+            )
+        confirmed = existing is not None and self._token_valid(existing, principal, spec, now)
+        plan = await self._plan(db, now, principal, spec)
+        if not plan.accepted:
+            return await self._reject_all(db, now, principal, actor, spec, plan, existing)
+        if plan.reasons and not confirmed:
+            await self._ask_confirmation(db, now, principal, actor, spec, plan, existing)
+        return await self._dispatch(db, now, principal, actor, spec, plan, existing, confirmed)
+
+    # --- planning -----------------------------------------------------------------------------
+
+    async def _plan(
+        self, db: AsyncSession, now: datetime, principal: Principal, spec: CommandSpec
+    ) -> _Plan:
+        plan = _Plan()
+        geofences = await self._geofences(db) if spec.kind is CommandKind.GOTO else None
+        farthest: float | None = None
+        for aircraft_id in spec.aircraft_ids:
+            vehicle = self._registry.vehicle_view(aircraft_id)
+            assert vehicle is not None  # noqa: S101 - unknown ids were rejected above
+            rejection, override = authority(
+                spec.kind,
+                principal_id=principal.user_id,
+                holder_id=self._leases.holder_id(aircraft_id),
+                can_hold=principal.can(Permission.AIRCRAFT_HOLD),
+                can_command=principal.can(Permission.AIRCRAFT_COMMAND),
+                can_override=principal.can(Permission.CONTROL_OVERRIDE),
+            )
+            if rejection is None:
+                rejection = precondition(
+                    spec.kind,
+                    vehicle,
+                    self._limits,
+                    takeoff_altitude_m=spec.takeoff_altitude_m,
+                    goto=spec.goto,
+                    geofences=geofences,
+                )
+            last = self._last_dispatch.get(aircraft_id)
+            if rejection is None and last is not None and now - last < self._min_interval:
+                rejection = Rejection("rate-limited", "A command was just sent; try again.")
+            if rejection is not None:
+                plan.rejected[aircraft_id] = rejection
+                continue
+            plan.accepted.append(aircraft_id)
+            plan.override |= override
+            plan.warnings[aircraft_id] = warnings(vehicle, self._battery_low)
+            sample = vehicle.sample
+            if (
+                spec.goto is not None
+                and sample is not None
+                and sample.latitude is not None
+                and sample.longitude is not None
+            ):
+                distance = distance_m(
+                    GeoPoint(latitude=sample.latitude, longitude=sample.longitude),
+                    GeoPoint(latitude=spec.goto.latitude, longitude=spec.goto.longitude),
+                )
+                farthest = max(farthest or 0.0, distance)
+        plan.reasons = confirmation_reasons(
+            spec.kind,
+            target_count=len(plan.accepted),
+            any_override=plan.override,
+            goto_distance_m=farthest,
+            limits=self._limits,
+        )
+        return plan
+
+    async def _geofences(self, db: AsyncSession) -> GeofenceSet:
+        rows = await db.scalars(
+            select(Geofence)
+            .join(Incident, Incident.id == Geofence.incident_id)
+            .where(Geofence.enabled.is_(True), Incident.status == IncidentStatus.ACTIVE)
+        )
+        return GeofenceSet.of(
+            Fence(g.name, g.kind, Polygon(g.geometry["coordinates"][0]), g.max_altitude_relative_m)
+            for g in rows.all()
+        )
+
+    # --- confirmation tokens ------------------------------------------------------------------
+
+    def _token(self, user_id: str, spec: CommandSpec, expires_at: datetime) -> str:
+        expiry = str(int(expires_at.timestamp() * 1000))
+        message = f"{user_id}|{spec.command_id}|{spec.request_hash}|{expiry}".encode()
+        return f"{expiry}.{hmac.new(self._secret, message, hashlib.sha256).hexdigest()}"
+
+    def _token_valid(
+        self, command: Command, principal: Principal, spec: CommandSpec, now: datetime
+    ) -> bool:
+        if spec.confirmation_token is None or command.confirmation_expires_at is None:
+            return False
+        if command.state is not CommandState.AWAITING_CONFIRMATION:
+            return False
+        if now >= command.confirmation_expires_at:
+            return False
+        expected = self._token(principal.user_id, spec, command.confirmation_expires_at)
+        return hmac.compare_digest(expected, spec.confirmation_token)
+
+    # --- outcomes -----------------------------------------------------------------------------
+
+    async def _ask_confirmation(
+        self,
+        db: AsyncSession,
+        now: datetime,
+        principal: Principal,
+        actor: Actor,
+        spec: CommandSpec,
+        plan: _Plan,
+        existing: Command | None,
+    ) -> None:
+        expires = now + self._ttl
+        command = await self._save(
+            db,
+            now,
+            principal,
+            spec,
+            plan,
+            existing,
+            CommandState.AWAITING_CONFIRMATION,
+            CommandTargetState.PENDING,
+            confirmation_expires_at=expires,
+        )
+        summary = self._summary(spec, plan)
+        await audit.record(
+            db,
+            actor,
+            now,
+            "command.confirmation_request",
+            entity_type="command",
+            entity_id=command.id,
+            details={"summary": summary.model_dump(mode="json")},
+        )
+        await db.commit()
+        self._publish(await self.view(db, command))
+        count = len(plan.accepted)
+        raise ConfirmationRequiredError(
+            f"Confirm {spec.kind.value} for {count} aircraft ({'; '.join(plan.reasons)}).",
+            command.id,
+            self._token(principal.user_id, spec, expires),
+            expires,
+            summary,
+        )
+
+    async def _reject_all(
+        self,
+        db: AsyncSession,
+        now: datetime,
+        principal: Principal,
+        actor: Actor,
+        spec: CommandSpec,
+        plan: _Plan,
+        existing: Command | None,
+    ) -> CommandView:
+        command = await self._save(
+            db,
+            now,
+            principal,
+            spec,
+            plan,
+            existing,
+            CommandState.REJECTED,
+            CommandTargetState.REJECTED,
+            completed_at=now,
+        )
+        await audit.record(
+            db,
+            actor,
+            now,
+            "command.reject",
+            entity_type="command",
+            entity_id=command.id,
+            details={"kind": spec.kind.value, "rejected": self._rejected(plan)},
+        )
+        await db.commit()
+        view = await self.view(db, command)
+        self._publish(view)
+        return view
+
+    async def _dispatch(
+        self,
+        db: AsyncSession,
+        now: datetime,
+        principal: Principal,
+        actor: Actor,
+        spec: CommandSpec,
+        plan: _Plan,
+        existing: Command | None,
+        confirmed: bool,
+    ) -> CommandView:
+        command = await self._save(
+            db,
+            now,
+            principal,
+            spec,
+            plan,
+            existing,
+            CommandState.IN_PROGRESS,
+            CommandTargetState.DISPATCHED,
+            confirmed_at=now if confirmed else None,
+        )
+        await audit.record(
+            db,
+            actor,
+            now,
+            "command.dispatch",
+            entity_type="command",
+            entity_id=command.id,
+            details={
+                "kind": spec.kind.value,
+                "params": spec.params,
+                "override": plan.override,
+                "confirmed": confirmed,
+                "aircraft": plan.accepted,
+                "rejected": self._rejected(plan),
+            },
+        )
+        await db.commit()  # never hold a transaction while aircraft answer (ADR 0019)
+        self._publish(await self.view(db, command))
+        await db.commit()
+        for aircraft_id in plan.accepted:
+            self._last_dispatch[aircraft_id] = now
+        driver_command = spec.driver_command()
+        results = await asyncio.gather(*(self._send(a, driver_command) for a in plan.accepted))
+
+        done = self._clock.now()
+        outcomes: dict[str, str] = {}
+        effect = expected_effect(spec.kind)
+        for aircraft_id, state, code, reason in results:
+            target = await db.get(CommandTarget, (command.id, aircraft_id))
+            assert target is not None  # noqa: S101 - created by _save
+            target.state, target.reason_code, target.reason = state, code, reason
+            target.updated_at = done
+            outcomes[aircraft_id] = state.value
+            if state is CommandTargetState.TIMEOUT:
+                record = self._registry.get(aircraft_id)
+                name = record.callsign if record else aircraft_id
+                await self._alerts.raise_alert(
+                    db,
+                    done,
+                    AlertKind.COMMAND_TIMEOUT,
+                    AlertSeverity.WARNING,
+                    f"{name}: no answer to {spec.kind.value} within {self._timeout:g} s.",
+                    aircraft_id=aircraft_id,
+                    dedupe_key=f"command_timeout:{command.id}:{aircraft_id}",
+                )
+            if state is CommandTargetState.ACKED and effect is not None:
+                self._verifications.append(
+                    _Verification(
+                        command.id, aircraft_id, effect, done, done + self._effect_timeout
+                    )
+                )
+        command = await db.merge(command)
+        command.state = CommandState.COMPLETED
+        command.completed_at = done
+        await audit.record(
+            db,
+            actor,
+            done,
+            "command.complete",
+            entity_type="command",
+            entity_id=command.id,
+            details={"outcomes": outcomes},
+        )
+        await db.commit()
+        view = await self.view(db, command)
+        self._publish(view)
+        return view
+
+    async def _send(
+        self, aircraft_id: str, command: DriverCommand
+    ) -> tuple[str, CommandTargetState, str | None, str | None]:
+        record = self._registry.get(aircraft_id)
+        if record is None or record.driver is None:
+            return aircraft_id, CommandTargetState.REJECTED, "no-link", "No telemetry link."
+        try:
+            result = await asyncio.wait_for(record.driver.execute(command), self._timeout)
+        except TimeoutError:
+            return (
+                aircraft_id,
+                CommandTargetState.TIMEOUT,
+                "timeout",
+                f"No answer within {self._timeout:g} s.",
+            )
+        except Exception:
+            log.exception("driver failed to execute %s on %s", command.kind, aircraft_id)
+            return aircraft_id, CommandTargetState.NACKED, "driver-error", "The driver failed."
+        if result.outcome is Outcome.ACKED:
+            return aircraft_id, CommandTargetState.ACKED, None, None
+        return aircraft_id, CommandTargetState.NACKED, "refused", result.reason
+
+    # --- evaluation (tick) --------------------------------------------------------------------
+
+    async def evaluate(self, db: AsyncSession, now: datetime) -> None:
+        """Expire unconfirmed commands; verify or flag the effect of acked ones."""
+        expired = await db.scalars(
+            select(Command).where(
+                Command.state == CommandState.AWAITING_CONFIRMATION,
+                Command.confirmation_expires_at <= now,
+            )
+        )
+        changed: set[str] = set()
+        for command in expired.all():
+            command.state = CommandState.EXPIRED
+            await audit.record(
+                db,
+                SYSTEM_ACTOR,
+                now,
+                "command.confirmation_expire",
+                entity_type="command",
+                entity_id=command.id,
+            )
+            changed.add(command.id)
+        still_pending = []
+        for check in self._verifications:
+            record = self._registry.get(check.aircraft_id)
+            sample = record.sample if record else None
+            if sample is not None and sample.ts >= check.acked_at and check.effect(sample):
+                state = CommandTargetState.VERIFIED
+            elif now >= check.deadline:
+                state = CommandTargetState.UNVERIFIED
+            else:
+                still_pending.append(check)
+                continue
+            target = await db.get(CommandTarget, (check.command_id, check.aircraft_id))
+            if target is None:  # pragma: no cover - targets are never deleted after dispatch
+                continue
+            target.state = state
+            target.updated_at = now
+            changed.add(check.command_id)
+            if state is CommandTargetState.UNVERIFIED:
+                target.reason_code = "no-effect"
+                target.reason = "The aircraft acknowledged, but telemetry never showed the effect."
+                name = record.callsign if record else check.aircraft_id
+                await self._alerts.raise_alert(
+                    db,
+                    now,
+                    AlertKind.COMMAND_UNVERIFIED,
+                    AlertSeverity.WARNING,
+                    f"{name}: a command was acknowledged but did not take effect.",
+                    aircraft_id=check.aircraft_id,
+                    dedupe_key=f"command_unverified:{check.command_id}:{check.aircraft_id}",
+                )
+            await audit.record(
+                db,
+                SYSTEM_ACTOR,
+                now,
+                f"command.{state.value}",
+                entity_type="command",
+                entity_id=check.command_id,
+                details={"aircraft_id": check.aircraft_id},
+            )
+        self._verifications = still_pending
+        await db.commit()
+        for command_id in changed:
+            row = await db.get(Command, command_id)
+            if row is not None:
+                self._publish(await self.view(db, row))
+        await db.commit()
+
+    # --- persistence and views ----------------------------------------------------------------
+
+    async def _save(
+        self,
+        db: AsyncSession,
+        now: datetime,
+        principal: Principal,
+        spec: CommandSpec,
+        plan: _Plan,
+        existing: Command | None,
+        state: CommandState,
+        accepted_state: CommandTargetState,
+        *,
+        confirmation_expires_at: datetime | None = None,
+        confirmed_at: datetime | None = None,
+        completed_at: datetime | None = None,
+    ) -> Command:
+        command = existing or Command(
+            id=spec.command_id,
+            kind=spec.kind,
+            params=spec.params,
+            issued_by=principal.user_id,
+            request_hash=spec.request_hash,
+            created_at=now,
+        )
+        command.state = state
+        command.override = plan.override
+        command.confirmation_required = bool(plan.reasons)
+        command.confirmation_expires_at = confirmation_expires_at
+        command.confirmed_at = confirmed_at
+        command.completed_at = completed_at
+        db.add(command)
+        await db.execute(delete(CommandTarget).where(CommandTarget.command_id == command.id))
+        for aircraft_id in spec.aircraft_ids:
+            rejection = plan.rejected.get(aircraft_id)
+            db.add(
+                CommandTarget(
+                    command_id=command.id,
+                    aircraft_id=aircraft_id,
+                    state=CommandTargetState.REJECTED if rejection else accepted_state,
+                    reason_code=rejection.code if rejection else None,
+                    reason=rejection.message if rejection else None,
+                    updated_at=now,
+                )
+            )
+        await db.flush()
+        return command
+
+    def _summary(self, spec: CommandSpec, plan: _Plan) -> ConfirmationSummary:
+        def callsign(aircraft_id: str) -> str:
+            record = self._registry.get(aircraft_id)
+            return record.callsign if record else aircraft_id
+
+        return ConfirmationSummary(
+            kind=spec.kind,
+            params=spec.params,
+            reasons=plan.reasons,
+            override=plan.override,
+            aircraft=[
+                SummaryAircraft(
+                    aircraft_id=a, callsign=callsign(a), warnings=plan.warnings.get(a, [])
+                )
+                for a in plan.accepted
+            ],
+            rejected=[
+                SummaryRejection(
+                    aircraft_id=a, callsign=callsign(a), code=r.code, message=r.message
+                )
+                for a, r in plan.rejected.items()
+            ],
+        )
+
+    @staticmethod
+    def _rejected(plan: _Plan) -> dict[str, str]:
+        return {aircraft_id: r.code for aircraft_id, r in plan.rejected.items()}
+
+    async def view(self, db: AsyncSession, command: Command) -> CommandView:
+        """The API view of a command and its targets."""
+        targets = (
+            await db.scalars(select(CommandTarget).where(CommandTarget.command_id == command.id))
+        ).all()
+        order = {a: i for i, a in enumerate(self._registry.ids())}
+        return CommandView(
+            id=command.id,
+            kind=command.kind,
+            params=command.params,
+            issued_by=command.issued_by,
+            state=command.state,
+            override=command.override,
+            confirmation_required=command.confirmation_required,
+            created_at=command.created_at,
+            confirmed_at=command.confirmed_at,
+            completed_at=command.completed_at,
+            targets=[
+                CommandTargetView(
+                    aircraft_id=t.aircraft_id,
+                    callsign=(r.callsign if (r := self._registry.get(t.aircraft_id)) else None),
+                    state=t.state,
+                    reason_code=t.reason_code,
+                    reason=t.reason,
+                    updated_at=t.updated_at,
+                )
+                for t in sorted(targets, key=lambda t: order.get(t.aircraft_id, len(order)))
+            ],
+        )
+
+    def _publish(self, view: CommandView) -> None:
+        self._bus.publish(COMMANDS, view, key=view.id)
+
+    def pending_verifications(self) -> int:
+        """How many acked commands still wait for their effect (for tests and diagnostics)."""
+        return len(self._verifications)

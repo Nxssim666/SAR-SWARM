@@ -12,7 +12,15 @@ from pydantic import AwareDatetime, BaseModel, StringConstraints
 from sqlalchemy import select, update
 
 from fleet_service.api.common import InputModel
-from fleet_service.api.deps import Context, CurrentPrincipal, DbSession, actor, requires, source_ip
+from fleet_service.api.deps import (
+    Context,
+    CurrentPrincipal,
+    DbSession,
+    actor,
+    announce_session_end,
+    requires,
+    source_ip,
+)
 from fleet_service.api.users import Password, UserOut
 from fleet_service.auth.permissions import Permission, permissions_for
 from fleet_service.auth.sessions import create_session, revoke_user_sessions
@@ -150,6 +158,7 @@ async def logout(
         entity_id=principal.session_id,
     )
     await db.commit()
+    announce_session_end(context, session_id=principal.session_id)
 
 
 @router.get("/me", responses=problem_responses(401, 403), **requires(None))
@@ -209,3 +218,4 @@ async def change_password(
         entity_id=user.id,
     )
     await db.commit()
+    announce_session_end(context, user_id=user.id, keep_session_id=principal.session_id)

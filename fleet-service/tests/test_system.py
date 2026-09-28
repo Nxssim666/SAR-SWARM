@@ -32,6 +32,7 @@ async def test_version_reports_service_api_and_station(client: httpx.AsyncClient
         "version": __version__,
         "api_version": "v1",
         "station_name": "test-station",
+        "simulation": False,
     }
 
 

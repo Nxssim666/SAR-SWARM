@@ -30,7 +30,13 @@ async def test_login_returns_a_session_with_permissions(
     body = response.json()
     assert body["token_type"] == "bearer"
     assert body["user"]["username"] == "alice"
-    assert body["permissions"] == ["fleet.view", "missions.plan"]
+    assert body["permissions"] == [
+        "fleet.view",
+        "missions.plan",
+        "alerts.ack",
+        "aircraft.hold",
+        "aircraft.command",
+    ]
     assert body["expires_at"] == "2026-09-28T20:00:00Z"  # 12 h after the fake clock's start
     assert "password_hash" not in body["user"]
     assert await audit_actions(context) == ["auth.login"]

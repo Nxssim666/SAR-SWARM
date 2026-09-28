@@ -5252,6 +5252,1625 @@
         "x-permission": "fleet.manage"
       }
     },
+    "/api/v1/fleet/state": {
+      "get": {
+        "tags": [
+          "live"
+        ],
+        "summary": "Fleet State",
+        "description": "Every registered aircraft's link, latest telemetry and controller.",
+        "operationId": "fleet_state_api_v1_fleet_state_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetState"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "x-permission": "fleet.view"
+      }
+    },
+    "/api/v1/aircraft/{aircraft_id}/telemetry": {
+      "get": {
+        "tags": [
+          "live"
+        ],
+        "summary": "Telemetry History",
+        "description": "Recorded telemetry of an aircraft (1 sample per second by default).",
+        "operationId": "telemetry_history_api_v1_aircraft__aircraft_id__telemetry_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "aircraft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Aircraft Id"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 1,
+              "default": 3600,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelemetryHistory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "fleet.view"
+      }
+    },
+    "/api/v1/simulation/aircraft/{aircraft_id}/faults": {
+      "post": {
+        "tags": [
+          "live"
+        ],
+        "summary": "Inject Fault",
+        "description": "Simulation mode only: take a simulated aircraft's link or GNSS away, or set its battery.",
+        "operationId": "inject_fault_api_v1_simulation_aircraft__aircraft_id__faults_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "aircraft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Aircraft Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FaultInjection"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AircraftLive"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "fleet.manage"
+      }
+    },
+    "/api/v1/commands": {
+      "post": {
+        "tags": [
+          "commands"
+        ],
+        "summary": "Submit Command",
+        "description": "Send a command to one or more aircraft; the answer lists every aircraft's outcome.",
+        "operationId": "submit_command_api_v1_commands_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ArmCommand"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DisarmCommand"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TakeoffCommand"
+                  },
+                  {
+                    "$ref": "#/components/schemas/HoldCommand"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ResumeCommand"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReturnCommand"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LandCommand"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GotoCommand"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Confirmation required: re-send the same request with the token.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmationProblem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "aircraft.hold"
+      },
+      "get": {
+        "tags": [
+          "commands"
+        ],
+        "summary": "List Commands",
+        "description": "The most recent commands.",
+        "operationId": "list_commands_api_v1_commands_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "fleet.view"
+      }
+    },
+    "/api/v1/commands/{command_id}": {
+      "get": {
+        "tags": [
+          "commands"
+        ],
+        "summary": "Get Command",
+        "description": "One command and its per-aircraft outcome.",
+        "operationId": "get_command_api_v1_commands__command_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "command_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Command Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "fleet.view"
+      }
+    },
+    "/api/v1/control-leases": {
+      "get": {
+        "tags": [
+          "control"
+        ],
+        "summary": "List Leases",
+        "description": "Who controls which aircraft.",
+        "operationId": "list_leases_api_v1_control_leases_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "x-permission": "fleet.view"
+      }
+    },
+    "/api/v1/aircraft/{aircraft_id}/control": {
+      "post": {
+        "tags": [
+          "control"
+        ],
+        "summary": "Take Control",
+        "description": "Take control of an aircraft nobody controls.",
+        "operationId": "take_control_api_v1_aircraft__aircraft_id__control_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "aircraft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Aircraft Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "aircraft.command"
+      },
+      "delete": {
+        "tags": [
+          "control"
+        ],
+        "summary": "Release Control",
+        "description": "Give up control of an aircraft you control.",
+        "operationId": "release_control_api_v1_aircraft__aircraft_id__control_delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "aircraft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Aircraft Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "aircraft.command"
+      },
+      "put": {
+        "tags": [
+          "control"
+        ],
+        "summary": "Assign Control",
+        "description": "Supervisor: assign or force control (``user_id`` null releases it). Needs a reason.",
+        "operationId": "assign_control_api_v1_aircraft__aircraft_id__control_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "aircraft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Aircraft Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ControlAssignment"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/LeaseView"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Assign Control Api V1 Aircraft  Aircraft Id  Control Put"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "control.override"
+      }
+    },
+    "/api/v1/aircraft/{aircraft_id}/control/handover": {
+      "post": {
+        "tags": [
+          "control"
+        ],
+        "summary": "Request Handover",
+        "description": "Ask the controlling operator to hand the aircraft over (expires if unanswered).",
+        "operationId": "request_handover_api_v1_aircraft__aircraft_id__control_handover_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "aircraft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Aircraft Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "aircraft.command"
+      }
+    },
+    "/api/v1/aircraft/{aircraft_id}/control/handover/accept": {
+      "post": {
+        "tags": [
+          "control"
+        ],
+        "summary": "Accept Handover",
+        "description": "Controller: hand the aircraft to the operator who asked.",
+        "operationId": "accept_handover_api_v1_aircraft__aircraft_id__control_handover_accept_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "aircraft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Aircraft Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "aircraft.command"
+      }
+    },
+    "/api/v1/aircraft/{aircraft_id}/control/handover/decline": {
+      "post": {
+        "tags": [
+          "control"
+        ],
+        "summary": "Decline Handover",
+        "description": "Controller: keep the aircraft.",
+        "operationId": "decline_handover_api_v1_aircraft__aircraft_id__control_handover_decline_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "aircraft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Aircraft Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "aircraft.command"
+      }
+    },
+    "/api/v1/alerts": {
+      "get": {
+        "tags": [
+          "alerts"
+        ],
+        "summary": "List Alerts",
+        "description": "Alerts, newest first; filter by state (e.g. ``active``) and aircraft.",
+        "operationId": "list_alerts_api_v1_alerts_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AlertState"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "name": "aircraft_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Aircraft Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "description": "Maximum items to return.",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum items to return."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque cursor from a previous page's next_cursor.",
+              "title": "Cursor"
+            },
+            "description": "Opaque cursor from a previous page's next_cursor."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "fleet.view"
+      }
+    },
+    "/api/v1/alerts/{alert_id}/acknowledge": {
+      "post": {
+        "tags": [
+          "alerts"
+        ],
+        "summary": "Acknowledge Alert",
+        "description": "Mark an alert as seen. Event alerts (e.g. a command timeout) are closed by this.",
+        "operationId": "acknowledge_alert_api_v1_alerts__alert_id__acknowledge_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "alert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Alert Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "alerts.ack"
+      }
+    },
     "/api/v1/audit": {
       "get": {
         "tags": [
@@ -5539,6 +7158,68 @@
         "title": "AircraftCreate",
         "description": "A new aircraft. Links may be added later; a task needs the matching link (ADR 0003)."
       },
+      "AircraftLive": {
+        "properties": {
+          "aircraft_id": {
+            "type": "string",
+            "title": "Aircraft Id"
+          },
+          "callsign": {
+            "type": "string",
+            "title": "Callsign"
+          },
+          "airframe": {
+            "$ref": "#/components/schemas/Airframe"
+          },
+          "link": {
+            "$ref": "#/components/schemas/LinkState"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          },
+          "telemetry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TelemetryView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "controller": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeaseView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "aircraft_id",
+          "callsign",
+          "airframe",
+          "link",
+          "last_seen_at",
+          "telemetry",
+          "controller"
+        ],
+        "title": "AircraftLive",
+        "description": "One aircraft's live state: link, latest telemetry, controller."
+      },
       "AircraftOut": {
         "properties": {
           "id": {
@@ -5765,6 +7446,212 @@
         "title": "Airframe",
         "description": "Aircraft type; drives planning constraints (turn radius, hover ability)."
       },
+      "AlertKind": {
+        "type": "string",
+        "enum": [
+          "link_stale",
+          "link_lost",
+          "battery_low",
+          "battery_critical",
+          "gps_lost",
+          "geofence_breach",
+          "mission_complete",
+          "route_deviation",
+          "deconfliction_risk",
+          "command_timeout",
+          "command_unverified",
+          "control_orphaned",
+          "video_down"
+        ],
+        "title": "AlertKind",
+        "description": "What an alert is about (engine from M1b/M4)."
+      },
+      "AlertPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AlertView"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor",
+            "description": "Null when this is the last page."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "AlertPage",
+        "description": "A page of alerts, newest first."
+      },
+      "AlertSeverity": {
+        "type": "string",
+        "enum": [
+          "info",
+          "warning",
+          "critical"
+        ],
+        "title": "AlertSeverity",
+        "description": "How urgently an operator must look."
+      },
+      "AlertState": {
+        "type": "string",
+        "enum": [
+          "active",
+          "acknowledged",
+          "cleared"
+        ],
+        "title": "AlertState",
+        "description": "Alert lifecycle."
+      },
+      "AlertView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AlertKind"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/AlertSeverity"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AlertState"
+          },
+          "aircraft_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aircraft Id"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "raised_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Raised At"
+          },
+          "acknowledged_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acknowledged By"
+          },
+          "acknowledged_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acknowledged At"
+          },
+          "cleared_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cleared At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "severity",
+          "state",
+          "aircraft_id",
+          "message",
+          "raised_at",
+          "acknowledged_by",
+          "acknowledged_at",
+          "cleared_at"
+        ],
+        "title": "AlertView",
+        "description": "An operator-facing alert."
+      },
+      "ArmCommand": {
+        "properties": {
+          "command_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Command Id",
+            "description": "Client-generated; the idempotency key."
+          },
+          "aircraft_ids": {
+            "items": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 254,
+            "minItems": 1,
+            "uniqueItems": true,
+            "title": "Aircraft Ids"
+          },
+          "confirmation_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Token",
+            "description": "From a 428 answer to this exact request."
+          },
+          "kind": {
+            "type": "string",
+            "const": "arm",
+            "title": "Kind"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "command_id",
+          "aircraft_ids",
+          "kind"
+        ],
+        "title": "ArmCommand",
+        "description": "Arm the motors (on the ground). Always confirmed."
+      },
       "AuditEventOut": {
         "properties": {
           "seq": {
@@ -5913,6 +7800,452 @@
         "title": "AuditPage",
         "description": "A page of audit events, newest first."
       },
+      "CommandKind": {
+        "type": "string",
+        "enum": [
+          "arm",
+          "disarm",
+          "takeoff",
+          "hold",
+          "resume",
+          "return_to_launch",
+          "land",
+          "goto",
+          "mission_upload",
+          "mission_start",
+          "mission_pause",
+          "geofence_upload"
+        ],
+        "title": "CommandKind",
+        "description": "Commands the GCS can send (ADR 0002 scope; no flight termination)."
+      },
+      "CommandList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CommandView"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "CommandList",
+        "description": "Recent commands, newest first."
+      },
+      "CommandState": {
+        "type": "string",
+        "enum": [
+          "awaiting_confirmation",
+          "in_progress",
+          "completed",
+          "rejected",
+          "expired"
+        ],
+        "title": "CommandState",
+        "description": "Overall state of a (possibly bulk) command (ADR 0011)."
+      },
+      "CommandTargetState": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "dispatched",
+          "acked",
+          "nacked",
+          "timeout",
+          "rejected",
+          "verified",
+          "unverified"
+        ],
+        "title": "CommandTargetState",
+        "description": "Outcome of a command for one aircraft."
+      },
+      "CommandTargetView": {
+        "properties": {
+          "aircraft_id": {
+            "type": "string",
+            "title": "Aircraft Id"
+          },
+          "callsign": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Callsign"
+          },
+          "state": {
+            "$ref": "#/components/schemas/CommandTargetState"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "aircraft_id",
+          "callsign",
+          "state",
+          "reason_code",
+          "reason",
+          "updated_at"
+        ],
+        "title": "CommandTargetView",
+        "description": "The outcome of a command for one aircraft."
+      },
+      "CommandView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/CommandKind"
+          },
+          "params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params"
+          },
+          "issued_by": {
+            "type": "string",
+            "title": "Issued By"
+          },
+          "state": {
+            "$ref": "#/components/schemas/CommandState"
+          },
+          "override": {
+            "type": "boolean",
+            "title": "Override"
+          },
+          "confirmation_required": {
+            "type": "boolean",
+            "title": "Confirmation Required"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/CommandTargetView"
+            },
+            "type": "array",
+            "title": "Targets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "params",
+          "issued_by",
+          "state",
+          "override",
+          "confirmation_required",
+          "created_at",
+          "confirmed_at",
+          "completed_at",
+          "targets"
+        ],
+        "title": "CommandView",
+        "description": "A command and its per-aircraft outcome."
+      },
+      "ConfirmationProblem": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "integer",
+            "title": "Status"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "instance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instance"
+          },
+          "command_id": {
+            "type": "string",
+            "title": "Command Id"
+          },
+          "confirmation_token": {
+            "type": "string",
+            "title": "Confirmation Token"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ConfirmationSummary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "title",
+          "status",
+          "command_id",
+          "confirmation_token",
+          "expires_at",
+          "summary"
+        ],
+        "title": "ConfirmationProblem",
+        "description": "The 428 response body (documented in the OpenAPI document)."
+      },
+      "ConfirmationSummary": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/CommandKind"
+          },
+          "params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reasons"
+          },
+          "override": {
+            "type": "boolean",
+            "title": "Override"
+          },
+          "aircraft": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryAircraft"
+            },
+            "type": "array",
+            "title": "Aircraft"
+          },
+          "rejected": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryRejection"
+            },
+            "type": "array",
+            "title": "Rejected"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "params",
+          "reasons",
+          "override",
+          "aircraft",
+          "rejected"
+        ],
+        "title": "ConfirmationSummary",
+        "description": "What the operator is asked to confirm, computed by the server."
+      },
+      "ControlAssignment": {
+        "properties": {
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 3,
+            "pattern": "^\\S(?:.*\\S)?$",
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "user_id",
+          "reason"
+        ],
+        "title": "ControlAssignment",
+        "description": "Supervisor: give control to a user (or to nobody), overriding the current holder."
+      },
+      "DisarmCommand": {
+        "properties": {
+          "command_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Command Id",
+            "description": "Client-generated; the idempotency key."
+          },
+          "aircraft_ids": {
+            "items": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 254,
+            "minItems": 1,
+            "uniqueItems": true,
+            "title": "Aircraft Ids"
+          },
+          "confirmation_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Token",
+            "description": "From a 428 answer to this exact request."
+          },
+          "kind": {
+            "type": "string",
+            "const": "disarm",
+            "title": "Kind"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "command_id",
+          "aircraft_ids",
+          "kind"
+        ],
+        "title": "DisarmCommand",
+        "description": "Disarm (on the ground only; never in flight)."
+      },
+      "FaultInjection": {
+        "properties": {
+          "link": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link",
+            "description": "false: the radio link goes down."
+          },
+          "gps": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gps",
+            "description": "false: the GNSS fix is lost."
+          },
+          "battery_pct": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Pct"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "FaultInjection",
+        "description": "Simulation only: inject faults into a simulated aircraft."
+      },
       "FieldError": {
         "properties": {
           "loc": {
@@ -5947,6 +8280,49 @@
         ],
         "title": "FieldError",
         "description": "One invalid input value."
+      },
+      "FleetState": {
+        "properties": {
+          "simulation": {
+            "type": "boolean",
+            "title": "Simulation"
+          },
+          "server_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Server Time"
+          },
+          "aircraft": {
+            "items": {
+              "$ref": "#/components/schemas/AircraftLive"
+            },
+            "type": "array",
+            "title": "Aircraft"
+          }
+        },
+        "type": "object",
+        "required": [
+          "simulation",
+          "server_time",
+          "aircraft"
+        ],
+        "title": "FleetState",
+        "description": "Every registered aircraft's live state."
+      },
+      "FlightMode": {
+        "type": "string",
+        "enum": [
+          "hold",
+          "takeoff",
+          "goto",
+          "mission",
+          "return",
+          "land",
+          "manual",
+          "unknown"
+        ],
+        "title": "FlightMode",
+        "description": "Autopilot-agnostic flight mode shown to operators (drivers map to it)."
       },
       "GeoPoint": {
         "properties": {
@@ -6163,6 +8539,86 @@
         "title": "GeofenceUpdate",
         "description": "Fields to change."
       },
+      "GotoCommand": {
+        "properties": {
+          "command_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Command Id",
+            "description": "Client-generated; the idempotency key."
+          },
+          "aircraft_ids": {
+            "items": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 254,
+            "minItems": 1,
+            "uniqueItems": true,
+            "title": "Aircraft Ids"
+          },
+          "confirmation_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Token",
+            "description": "From a 428 answer to this exact request."
+          },
+          "kind": {
+            "type": "string",
+            "const": "goto",
+            "title": "Kind"
+          },
+          "target": {
+            "$ref": "#/components/schemas/GeoPoint"
+          },
+          "altitude_relative_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1500.0,
+                "minimum": -500.0,
+                "description": "Metres above each aircraft's home position (ADR 0014)."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Altitude Relative M"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "command_id",
+          "aircraft_ids",
+          "kind",
+          "target"
+        ],
+        "title": "GotoCommand",
+        "description": "Fly to a position (and altitude above home), then hold there."
+      },
+      "GpsFix": {
+        "type": "string",
+        "enum": [
+          "none",
+          "2d",
+          "3d",
+          "dgps",
+          "rtk_float",
+          "rtk_fixed"
+        ],
+        "title": "GpsFix",
+        "description": "GNSS fix quality; MAVLink GPS_FIX_TYPE codes are kept for storage."
+      },
       "GroupCreate": {
         "properties": {
           "name": {
@@ -6323,6 +8779,31 @@
         "title": "GroupUpdate",
         "description": "Fields to change; ``aircraft_ids`` replaces the whole membership."
       },
+      "HandoverRequestView": {
+        "properties": {
+          "requested_by": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Requested At"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "requested_by",
+          "requested_at",
+          "expires_at"
+        ],
+        "title": "HandoverRequestView",
+        "description": "A pending request to take over control."
+      },
       "Health": {
         "properties": {
           "status": {
@@ -6344,6 +8825,55 @@
         ],
         "title": "Health",
         "description": "Liveness of the service. ``server_time`` lets clients detect clock skew."
+      },
+      "HoldCommand": {
+        "properties": {
+          "command_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Command Id",
+            "description": "Client-generated; the idempotency key."
+          },
+          "aircraft_ids": {
+            "items": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 254,
+            "minItems": 1,
+            "uniqueItems": true,
+            "title": "Aircraft Ids"
+          },
+          "confirmation_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Token",
+            "description": "From a 428 answer to this exact request."
+          },
+          "kind": {
+            "type": "string",
+            "const": "hold",
+            "title": "Kind"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "command_id",
+          "aircraft_ids",
+          "kind"
+        ],
+        "title": "HoldCommand",
+        "description": "Stop and hold position (hover or loiter). Any operator, any aircraft."
       },
       "IncidentCreate": {
         "properties": {
@@ -6585,6 +9115,131 @@
         "type": "object",
         "title": "IncidentUpdate",
         "description": "Fields to change. ``closed`` is terminal; moving the base or shrinking the radius\nis refused while any geometry of the incident would end up outside."
+      },
+      "LandCommand": {
+        "properties": {
+          "command_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Command Id",
+            "description": "Client-generated; the idempotency key."
+          },
+          "aircraft_ids": {
+            "items": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 254,
+            "minItems": 1,
+            "uniqueItems": true,
+            "title": "Aircraft Ids"
+          },
+          "confirmation_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Token",
+            "description": "From a 428 answer to this exact request."
+          },
+          "kind": {
+            "type": "string",
+            "const": "land",
+            "title": "Kind"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "command_id",
+          "aircraft_ids",
+          "kind"
+        ],
+        "title": "LandCommand",
+        "description": "Land where the aircraft is."
+      },
+      "LeaseList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LeaseView"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "LeaseList",
+        "description": "Every control lease."
+      },
+      "LeaseState": {
+        "type": "string",
+        "enum": [
+          "held",
+          "orphaned"
+        ],
+        "title": "LeaseState",
+        "description": "Control lease of an aircraft (ADR 0011)."
+      },
+      "LeaseView": {
+        "properties": {
+          "aircraft_id": {
+            "type": "string",
+            "title": "Aircraft Id"
+          },
+          "holder": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "state": {
+            "$ref": "#/components/schemas/LeaseState"
+          },
+          "acquired_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Acquired At"
+          },
+          "pending_request": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HandoverRequestView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "aircraft_id",
+          "holder",
+          "state",
+          "acquired_at",
+          "pending_request"
+        ],
+        "title": "LeaseView",
+        "description": "Who controls an aircraft (ADR 0011)."
+      },
+      "LinkState": {
+        "type": "string",
+        "enum": [
+          "live",
+          "stale",
+          "lost",
+          "offline"
+        ],
+        "title": "LinkState",
+        "description": "Freshness of an aircraft's telemetry (ADR 0010)."
       },
       "LoginRequest": {
         "properties": {
@@ -7014,6 +9669,10 @@
         "enum": [
           "fleet.view",
           "missions.plan",
+          "alerts.ack",
+          "aircraft.hold",
+          "aircraft.command",
+          "control.override",
           "fleet.manage",
           "incidents.manage",
           "geofences.manage",
@@ -7136,6 +9795,104 @@
         ],
         "title": "Problem",
         "description": "RFC 9457 problem details. Extension members depend on ``type``."
+      },
+      "ResumeCommand": {
+        "properties": {
+          "command_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Command Id",
+            "description": "Client-generated; the idempotency key."
+          },
+          "aircraft_ids": {
+            "items": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 254,
+            "minItems": 1,
+            "uniqueItems": true,
+            "title": "Aircraft Ids"
+          },
+          "confirmation_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Token",
+            "description": "From a 428 answer to this exact request."
+          },
+          "kind": {
+            "type": "string",
+            "const": "resume",
+            "title": "Kind"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "command_id",
+          "aircraft_ids",
+          "kind"
+        ],
+        "title": "ResumeCommand",
+        "description": "Continue what HOLD paused."
+      },
+      "ReturnCommand": {
+        "properties": {
+          "command_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Command Id",
+            "description": "Client-generated; the idempotency key."
+          },
+          "aircraft_ids": {
+            "items": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 254,
+            "minItems": 1,
+            "uniqueItems": true,
+            "title": "Aircraft Ids"
+          },
+          "confirmation_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Token",
+            "description": "From a 428 answer to this exact request."
+          },
+          "kind": {
+            "type": "string",
+            "const": "return_to_launch",
+            "title": "Kind"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "command_id",
+          "aircraft_ids",
+          "kind"
+        ],
+        "title": "ReturnCommand",
+        "description": "Return to launch and land."
       },
       "Role": {
         "type": "string",
@@ -7343,6 +10100,126 @@
         "type": "object",
         "title": "SearchAreaUpdate",
         "description": "Fields to change. The geometry is frozen while a running mission uses the area."
+      },
+      "SummaryAircraft": {
+        "properties": {
+          "aircraft_id": {
+            "type": "string",
+            "title": "Aircraft Id"
+          },
+          "callsign": {
+            "type": "string",
+            "title": "Callsign"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "aircraft_id",
+          "callsign",
+          "warnings"
+        ],
+        "title": "SummaryAircraft",
+        "description": "An aircraft the command would be sent to, with what the operator should notice."
+      },
+      "SummaryRejection": {
+        "properties": {
+          "aircraft_id": {
+            "type": "string",
+            "title": "Aircraft Id"
+          },
+          "callsign": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Callsign"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "aircraft_id",
+          "callsign",
+          "code",
+          "message"
+        ],
+        "title": "SummaryRejection",
+        "description": "An aircraft the command will not be sent to, and why."
+      },
+      "TakeoffCommand": {
+        "properties": {
+          "command_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Command Id",
+            "description": "Client-generated; the idempotency key."
+          },
+          "aircraft_ids": {
+            "items": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 254,
+            "minItems": 1,
+            "uniqueItems": true,
+            "title": "Aircraft Ids"
+          },
+          "confirmation_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Token",
+            "description": "From a 428 answer to this exact request."
+          },
+          "kind": {
+            "type": "string",
+            "const": "takeoff",
+            "title": "Kind"
+          },
+          "altitude_relative_m": {
+            "type": "number",
+            "maximum": 1500.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Altitude Relative M",
+            "description": "Metres above home."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "command_id",
+          "aircraft_ids",
+          "kind",
+          "altitude_relative_m"
+        ],
+        "title": "TakeoffCommand",
+        "description": "Take off to an altitude above home. Always confirmed."
       },
       "TaskCreate": {
         "properties": {
@@ -7577,6 +10454,348 @@
         "title": "TaskUpdate",
         "description": "Overrides change only while the mission is being planned; ``status`` may go to cancelled."
       },
+      "TelemetryHistory": {
+        "properties": {
+          "aircraft_id": {
+            "type": "string",
+            "title": "Aircraft Id"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/TelemetryPoint"
+            },
+            "type": "array",
+            "title": "Samples"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "description": "True if more samples match than ``limit`` allowed."
+          }
+        },
+        "type": "object",
+        "required": [
+          "aircraft_id",
+          "samples",
+          "truncated"
+        ],
+        "title": "TelemetryHistory",
+        "description": "Recorded telemetry of one aircraft, oldest first."
+      },
+      "TelemetryPoint": {
+        "properties": {
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GeoPoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "altitude_amsl_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Altitude Amsl M"
+          },
+          "altitude_relative_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Altitude Relative M"
+          },
+          "heading_deg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heading Deg"
+          },
+          "groundspeed_mps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Groundspeed Mps"
+          },
+          "climb_rate_mps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Climb Rate Mps"
+          },
+          "battery_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Pct"
+          },
+          "gps_fix": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GpsFix"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "flight_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FlightMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "armed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Armed"
+          },
+          "in_air": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Air"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ts",
+          "position",
+          "altitude_amsl_m",
+          "altitude_relative_m",
+          "heading_deg",
+          "groundspeed_mps",
+          "climb_rate_mps",
+          "battery_pct",
+          "gps_fix",
+          "flight_mode",
+          "armed",
+          "in_air"
+        ],
+        "title": "TelemetryPoint",
+        "description": "One recorded telemetry sample (downsampled history, ADR 0007)."
+      },
+      "TelemetryView": {
+        "properties": {
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GeoPoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "altitude_amsl_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Altitude Amsl M"
+          },
+          "altitude_relative_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Altitude Relative M"
+          },
+          "heading_deg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heading Deg"
+          },
+          "groundspeed_mps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Groundspeed Mps"
+          },
+          "climb_rate_mps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Climb Rate Mps"
+          },
+          "battery_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Pct"
+          },
+          "battery_v": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery V"
+          },
+          "gps_fix": {
+            "$ref": "#/components/schemas/GpsFix"
+          },
+          "satellites": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Satellites"
+          },
+          "flight_mode": {
+            "$ref": "#/components/schemas/FlightMode"
+          },
+          "armed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Armed"
+          },
+          "in_air": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Air"
+          },
+          "home": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GeoPoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "ts",
+          "source",
+          "position",
+          "altitude_amsl_m",
+          "altitude_relative_m",
+          "heading_deg",
+          "groundspeed_mps",
+          "climb_rate_mps",
+          "battery_pct",
+          "battery_v",
+          "gps_fix",
+          "satellites",
+          "flight_mode",
+          "armed",
+          "in_air",
+          "home"
+        ],
+        "title": "TelemetryView",
+        "description": "The latest telemetry of an aircraft; unknown values are null (ADR 0002, S7)."
+      },
       "UserCreate": {
         "properties": {
           "username": {
@@ -7700,6 +10919,30 @@
         "title": "UserPage",
         "description": "A page of users."
       },
+      "UserRef": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "username",
+          "display_name"
+        ],
+        "title": "UserRef",
+        "description": "A user, as shown next to what they do."
+      },
       "UserUpdate": {
         "properties": {
           "display_name": {
@@ -7740,6 +10983,10 @@
           "station_name": {
             "type": "string",
             "title": "Station Name"
+          },
+          "simulation": {
+            "type": "boolean",
+            "title": "Simulation"
           }
         },
         "additionalProperties": false,
@@ -7748,7 +10995,8 @@
           "service",
           "version",
           "api_version",
-          "station_name"
+          "station_name",
+          "simulation"
         ],
         "title": "VersionInfo",
         "description": "What is running, for operators and bug reports."
@@ -8159,6 +11407,22 @@
     {
       "name": "video streams",
       "description": "Video source configuration."
+    },
+    {
+      "name": "live",
+      "description": "Live fleet state, telemetry history, simulation faults."
+    },
+    {
+      "name": "commands",
+      "description": "Commands to aircraft, with confirmation (ADR 0011)."
+    },
+    {
+      "name": "control",
+      "description": "Control leases: take, release, hand over, assign."
+    },
+    {
+      "name": "alerts",
+      "description": "Operator alerts."
     },
     {
       "name": "audit",

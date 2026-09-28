@@ -185,6 +185,7 @@ async def create_aircraft(
         details={"after": _snapshot(aircraft)},
     )
     await commit_or_conflict(db, "The callsign or a link id is already registered.")
+    context.runtime().fleet.register(aircraft)
     return AircraftOut.of(aircraft)
 
 
@@ -228,6 +229,7 @@ async def update_aircraft(
         details={"changes": audit.changes(before, _snapshot(aircraft))},
     )
     await commit_or_conflict(db, "The callsign or a link id is already registered.")
+    context.runtime().fleet.register(aircraft)
     return AircraftOut.of(aircraft)
 
 
@@ -263,4 +265,9 @@ async def delete_aircraft(
         entity_id=aircraft_id,
         details={"before": before},
     )
-    await commit_or_conflict(db, f"Aircraft {aircraft_id} is still referenced.")
+    await commit_or_conflict(
+        db, f"Aircraft {aircraft_id} has command history or other references; it is kept."
+    )
+    runtime = context.runtime()
+    runtime.fleet.unregister(aircraft_id)
+    runtime.leases.forget(aircraft_id)

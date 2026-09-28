@@ -52,6 +52,7 @@ def test_pending_migration_on_existing_ops_db_is_backed_up_first(
 ) -> None:
     (tmp_path / OPS_DB).write_bytes((migrated_template / OPS_DB).read_bytes())
     (tmp_path / TELEMETRY_DB).write_bytes((migrated_template / TELEMETRY_DB).read_bytes())
+    current = migrate.head_revision("ops")
     monkeypatch.setattr(migrate, "head_revision", lambda database: "9999")
     upgraded: list[str] = []
     monkeypatch.setattr(
@@ -64,9 +65,9 @@ def test_pending_migration_on_existing_ops_db_is_backed_up_first(
 
     assert len(report.backups) == 1
     backup = report.backups[0]
-    assert backup.name == "ops-0001-20260928T080000Z.db"
+    assert backup.name == f"ops-{current}-20260928T080000Z.db"
     with closing(sqlite3.connect(backup)) as copy:
-        assert copy.execute("select version_num from alembic_version").fetchone() == ("0001",)
+        assert copy.execute("select version_num from alembic_version").fetchone() == (current,)
     assert len(upgraded) == 2
 
 
@@ -88,7 +89,10 @@ def test_models_and_migrations_do_not_drift(
 
 
 def test_next_revision_id_is_sequential() -> None:
-    assert migrate.next_revision_id("ops") == "0002"
+    versions = migrate.MIGRATIONS_DIR / "ops" / "versions"
+    existing = len(list(versions.glob("[0-9][0-9][0-9][0-9]_*.py")))
+
+    assert migrate.next_revision_id("ops") == f"{existing + 1:04d}"
 
 
 # --- timestamps -----------------------------------------------------------------------------------

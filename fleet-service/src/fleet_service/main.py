@@ -19,15 +19,20 @@ from fastapi.openapi.utils import get_openapi
 from fleet_service import API_VERSION, __version__
 from fleet_service.api import (
     aircraft,
+    alerts,
     areas,
     audit_log,
     auth,
+    commands,
+    control,
     groups,
     incidents,
+    live,
     missions,
     system,
     users,
     video_streams,
+    ws,
 )
 from fleet_service.auth.passwords import Passwords
 from fleet_service.clock import Clock, SystemClock
@@ -38,6 +43,7 @@ from fleet_service.db.engine import Database
 from fleet_service.errors import PROBLEM_JSON, install_error_handlers
 from fleet_service.ids import new_id
 from fleet_service.log import configure_logging
+from fleet_service.services.runtime import Runtime
 
 API_PREFIX = f"/api/{API_VERSION}"
 _REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
@@ -56,6 +62,10 @@ TAGS = [
     {"name": "missions", "description": "Missions and their waypoints."},
     {"name": "tasks", "description": "Aircraft assigned to missions."},
     {"name": "video streams", "description": "Video source configuration."},
+    {"name": "live", "description": "Live fleet state, telemetry history, simulation faults."},
+    {"name": "commands", "description": "Commands to aircraft, with confirmation (ADR 0011)."},
+    {"name": "control", "description": "Control leases: take, release, hand over, assign."},
+    {"name": "alerts", "description": "Operator alerts."},
     {"name": "audit", "description": "The tamper-evident audit trail."},
 ]
 
@@ -65,8 +75,9 @@ def create_app(
     *,
     clock: Clock | None = None,
     passwords: Passwords | None = None,
+    start_loops: bool = True,
 ) -> FastAPI:
-    """Build the ASGI application."""
+    """Build the ASGI application (``start_loops=False``: tests drive the runtime by hand)."""
     settings = settings or get_settings()
     configure_logging(settings.log_level, settings.log_json)
     context = AppContext.build(settings, clock or SystemClock(), passwords or Passwords())
@@ -79,9 +90,13 @@ def create_app(
         if report.upgraded:
             log.info("database schema upgraded", extra={"upgraded": report.upgraded})
         context.db = Database(settings.data_dir)
+        context.live = Runtime(settings, context.clock, context.db)
+        await context.live.start(start_loops)
         try:
             yield
         finally:
+            await context.live.stop()
+            context.live = None
             await context.db.dispose()
             context.db = None
 
@@ -120,7 +135,12 @@ def create_app(
         missions.missions,
         missions.tasks,
         video_streams.router,
+        live.router,
+        commands.router,
+        control.router,
+        alerts.router,
         audit_log.router,
+        ws.router,
     ):
         app.include_router(router, prefix=API_PREFIX)
 

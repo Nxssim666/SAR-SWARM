@@ -30,6 +30,7 @@ class VersionInfo(BaseModel):
     version: str
     api_version: str
     station_name: str
+    simulation: bool
 
 
 @router.get("/health")
@@ -46,4 +47,5 @@ async def version(context: Context) -> VersionInfo:
         version=__version__,
         api_version=API_VERSION,
         station_name=context.settings.station_name,
+        simulation=context.settings.simulation,
     )

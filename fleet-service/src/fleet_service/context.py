@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import timedelta
+from typing import TYPE_CHECKING
 
 from fleet_service.auth.passwords import Passwords
 from fleet_service.auth.ratelimit import FailureLimiter
@@ -9,6 +10,9 @@ from fleet_service.auth.sessions import SessionPolicy
 from fleet_service.clock import Clock
 from fleet_service.config import Settings
 from fleet_service.db.engine import Database
+
+if TYPE_CHECKING:
+    from fleet_service.services.runtime import Runtime
 
 
 @dataclass
@@ -22,6 +26,7 @@ class AppContext:
     login_limiter_user: FailureLimiter
     login_limiter_ip: FailureLimiter
     db: Database | None = None  # set by the lifespan after migrations
+    live: "Runtime | None" = None  # set by the lifespan once the database is open
 
     @classmethod
     def build(cls, settings: Settings, clock: Clock, passwords: Passwords) -> "AppContext":
@@ -44,3 +49,9 @@ class AppContext:
         if self.db is None:
             raise RuntimeError("the database is not open; is the app's lifespan running?")
         return self.db
+
+    def runtime(self) -> "Runtime":
+        """Return the live runtime (only valid while the app is running)."""
+        if self.live is None:
+            raise RuntimeError("the runtime is not running; is the app's lifespan running?")
+        return self.live

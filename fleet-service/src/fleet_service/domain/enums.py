@@ -126,6 +126,7 @@ class AlertKind(StrEnum):
     ROUTE_DEVIATION = "route_deviation"
     DECONFLICTION_RISK = "deconfliction_risk"
     COMMAND_TIMEOUT = "command_timeout"
+    COMMAND_UNVERIFIED = "command_unverified"
     CONTROL_ORPHANED = "control_orphaned"
     VIDEO_DOWN = "video_down"
 
@@ -182,6 +183,19 @@ class CommandTargetState(StrEnum):
     NACKED = "nacked"
     TIMEOUT = "timeout"
     REJECTED = "rejected"
+    VERIFIED = "verified"  # acked, and telemetry showed the expected effect
+    UNVERIFIED = "unverified"  # acked, but the effect never showed within the timeout
+
+
+FINAL_TARGET_STATES = frozenset(
+    {
+        CommandTargetState.NACKED,
+        CommandTargetState.TIMEOUT,
+        CommandTargetState.REJECTED,
+        CommandTargetState.VERIFIED,
+        CommandTargetState.UNVERIFIED,
+    }
+)
 
 
 class LeaseState(StrEnum):
@@ -189,3 +203,56 @@ class LeaseState(StrEnum):
 
     HELD = "held"
     ORPHANED = "orphaned"
+
+
+class FlightMode(StrEnum):
+    """Autopilot-agnostic flight mode shown to operators (drivers map to it)."""
+
+    HOLD = "hold"  # hover / loiter at the current position
+    TAKEOFF = "takeoff"
+    GOTO = "goto"  # flying to an operator-given position
+    MISSION = "mission"
+    RETURN = "return"
+    LAND = "land"
+    MANUAL = "manual"  # a pilot flies it (RC)
+    UNKNOWN = "unknown"
+
+
+class LinkState(StrEnum):
+    """Freshness of an aircraft's telemetry (ADR 0010)."""
+
+    LIVE = "live"
+    STALE = "stale"
+    LOST = "lost"
+    OFFLINE = "offline"  # no driver, or no telemetry received yet
+
+
+class GpsFix(StrEnum):
+    """GNSS fix quality; MAVLink GPS_FIX_TYPE codes are kept for storage."""
+
+    NONE = "none"
+    FIX_2D = "2d"
+    FIX_3D = "3d"
+    DGPS = "dgps"
+    RTK_FLOAT = "rtk_float"
+    RTK_FIXED = "rtk_fixed"
+
+    @property
+    def code(self) -> int:
+        """MAVLink GPS_FIX_TYPE value."""
+        return _GPS_CODES[self]
+
+    @property
+    def has_3d(self) -> bool:
+        """True for fixes good enough to navigate by."""
+        return self not in (GpsFix.NONE, GpsFix.FIX_2D)
+
+
+_GPS_CODES = {
+    GpsFix.NONE: 0,
+    GpsFix.FIX_2D: 2,
+    GpsFix.FIX_3D: 3,
+    GpsFix.DGPS: 4,
+    GpsFix.RTK_FLOAT: 5,
+    GpsFix.RTK_FIXED: 6,
+}

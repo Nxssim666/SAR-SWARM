@@ -18,7 +18,14 @@ from fleet_service.api.common import (
     page_params,
     patch_values,
 )
-from fleet_service.api.deps import Context, CurrentPrincipal, DbSession, actor, requires
+from fleet_service.api.deps import (
+    Context,
+    CurrentPrincipal,
+    DbSession,
+    actor,
+    announce_session_end,
+    requires,
+)
 from fleet_service.api.helpers import commit_or_conflict, get_or_404
 from fleet_service.api.pages import Page
 from fleet_service.auth.passwords import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH
@@ -189,6 +196,8 @@ async def update_user(
         details={"changes": audit.changes(before, user_snapshot(user))},
     )
     await db.commit()
+    if values.get("is_active") is False:
+        announce_session_end(context, user_id=user.id)
     return UserOut.model_validate(user)
 
 
@@ -223,3 +232,4 @@ async def reset_password(
         entity_id=user.id,
     )
     await db.commit()
+    announce_session_end(context, user_id=user.id)

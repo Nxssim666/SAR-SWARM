@@ -14,6 +14,10 @@ class Permission(StrEnum):
 
     FLEET_VIEW = "fleet.view"
     MISSIONS_PLAN = "missions.plan"
+    ALERTS_ACK = "alerts.ack"
+    AIRCRAFT_HOLD = "aircraft.hold"
+    AIRCRAFT_COMMAND = "aircraft.command"
+    CONTROL_OVERRIDE = "control.override"
     FLEET_MANAGE = "fleet.manage"
     INCIDENTS_MANAGE = "incidents.manage"
     GEOFENCES_MANAGE = "geofences.manage"
@@ -30,6 +34,10 @@ PUBLIC = "public"
 MINIMUM_ROLE: dict[Permission, Role] = {
     Permission.FLEET_VIEW: Role.OBSERVER,
     Permission.MISSIONS_PLAN: Role.OPERATOR,
+    Permission.ALERTS_ACK: Role.OPERATOR,
+    Permission.AIRCRAFT_HOLD: Role.OPERATOR,
+    Permission.AIRCRAFT_COMMAND: Role.OPERATOR,
+    Permission.CONTROL_OVERRIDE: Role.SUPERVISOR,
     Permission.FLEET_MANAGE: Role.SUPERVISOR,
     Permission.INCIDENTS_MANAGE: Role.SUPERVISOR,
     Permission.GEOFENCES_MANAGE: Role.SUPERVISOR,

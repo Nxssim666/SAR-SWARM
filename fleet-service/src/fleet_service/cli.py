@@ -4,6 +4,7 @@
     fleet-service [serve]                      run the API server (default)
     fleet-service create-admin --username U    create the first admin (password prompted)
     fleet-service export-openapi [--output P]  write the OpenAPI document
+    fleet-service export-asyncapi [--output P] write the AsyncAPI (WebSocket) document
     fleet-service db upgrade                   migrate both databases now
     fleet-service db revision --database ops -m "message"   (development) new migration
     fleet-service audit-verify                 check the audit hash chain; exit 1 if broken
@@ -36,6 +37,7 @@ from fleet_service.services import audit
 # docs/api/openapi.json in a source checkout (src/fleet_service/cli.py -> repository root).
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_OPENAPI_PATH = _REPO_ROOT / "docs" / "api" / "openapi.json"
+DEFAULT_ASYNCAPI_PATH = _REPO_ROOT / "docs" / "api" / "asyncapi.json"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -58,6 +60,11 @@ def build_parser() -> argparse.ArgumentParser:
     export = sub.add_parser("export-openapi", help="write the OpenAPI document")
     export.add_argument("--output", type=Path, default=None, help="default: docs/api/openapi.json")
 
+    export_ws = sub.add_parser("export-asyncapi", help="write the AsyncAPI document")
+    export_ws.add_argument(
+        "--output", type=Path, default=None, help="default: docs/api/asyncapi.json"
+    )
+
     db = sub.add_parser("db", help="database maintenance")
     db_sub = db.add_subparsers(dest="db_command", required=True)
     db_sub.add_parser("upgrade", help="migrate both databases to the newest schema")
@@ -79,6 +86,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return create_admin(get_settings(), args.username, args.display_name, args.password_stdin)
     if command == "export-openapi":
         return export_openapi(args.output)
+    if command == "export-asyncapi":
+        return export_asyncapi(args.output)
     if command == "db" and args.db_command == "upgrade":
         migrate.upgrade_all(get_settings().data_dir, SystemClock().now())
         print("databases are at the newest schema")
@@ -183,6 +192,18 @@ def export_openapi(output: Path | None) -> int:
         app = create_app(Settings(data_dir=Path(scratch), log_json=False))
         document = json.dumps(app.openapi(), indent=2, ensure_ascii=False) + "\n"
     target = output or DEFAULT_OPENAPI_PATH
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(document, encoding="utf-8", newline="\n")
+    print(f"wrote {target}")
+    return 0
+
+
+def export_asyncapi(output: Path | None) -> int:
+    """Write the AsyncAPI document of the WebSocket API."""
+    from fleet_service.asyncapi import asyncapi_document
+
+    document = json.dumps(asyncapi_document(), indent=2, ensure_ascii=False) + "\n"
+    target = output or DEFAULT_ASYNCAPI_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(document, encoding="utf-8", newline="\n")
     print(f"wrote {target}")

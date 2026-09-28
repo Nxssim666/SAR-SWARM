@@ -28,7 +28,14 @@ def test_higher_roles_never_have_fewer_permissions(permission: Permission) -> No
 
 def test_role_permission_sets() -> None:
     assert permissions_for(Role.OBSERVER) == [Permission.FLEET_VIEW]
-    assert set(permissions_for(Role.OPERATOR)) == {Permission.FLEET_VIEW, Permission.MISSIONS_PLAN}
+    assert set(permissions_for(Role.OPERATOR)) == {
+        Permission.FLEET_VIEW,
+        Permission.MISSIONS_PLAN,
+        Permission.ALERTS_ACK,
+        Permission.AIRCRAFT_HOLD,
+        Permission.AIRCRAFT_COMMAND,
+    }
+    assert Permission.CONTROL_OVERRIDE in permissions_for(Role.SUPERVISOR)
     assert Permission.USERS_MANAGE not in permissions_for(Role.SUPERVISOR)
     assert permissions_for(Role.ADMIN) == list(Permission)
 

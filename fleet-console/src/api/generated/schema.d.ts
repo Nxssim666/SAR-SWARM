@@ -630,6 +630,258 @@ export interface paths {
         patch: operations["update_video_stream_api_v1_video_streams__stream_id__patch"];
         trace?: never;
     };
+    "/api/v1/fleet/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fleet State
+         * @description Every registered aircraft's link, latest telemetry and controller.
+         */
+        get: operations["fleet_state_api_v1_fleet_state_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/aircraft/{aircraft_id}/telemetry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Telemetry History
+         * @description Recorded telemetry of an aircraft (1 sample per second by default).
+         */
+        get: operations["telemetry_history_api_v1_aircraft__aircraft_id__telemetry_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/simulation/aircraft/{aircraft_id}/faults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inject Fault
+         * @description Simulation mode only: take a simulated aircraft's link or GNSS away, or set its battery.
+         */
+        post: operations["inject_fault_api_v1_simulation_aircraft__aircraft_id__faults_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Commands
+         * @description The most recent commands.
+         */
+        get: operations["list_commands_api_v1_commands_get"];
+        put?: never;
+        /**
+         * Submit Command
+         * @description Send a command to one or more aircraft; the answer lists every aircraft's outcome.
+         */
+        post: operations["submit_command_api_v1_commands_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/commands/{command_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Command
+         * @description One command and its per-aircraft outcome.
+         */
+        get: operations["get_command_api_v1_commands__command_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/control-leases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Leases
+         * @description Who controls which aircraft.
+         */
+        get: operations["list_leases_api_v1_control_leases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/aircraft/{aircraft_id}/control": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Assign Control
+         * @description Supervisor: assign or force control (``user_id`` null releases it). Needs a reason.
+         */
+        put: operations["assign_control_api_v1_aircraft__aircraft_id__control_put"];
+        /**
+         * Take Control
+         * @description Take control of an aircraft nobody controls.
+         */
+        post: operations["take_control_api_v1_aircraft__aircraft_id__control_post"];
+        /**
+         * Release Control
+         * @description Give up control of an aircraft you control.
+         */
+        delete: operations["release_control_api_v1_aircraft__aircraft_id__control_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/aircraft/{aircraft_id}/control/handover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Handover
+         * @description Ask the controlling operator to hand the aircraft over (expires if unanswered).
+         */
+        post: operations["request_handover_api_v1_aircraft__aircraft_id__control_handover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/aircraft/{aircraft_id}/control/handover/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Handover
+         * @description Controller: hand the aircraft to the operator who asked.
+         */
+        post: operations["accept_handover_api_v1_aircraft__aircraft_id__control_handover_accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/aircraft/{aircraft_id}/control/handover/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline Handover
+         * @description Controller: keep the aircraft.
+         */
+        post: operations["decline_handover_api_v1_aircraft__aircraft_id__control_handover_decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Alerts
+         * @description Alerts, newest first; filter by state (e.g. ``active``) and aircraft.
+         */
+        get: operations["list_alerts_api_v1_alerts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/alerts/{alert_id}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Acknowledge Alert
+         * @description Mark an alert as seen. Event alerts (e.g. a command timeout) are closed by this.
+         */
+        post: operations["acknowledge_alert_api_v1_alerts__alert_id__acknowledge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/audit": {
         parameters: {
             query?: never;
@@ -675,6 +927,22 @@ export interface components {
             cruise_speed_mps?: number | null;
             /** Notes */
             notes?: string | null;
+        };
+        /**
+         * AircraftLive
+         * @description One aircraft's live state: link, latest telemetry, controller.
+         */
+        AircraftLive: {
+            /** Aircraft Id */
+            aircraft_id: string;
+            /** Callsign */
+            callsign: string;
+            airframe: components["schemas"]["Airframe"];
+            link: components["schemas"]["LinkState"];
+            /** Last Seen At */
+            last_seen_at: string | null;
+            telemetry: components["schemas"]["TelemetryView"] | null;
+            controller: components["schemas"]["LeaseView"] | null;
         };
         /**
          * AircraftOut
@@ -751,6 +1019,87 @@ export interface components {
          */
         Airframe: "fixed_wing" | "multirotor_hexa" | "multirotor_quad";
         /**
+         * AlertKind
+         * @description What an alert is about (engine from M1b/M4).
+         * @enum {string}
+         */
+        AlertKind: "link_stale" | "link_lost" | "battery_low" | "battery_critical" | "gps_lost" | "geofence_breach" | "mission_complete" | "route_deviation" | "deconfliction_risk" | "command_timeout" | "command_unverified" | "control_orphaned" | "video_down";
+        /**
+         * AlertPage
+         * @description A page of alerts, newest first.
+         */
+        AlertPage: {
+            /** Items */
+            items: components["schemas"]["AlertView"][];
+            /**
+             * Next Cursor
+             * @description Null when this is the last page.
+             */
+            next_cursor: string | null;
+        };
+        /**
+         * AlertSeverity
+         * @description How urgently an operator must look.
+         * @enum {string}
+         */
+        AlertSeverity: "info" | "warning" | "critical";
+        /**
+         * AlertState
+         * @description Alert lifecycle.
+         * @enum {string}
+         */
+        AlertState: "active" | "acknowledged" | "cleared";
+        /**
+         * AlertView
+         * @description An operator-facing alert.
+         */
+        AlertView: {
+            /** Id */
+            id: string;
+            kind: components["schemas"]["AlertKind"];
+            severity: components["schemas"]["AlertSeverity"];
+            state: components["schemas"]["AlertState"];
+            /** Aircraft Id */
+            aircraft_id: string | null;
+            /** Message */
+            message: string;
+            /**
+             * Raised At
+             * Format: date-time
+             */
+            raised_at: string;
+            /** Acknowledged By */
+            acknowledged_by: string | null;
+            /** Acknowledged At */
+            acknowledged_at: string | null;
+            /** Cleared At */
+            cleared_at: string | null;
+        };
+        /**
+         * ArmCommand
+         * @description Arm the motors (on the ground). Always confirmed.
+         */
+        ArmCommand: {
+            /**
+             * Command Id
+             * Format: uuid
+             * @description Client-generated; the idempotency key.
+             */
+            command_id: string;
+            /** Aircraft Ids */
+            aircraft_ids: string[];
+            /**
+             * Confirmation Token
+             * @description From a 428 answer to this exact request.
+             */
+            confirmation_token?: string | null;
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "arm";
+        };
+        /**
          * AuditEventOut
          * @description One audit event, including its chain hashes.
          */
@@ -801,6 +1150,180 @@ export interface components {
             next_cursor: string | null;
         };
         /**
+         * CommandKind
+         * @description Commands the GCS can send (ADR 0002 scope; no flight termination).
+         * @enum {string}
+         */
+        CommandKind: "arm" | "disarm" | "takeoff" | "hold" | "resume" | "return_to_launch" | "land" | "goto" | "mission_upload" | "mission_start" | "mission_pause" | "geofence_upload";
+        /**
+         * CommandList
+         * @description Recent commands, newest first.
+         */
+        CommandList: {
+            /** Items */
+            items: components["schemas"]["CommandView"][];
+        };
+        /**
+         * CommandState
+         * @description Overall state of a (possibly bulk) command (ADR 0011).
+         * @enum {string}
+         */
+        CommandState: "awaiting_confirmation" | "in_progress" | "completed" | "rejected" | "expired";
+        /**
+         * CommandTargetState
+         * @description Outcome of a command for one aircraft.
+         * @enum {string}
+         */
+        CommandTargetState: "pending" | "dispatched" | "acked" | "nacked" | "timeout" | "rejected" | "verified" | "unverified";
+        /**
+         * CommandTargetView
+         * @description The outcome of a command for one aircraft.
+         */
+        CommandTargetView: {
+            /** Aircraft Id */
+            aircraft_id: string;
+            /** Callsign */
+            callsign: string | null;
+            state: components["schemas"]["CommandTargetState"];
+            /** Reason Code */
+            reason_code: string | null;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * CommandView
+         * @description A command and its per-aircraft outcome.
+         */
+        CommandView: {
+            /** Id */
+            id: string;
+            kind: components["schemas"]["CommandKind"];
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            /** Issued By */
+            issued_by: string;
+            state: components["schemas"]["CommandState"];
+            /** Override */
+            override: boolean;
+            /** Confirmation Required */
+            confirmation_required: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Confirmed At */
+            confirmed_at: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /** Targets */
+            targets: components["schemas"]["CommandTargetView"][];
+        };
+        /**
+         * ConfirmationProblem
+         * @description The 428 response body (documented in the OpenAPI document).
+         */
+        ConfirmationProblem: {
+            /** Type */
+            type: string;
+            /** Title */
+            title: string;
+            /** Status */
+            status: number;
+            /** Detail */
+            detail?: string | null;
+            /** Instance */
+            instance?: string | null;
+            /** Command Id */
+            command_id: string;
+            /** Confirmation Token */
+            confirmation_token: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            summary: components["schemas"]["ConfirmationSummary"];
+        };
+        /**
+         * ConfirmationSummary
+         * @description What the operator is asked to confirm, computed by the server.
+         */
+        ConfirmationSummary: {
+            kind: components["schemas"]["CommandKind"];
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            /** Reasons */
+            reasons: string[];
+            /** Override */
+            override: boolean;
+            /** Aircraft */
+            aircraft: components["schemas"]["SummaryAircraft"][];
+            /** Rejected */
+            rejected: components["schemas"]["SummaryRejection"][];
+        };
+        /**
+         * ControlAssignment
+         * @description Supervisor: give control to a user (or to nobody), overriding the current holder.
+         */
+        ControlAssignment: {
+            /** User Id */
+            user_id: string | null;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * DisarmCommand
+         * @description Disarm (on the ground only; never in flight).
+         */
+        DisarmCommand: {
+            /**
+             * Command Id
+             * Format: uuid
+             * @description Client-generated; the idempotency key.
+             */
+            command_id: string;
+            /** Aircraft Ids */
+            aircraft_ids: string[];
+            /**
+             * Confirmation Token
+             * @description From a 428 answer to this exact request.
+             */
+            confirmation_token?: string | null;
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "disarm";
+        };
+        /**
+         * FaultInjection
+         * @description Simulation only: inject faults into a simulated aircraft.
+         */
+        FaultInjection: {
+            /**
+             * Link
+             * @description false: the radio link goes down.
+             */
+            link?: boolean | null;
+            /**
+             * Gps
+             * @description false: the GNSS fix is lost.
+             */
+            gps?: boolean | null;
+            /** Battery Pct */
+            battery_pct?: number | null;
+        };
+        /**
          * FieldError
          * @description One invalid input value.
          */
@@ -815,6 +1338,27 @@ export interface components {
             /** Type */
             type: string;
         };
+        /**
+         * FleetState
+         * @description Every registered aircraft's live state.
+         */
+        FleetState: {
+            /** Simulation */
+            simulation: boolean;
+            /**
+             * Server Time
+             * Format: date-time
+             */
+            server_time: string;
+            /** Aircraft */
+            aircraft: components["schemas"]["AircraftLive"][];
+        };
+        /**
+         * FlightMode
+         * @description Autopilot-agnostic flight mode shown to operators (drivers map to it).
+         * @enum {string}
+         */
+        FlightMode: "hold" | "takeoff" | "goto" | "mission" | "return" | "land" | "manual" | "unknown";
         /**
          * GeoPoint
          * @description A WGS84 position with explicit keys (never a bare pair).
@@ -906,6 +1450,39 @@ export interface components {
             enabled?: boolean;
         };
         /**
+         * GotoCommand
+         * @description Fly to a position (and altitude above home), then hold there.
+         */
+        GotoCommand: {
+            /**
+             * Command Id
+             * Format: uuid
+             * @description Client-generated; the idempotency key.
+             */
+            command_id: string;
+            /** Aircraft Ids */
+            aircraft_ids: string[];
+            /**
+             * Confirmation Token
+             * @description From a 428 answer to this exact request.
+             */
+            confirmation_token?: string | null;
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "goto";
+            target: components["schemas"]["GeoPoint"];
+            /** Altitude Relative M */
+            altitude_relative_m?: number | null;
+        };
+        /**
+         * GpsFix
+         * @description GNSS fix quality; MAVLink GPS_FIX_TYPE codes are kept for storage.
+         * @enum {string}
+         */
+        GpsFix: "none" | "2d" | "3d" | "dgps" | "rtk_float" | "rtk_fixed";
+        /**
          * GroupCreate
          * @description A new group.
          */
@@ -967,6 +1544,23 @@ export interface components {
             aircraft_ids?: string[];
         };
         /**
+         * HandoverRequestView
+         * @description A pending request to take over control.
+         */
+        HandoverRequestView: {
+            requested_by: components["schemas"]["UserRef"];
+            /**
+             * Requested At
+             * Format: date-time
+             */
+            requested_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
+        /**
          * Health
          * @description Liveness of the service. ``server_time`` lets clients detect clock skew.
          */
@@ -981,6 +1575,30 @@ export interface components {
              * Format: date-time
              */
             server_time: string;
+        };
+        /**
+         * HoldCommand
+         * @description Stop and hold position (hover or loiter). Any operator, any aircraft.
+         */
+        HoldCommand: {
+            /**
+             * Command Id
+             * Format: uuid
+             * @description Client-generated; the idempotency key.
+             */
+            command_id: string;
+            /** Aircraft Ids */
+            aircraft_ids: string[];
+            /**
+             * Confirmation Token
+             * @description From a 428 answer to this exact request.
+             */
+            confirmation_token?: string | null;
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "hold";
         };
         /**
          * IncidentCreate
@@ -1072,6 +1690,66 @@ export interface components {
             operating_radius_m?: number;
             status?: components["schemas"]["IncidentStatus"];
         };
+        /**
+         * LandCommand
+         * @description Land where the aircraft is.
+         */
+        LandCommand: {
+            /**
+             * Command Id
+             * Format: uuid
+             * @description Client-generated; the idempotency key.
+             */
+            command_id: string;
+            /** Aircraft Ids */
+            aircraft_ids: string[];
+            /**
+             * Confirmation Token
+             * @description From a 428 answer to this exact request.
+             */
+            confirmation_token?: string | null;
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "land";
+        };
+        /**
+         * LeaseList
+         * @description Every control lease.
+         */
+        LeaseList: {
+            /** Items */
+            items: components["schemas"]["LeaseView"][];
+        };
+        /**
+         * LeaseState
+         * @description Control lease of an aircraft (ADR 0011).
+         * @enum {string}
+         */
+        LeaseState: "held" | "orphaned";
+        /**
+         * LeaseView
+         * @description Who controls an aircraft (ADR 0011).
+         */
+        LeaseView: {
+            /** Aircraft Id */
+            aircraft_id: string;
+            holder: components["schemas"]["UserRef"];
+            state: components["schemas"]["LeaseState"];
+            /**
+             * Acquired At
+             * Format: date-time
+             */
+            acquired_at: string;
+            pending_request: components["schemas"]["HandoverRequestView"] | null;
+        };
+        /**
+         * LinkState
+         * @description Freshness of an aircraft's telemetry (ADR 0010).
+         * @enum {string}
+         */
+        LinkState: "live" | "stale" | "lost" | "offline";
         /**
          * LoginRequest
          * @description Credentials. The username is case-insensitive.
@@ -1244,7 +1922,7 @@ export interface components {
          * @description Something a session may be allowed to do.
          * @enum {string}
          */
-        Permission: "fleet.view" | "missions.plan" | "fleet.manage" | "incidents.manage" | "geofences.manage" | "users.view" | "audit.read" | "users.manage";
+        Permission: "fleet.view" | "missions.plan" | "alerts.ack" | "aircraft.hold" | "aircraft.command" | "control.override" | "fleet.manage" | "incidents.manage" | "geofences.manage" | "users.view" | "audit.read" | "users.manage";
         /**
          * PolygonGeoJSON
          * @description A GeoJSON Polygon with one ring (no holes), 3 to 256 distinct vertices, valid
@@ -1291,6 +1969,54 @@ export interface components {
             errors?: components["schemas"]["FieldError"][] | null;
         } & {
             [key: string]: unknown;
+        };
+        /**
+         * ResumeCommand
+         * @description Continue what HOLD paused.
+         */
+        ResumeCommand: {
+            /**
+             * Command Id
+             * Format: uuid
+             * @description Client-generated; the idempotency key.
+             */
+            command_id: string;
+            /** Aircraft Ids */
+            aircraft_ids: string[];
+            /**
+             * Confirmation Token
+             * @description From a 428 answer to this exact request.
+             */
+            confirmation_token?: string | null;
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "resume";
+        };
+        /**
+         * ReturnCommand
+         * @description Return to launch and land.
+         */
+        ReturnCommand: {
+            /**
+             * Command Id
+             * Format: uuid
+             * @description Client-generated; the idempotency key.
+             */
+            command_id: string;
+            /** Aircraft Ids */
+            aircraft_ids: string[];
+            /**
+             * Confirmation Token
+             * @description From a 428 answer to this exact request.
+             */
+            confirmation_token?: string | null;
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "return_to_launch";
         };
         /**
          * Role
@@ -1384,6 +2110,61 @@ export interface components {
             notes?: string | null;
         };
         /**
+         * SummaryAircraft
+         * @description An aircraft the command would be sent to, with what the operator should notice.
+         */
+        SummaryAircraft: {
+            /** Aircraft Id */
+            aircraft_id: string;
+            /** Callsign */
+            callsign: string;
+            /** Warnings */
+            warnings: string[];
+        };
+        /**
+         * SummaryRejection
+         * @description An aircraft the command will not be sent to, and why.
+         */
+        SummaryRejection: {
+            /** Aircraft Id */
+            aircraft_id: string;
+            /** Callsign */
+            callsign: string | null;
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /**
+         * TakeoffCommand
+         * @description Take off to an altitude above home. Always confirmed.
+         */
+        TakeoffCommand: {
+            /**
+             * Command Id
+             * Format: uuid
+             * @description Client-generated; the idempotency key.
+             */
+            command_id: string;
+            /** Aircraft Ids */
+            aircraft_ids: string[];
+            /**
+             * Confirmation Token
+             * @description From a 428 answer to this exact request.
+             */
+            confirmation_token?: string | null;
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "takeoff";
+            /**
+             * Altitude Relative M
+             * @description Metres above home.
+             */
+            altitude_relative_m: number;
+        };
+        /**
          * TaskCreate
          * @description Assign an aircraft to a mission, optionally overriding its defaults.
          */
@@ -1461,6 +2242,88 @@ export interface components {
             status?: components["schemas"]["TaskStatus"];
         };
         /**
+         * TelemetryHistory
+         * @description Recorded telemetry of one aircraft, oldest first.
+         */
+        TelemetryHistory: {
+            /** Aircraft Id */
+            aircraft_id: string;
+            /** Samples */
+            samples: components["schemas"]["TelemetryPoint"][];
+            /**
+             * Truncated
+             * @description True if more samples match than ``limit`` allowed.
+             */
+            truncated: boolean;
+        };
+        /**
+         * TelemetryPoint
+         * @description One recorded telemetry sample (downsampled history, ADR 0007).
+         */
+        TelemetryPoint: {
+            /**
+             * Ts
+             * Format: date-time
+             */
+            ts: string;
+            position: components["schemas"]["GeoPoint"] | null;
+            /** Altitude Amsl M */
+            altitude_amsl_m: number | null;
+            /** Altitude Relative M */
+            altitude_relative_m: number | null;
+            /** Heading Deg */
+            heading_deg: number | null;
+            /** Groundspeed Mps */
+            groundspeed_mps: number | null;
+            /** Climb Rate Mps */
+            climb_rate_mps: number | null;
+            /** Battery Pct */
+            battery_pct: number | null;
+            gps_fix: components["schemas"]["GpsFix"] | null;
+            flight_mode: components["schemas"]["FlightMode"] | null;
+            /** Armed */
+            armed: boolean | null;
+            /** In Air */
+            in_air: boolean | null;
+        };
+        /**
+         * TelemetryView
+         * @description The latest telemetry of an aircraft; unknown values are null (ADR 0002, S7).
+         */
+        TelemetryView: {
+            /**
+             * Ts
+             * Format: date-time
+             */
+            ts: string;
+            /** Source */
+            source: string;
+            position: components["schemas"]["GeoPoint"] | null;
+            /** Altitude Amsl M */
+            altitude_amsl_m: number | null;
+            /** Altitude Relative M */
+            altitude_relative_m: number | null;
+            /** Heading Deg */
+            heading_deg: number | null;
+            /** Groundspeed Mps */
+            groundspeed_mps: number | null;
+            /** Climb Rate Mps */
+            climb_rate_mps: number | null;
+            /** Battery Pct */
+            battery_pct: number | null;
+            /** Battery V */
+            battery_v: number | null;
+            gps_fix: components["schemas"]["GpsFix"];
+            /** Satellites */
+            satellites: number | null;
+            flight_mode: components["schemas"]["FlightMode"];
+            /** Armed */
+            armed: boolean | null;
+            /** In Air */
+            in_air: boolean | null;
+            home: components["schemas"]["GeoPoint"] | null;
+        };
+        /**
          * UserCreate
          * @description A new account. The username is stored lower-case.
          */
@@ -1514,6 +2377,18 @@ export interface components {
             next_cursor: string | null;
         };
         /**
+         * UserRef
+         * @description A user, as shown next to what they do.
+         */
+        UserRef: {
+            /** User Id */
+            user_id: string;
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /**
          * UserUpdate
          * @description Fields to change; omitted fields are unchanged.
          */
@@ -1540,6 +2415,8 @@ export interface components {
             api_version: string;
             /** Station Name */
             station_name: string;
+            /** Simulation */
+            simulation: boolean;
         };
         /**
          * VideoCodec
@@ -5515,6 +6392,1168 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VideoStreamOut"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    fleet_state_api_v1_fleet_state_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetState"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    telemetry_history_api_v1_aircraft__aircraft_id__telemetry_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+                until?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                aircraft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelemetryHistory"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    inject_fault_api_v1_simulation_aircraft__aircraft_id__faults_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                aircraft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FaultInjection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AircraftLive"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_commands_api_v1_commands_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandList"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    submit_command_api_v1_commands_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArmCommand"] | components["schemas"]["DisarmCommand"] | components["schemas"]["TakeoffCommand"] | components["schemas"]["HoldCommand"] | components["schemas"]["ResumeCommand"] | components["schemas"]["ReturnCommand"] | components["schemas"]["LandCommand"] | components["schemas"]["GotoCommand"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandView"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Confirmation required: re-send the same request with the token. */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ConfirmationProblem"];
+                };
+            };
+        };
+    };
+    get_command_api_v1_commands__command_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                command_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandView"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_leases_api_v1_control_leases_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaseList"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    assign_control_api_v1_aircraft__aircraft_id__control_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                aircraft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ControlAssignment"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaseView"] | null;
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    take_control_api_v1_aircraft__aircraft_id__control_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                aircraft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaseView"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    release_control_api_v1_aircraft__aircraft_id__control_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                aircraft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    request_handover_api_v1_aircraft__aircraft_id__control_handover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                aircraft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaseView"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accept_handover_api_v1_aircraft__aircraft_id__control_handover_accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                aircraft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaseView"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    decline_handover_api_v1_aircraft__aircraft_id__control_handover_decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                aircraft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaseView"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_alerts_api_v1_alerts_get: {
+        parameters: {
+            query?: {
+                state?: components["schemas"]["AlertState"] | null;
+                aircraft_id?: string | null;
+                /** @description Maximum items to return. */
+                limit?: number;
+                /** @description Opaque cursor from a previous page's next_cursor. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertPage"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    acknowledge_alert_api_v1_alerts__alert_id__acknowledge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                alert_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertView"];
                 };
             };
             /** @description The request body could not be parsed (not valid JSON or not UTF-8). */

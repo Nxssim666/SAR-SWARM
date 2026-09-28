@@ -7,18 +7,17 @@ same request would wait for the first forever, so never open one.
 """
 
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
-from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fleet_service.auth.permissions import AUTHENTICATED, Permission, has_permission
+from fleet_service.auth.permissions import AUTHENTICATED, Permission
+from fleet_service.auth.principal import Principal
 from fleet_service.auth.sessions import resolve_session
+from fleet_service.bus import SESSIONS
 from fleet_service.context import AppContext
-from fleet_service.domain.enums import Role
 from fleet_service.errors import Forbidden, Unauthorized
 from fleet_service.services.audit import Actor
 
@@ -46,22 +45,6 @@ async def get_db(context: Context) -> AsyncIterator[AsyncSession]:
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 
-@dataclass(frozen=True)
-class Principal:
-    """The authenticated user of a request."""
-
-    user_id: str
-    username: str
-    display_name: str
-    role: Role
-    session_id: str
-    session_expires_at: datetime
-
-    def can(self, permission: Permission) -> bool:
-        """Return True if this principal holds ``permission``."""
-        return has_permission(self.role, permission)
-
-
 async def get_principal(
     context: Context,
     db: DbSession,
@@ -78,6 +61,8 @@ async def get_principal(
         raise Unauthorized("The session is invalid or has expired; log in again.")
     session, user = resolved
     await db.commit()  # persists last_seen_at and ends the transaction before the handler runs
+    if context.live is not None:
+        context.live.presence.touch(user.id, context.clock.now())
     return Principal(
         user_id=user.id,
         username=user.username,
@@ -108,6 +93,21 @@ def requires(permission: Permission | None) -> dict[str, Any]:
 
     marker = permission.value if permission is not None else AUTHENTICATED
     return {"dependencies": [Depends(check)], "openapi_extra": {"x-permission": marker}}
+
+
+def announce_session_end(
+    context: AppContext,
+    *,
+    session_id: str | None = None,
+    user_id: str | None = None,
+    keep_session_id: str | None = None,
+) -> None:
+    """Close the WebSockets of revoked sessions now, not at their next re-check."""
+    if context.live is not None:
+        context.live.bus.publish(
+            SESSIONS,
+            {"session_id": session_id, "user_id": user_id, "keep_session_id": keep_session_id},
+        )
 
 
 def source_ip(request: Request) -> str | None:

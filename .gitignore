@@ -19,6 +19,7 @@ coverage/
 *.tsbuildinfo
 # Runtime data: operational/telemetry databases, recordings
 fleet-service/data/
+fleet-service/data-*/
 *.db
 *.db-wal
 *.db-shm

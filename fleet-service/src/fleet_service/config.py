@@ -45,6 +45,44 @@ class Settings(BaseSettings):
     login_max_failures_per_ip: int = Field(default=20, ge=1)
     login_failure_window_s: int = Field(default=300, ge=1)
 
+    # --- simulation (ADR 0021) ---
+    simulation: bool = Field(
+        default=False,
+        description="Back every registered aircraft with a simulated one; never mixed with "
+        "real links. Shown to operators as a banner.",
+    )
+    sim_origin_latitude: float = Field(default=47.3977, ge=-80.0, le=80.0)
+    sim_origin_longitude: float = Field(default=8.5456, ge=-180.0, le=180.0)
+    sim_origin_altitude_amsl_m: float = Field(default=500.0, ge=-400.0, le=8000.0)
+    sim_seed: int = Field(default=0, ge=0)
+
+    # --- links and alerts (ADR 0010) ---
+    link_stale_after_s: float = Field(default=3.0, gt=0.0, le=60.0)
+    link_lost_after_s: float = Field(default=15.0, gt=0.0, le=600.0)
+    battery_low_pct: float = Field(default=30.0, ge=0.0, le=100.0)
+    battery_critical_pct: float = Field(default=15.0, ge=0.0, le=100.0)
+
+    # --- commands and control (ADR 0011) ---
+    command_timeout_s: float = Field(default=5.0, gt=0.0, le=60.0)
+    command_effect_timeout_s: float = Field(default=10.0, gt=0.0, le=120.0)
+    command_min_interval_s: float = Field(default=0.25, ge=0.0, le=10.0)
+    confirmation_ttl_s: float = Field(default=30.0, ge=5.0, le=300.0)
+    handover_timeout_s: float = Field(default=30.0, ge=5.0, le=600.0)
+    control_grace_s: float = Field(default=60.0, ge=5.0, le=3600.0)
+    goto_confirm_distance_m: float = Field(default=1000.0, ge=0.0, le=100_000.0)
+    goto_max_distance_m: float = Field(default=10_000.0, gt=0.0, le=100_000.0)
+    max_altitude_relative_m: float = Field(
+        default=120.0,
+        gt=0.0,
+        le=1500.0,
+        description="Highest altitude above home a command may ask for (regulatory ceiling).",
+    )
+    min_takeoff_battery_pct: float = Field(default=40.0, ge=0.0, le=100.0)
+
+    # --- telemetry history and WebSocket ---
+    telemetry_record_interval_s: float = Field(default=1.0, ge=0.1, le=60.0)
+    ws_idle_timeout_s: float = Field(default=30.0, ge=5.0, le=600.0)
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

@@ -56,7 +56,9 @@ def clock() -> FakeClock:
 @pytest.fixture
 async def app(settings: Settings, clock: FakeClock) -> AsyncIterator[FastAPI]:
     """The application, with its lifespan running."""
-    application = create_app(settings, clock=clock, passwords=fast_passwords_for_tests())
+    application = create_app(
+        settings, clock=clock, passwords=fast_passwords_for_tests(), start_loops=False
+    )
     async with application.router.lifespan_context(application):
         yield application
 
