@@ -46,3 +46,5 @@ a safety rule, a protocol or convention, or an assumption made in place of an an
 | [0015](0015-testing-strategy.md) | Testing strategy |
 | [0016](0016-deployment.md) | Deployment: single-host Docker Compose, offline |
 | [0017](0017-simulation.md) | Simulation: mock fleet, PX4 SITL with Gazebo and SIH |
+| [0018](0018-permission-catalogue.md) | Permission catalogue v1 |
+| [0019](0019-database-access.md) | Database access, migrations at startup, audit in the same transaction |

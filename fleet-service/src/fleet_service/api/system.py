@@ -1,20 +1,15 @@
 """System endpoints: liveness and version. Unauthenticated by design (used by health checks)."""
 
 from datetime import UTC, datetime
-from typing import Annotated, Literal
+from typing import Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter
 from pydantic import AwareDatetime, BaseModel, ConfigDict
 
 from fleet_service import API_VERSION, __version__
-from fleet_service.config import Settings
+from fleet_service.api.deps import Context
 
 router = APIRouter(tags=["system"])
-
-
-def _settings(request: Request) -> Settings:
-    settings: Settings = request.app.state.settings
-    return settings
 
 
 class Health(BaseModel):
@@ -44,11 +39,11 @@ async def health() -> Health:
 
 
 @router.get("/version")
-async def version(settings: Annotated[Settings, Depends(_settings)]) -> VersionInfo:
+async def version(context: Context) -> VersionInfo:
     """Report the service and API versions and the ground station's name."""
     return VersionInfo(
         service="fleet-service",
         version=__version__,
         api_version=API_VERSION,
-        station_name=settings.station_name,
+        station_name=context.settings.station_name,
     )

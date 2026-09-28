@@ -16,8 +16,8 @@ the development host and is checked in CI.
 | Milestone | State |
 |---|---|
 | M0 Architecture, ADRs, scaffold | **Done** (2026-09-28) |
-| M1a Data model, persistence, auth/RBAC, REST, OpenAPI | Next |
-| M1b Live fleet core: registry, mock driver, commands, leases, WebSocket, audit | — |
+| M1a Data model, persistence, auth/RBAC, REST, OpenAPI | **Done** (2026-09-28) |
+| M1b Live fleet core: registry, mock driver, commands, leases, WebSocket | Next |
 | M2a PX4 SITL harness + MAVSDK driver (1–5 aircraft) | Blocked on a decision: Linux/Docker host (see below) |
 | M2b Scale and swarm: SIH 25/50, NATS, ROS 2 bridge, mock video | — |
 | M3 Console MVP | — |
@@ -66,79 +66,102 @@ portable `.tools/` venv here.
 
 ---
 
-## M1a: Data model, persistence, auth/RBAC, REST CRUD, OpenAPI
+## M1a: Data model, persistence, auth/RBAC, REST CRUD, OpenAPI ✅
 
 **Goal:** the fleet service's persistent domain and a secured, documented REST API. No live
 aircraft yet.
 
-**Scope**
+**Built** (2026-09-28)
 
-- **Domain entities:**
-  - `Aircraft`: callsign, airframe type (`fixed_wing` / `multirotor_hexa` / `multirotor_quad`),
-    links (MAVLink system ID and connection, optional swarm `drone_id`), capabilities, limits.
-  - `AircraftGroup` (fleet groups).
-  - `User` (operator) with a `Role`, and `Session`.
-  - `Incident`: name, base location, operating radius, status.
-  - `SearchArea`: GeoJSON polygon, priority, status.
-  - `Geofence`: inclusion and exclusion polygons plus altitude limits.
-  - `Mission`: waypoint, area-search or swarm-area; with a status lifecycle.
-  - `Waypoint`.
-  - `Task`: a mission assigned to an aircraft, with overrides.
-  - `Alert` (model only).
-  - `VideoStream` (metadata only).
-  - `Command` (model only).
-  - `ControlLease` (model only).
-  - `AuditEvent` (model only).
-- `domain/geo.py`: point and polygon validation, the operating-area check, altitude-reference
-  field conventions (ADR 0014).
-- SQLAlchemy 2 async models for `ops.db` and `telemetry.db` (WAL, pragmas per ADR 0007), plus
-  Alembic with an initial migration.
-- **Auth:**
-  - Argon2id, opaque sessions (ADR 0009).
-  - `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`.
-  - `fleet-service create-admin` CLI.
-  - Login rate limiting.
-  - Permission dependency and the role-to-permission map.
-- **REST v1 CRUD:** users (admin), aircraft, groups, incidents, search areas, geofences,
-  missions + waypoints, tasks, video streams. Errors are RFC 9457 problem+json, with cursor
-  pagination.
-- **Audit writer:** audits every mutating request (actor, action, entity, before/after).
-  The hash chain is added in M1b.
-- `fleet-service export-openapi` writes `docs/api/openapi.json`.
+- [x] Domain model in `ops.db`: users, sessions, aircraft, groups, incidents, search areas,
+      geofences, missions, waypoints, tasks, video streams, audit events, plus the schema of
+      alerts, commands (with per-aircraft targets) and control leases, whose behaviour is M1b.
+      `telemetry.db` holds `telemetry_samples` (schema only; the recorder is M1b).
+- [x] SQLite WAL through SQLAlchemy 2 async. One connection per file, pragmas, and a
+      `UTCDateTime` type that rejects naive datetimes (ADR 0019).
+- [x] Alembic with one script directory per database and sequential revisions. Migrations
+      **run at startup**, and `ops.db` is **backed up** first when it holds data (ADR 0016/0019).
+- [x] `domain/geo.py`:
+  - [x] Explicit-key points, and validated GeoJSON polygons (closed, 3–256 vertices, valid,
+        no holes, no antimeridian crossing, normalized counter-clockwise).
+  - [x] Geodesic area and distance with pyproj.
+  - [x] The **operating-area check that catches swapped lat/lon**.
+- [x] Auth:
+  - [x] Argon2id hashing, kept out of transactions, with rehash on login.
+  - [x] Opaque `sgcs_` tokens stored as SHA-256. 4 h idle and 12 h absolute expiry.
+  - [x] Per-user and per-IP login rate limits.
+  - [x] Timing-equalized unknown users.
+  - [x] `create-admin` CLI.
+- [x] Permission catalogue v1 (ADR 0018). `requires()` publishes `x-permission` and enforces
+      it from one place.
+- [x] REST v1, 54 operations: auth, users, aircraft, groups, incidents, search areas,
+      geofences, missions, waypoints (PUT replaces the route), tasks, video streams, audit.
+      - RFC 9457 problem+json with stable `urn:sar-gcs:problem:*` types.
+      - Cursor pagination, strict input types, and PATCH with explicit-null semantics.
+- [x] Consistency rules:
+  - [x] Closed incidents are read-only.
+  - [x] Base and radius changes can't strand geometry.
+  - [x] Only empty incidents can be deleted.
+  - [x] Area missions need a search area in the same incident.
+  - [x] Swarm missions are capped at 64 waypoints.
+  - [x] Plans are frozen outside draft or planned.
+  - [x] Only drafts can be deleted.
+  - [x] Tasks need a matching link.
+  - [x] Aircraft in use can't be deleted.
+  - [x] Users are deactivated, never deleted.
+  - [x] The last admin is protected.
+  - [x] Video source passwords are redacted.
+- [x] **Hash-chained audit** in the same transaction as each change *(moved forward from
+      M1b)*:
+  - [x] `GET /audit`.
+  - [x] `fleet-service audit-verify` (exit code 1 when broken; prints the head for external
+        recording).
+- [x] `fleet-service export-openapi` → `docs/api/openapi.json` (committed), with a drift test.
+- [x] 405 responses carry a complete `Allow` header, built from the OpenAPI paths.
+- [x] Console: `npm run gen:api` generates `src/api/generated/schema.d.ts` from the spec, with
+      a Vitest drift test *(moved forward from M3)*. `system.ts` uses the generated types.
+- [x] Docs: `docs/api/README.md`, ADR 0018 (permissions), ADR 0019 (database access).
 
-**Files:** `fleet-service/src/fleet_service/{domain,db,auth,api}/…`,
-`fleet-service/migrations/`, `docs/api/openapi.json`.
+**Tests:** fleet-service has **201 tests plus 54 Schemathesis operation runs**, all passing:
 
-**Tests**
+- Unit: ids, geo with Hypothesis (including the swapped-coordinate property), permissions,
+  rate limiter, tokens, passwords.
+- Storage: migrations, backup-before-migrate, no model/migration drift, audit tamper
+  detection.
+- API: every resource and every consistency rule, including session expiry, revocation and
+  rate limiting.
+- The **authorization matrix**: all 51 protected operations × no token and every role.
+- Contract: Schemathesis in positive and negative modes, checking status codes, content types,
+  schemas, `Allow` headers, rejection of negative data, and authentication. Only
+  `positive_data_acceptance` is excluded; the reason is documented in the test.
+- CLI.
 
-- Unit tests for geo validation, using Hypothesis. Swapped lat/lon must be rejected by the
-  operating-area check.
-- Unit tests for the permission map.
-- API tests for every endpoint.
-- The **authorization matrix**: every endpoint × every role gets the expected status.
-- Migration tests: upgrade from empty to head, and no drift between models and migrations
-  (Alembic autogenerate compare).
-- Contract tests: **Schemathesis** against OpenAPI, and the committed spec equals the
-  generated spec.
-- Session tests: expiry and revocation.
+**Manual end-to-end** (live server):
 
-**Acceptance**
+1. The CLI created an admin.
+2. The admin created an operator and an observer.
+3. They opened an incident, drew a search area, registered an aircraft, planned a mission with
+   4 waypoints and assigned the aircraft.
+4. Swapped coordinates returned 422 `outside-operating-area`.
+5. The observer got 403 on POST, and the operator got 403 on the audit log.
+6. `audit-verify` passed with 12 events. After one audit row was edited in SQLite, it reported
+   `BROKEN at seq=7` with exit code 1.
 
-- `check.py` is green.
-- The OpenAPI document is committed and passes the drift check.
-- An admin can be created by CLI, log in and create users. An observer gets 403 on every
-  mutating endpoint.
-- A search area with swapped coordinates is rejected with a clear problem+json error.
+**Known gaps**
 
-**Docs:** API overview in `docs/api/README.md`, and an ADR for any new decisions.
-
-**Risks:** aiosqlite and greenlet on Python 3.14 (wheels exist per the M0 check; confirm in M1a).
-
-**Stop:** report, then wait.
+- `/api/v1/docs` (Swagger UI) loads its assets from `cdn.jsdelivr.net`. It is blank offline,
+  and the gateway's CSP would block it. It's a developer aid, not the operator console. Fix in
+  M6: vendor swagger-ui-dist, or serve docs only in development.
+- `openapi-typescript` 7 declares a TypeScript 5 peer. The console pins it to our TypeScript 6
+  with an npm `overrides` entry; the drift test and typecheck prove the output. Revisit when
+  v8 ships.
+- Truncation of the *end* of the audit chain is only detectable against a head recorded
+  elsewhere. M5/M6 will add periodic head export.
+- Docker image builds and CI remain *unverified locally* (no Docker on this host).
 
 ---
 
-## M1b: Live fleet core (registry, mock driver, command pipeline, leases, WebSocket, audit chain)
+## M1b: Live fleet core (registry, mock driver, command pipeline, leases, WebSocket)
 
 **Goal:** live aircraft state and safe command handling end to end, against simulated aircraft.
 
@@ -162,7 +185,8 @@ aircraft yet.
   supervisor force (with a reason), disconnect grace period, then orphaned with an alert.
 - **Basic alerts:** link stale/lost, low battery, GPS loss, command timeout. States are active,
   acknowledged and cleared, and duplicates are suppressed.
-- **Audit hash chain,** `fleet-service audit-verify`, and `GET /audit`.
+- New permissions `aircraft.hold`, `aircraft.command`, `control.override`, `alerts.ack`
+  (ADR 0018 pattern), covered by the authorization matrix.
 - **WebSocket** `/api/v1/ws`:
   - The first message authenticates.
   - Subscribe and unsubscribe, with a snapshot then deltas.
@@ -176,9 +200,11 @@ aircraft yet.
   but not RTL; confirmation is required for bulk commands; a changed request invalidates the
   token; a lost link allows only HOLD, RTL or LAND; a duplicate `command_id` returns the first
   outcome.
-- Tamper detection in the audit chain.
+- Audit coverage: every command, outcome and control change is recorded.
 - WebSocket protocol tests: auth, subscriptions, gap detection, coalescing.
 - Mock driver determinism.
+- Contract: Schemathesis and the authorization matrix extend automatically to the new
+  operations.
 - Load smoke test: 50 mock aircraft at 10 Hz for 60 s with 3 WebSocket clients. Record the
   latencies; the budgets are enforced in M5.
 
@@ -186,7 +212,7 @@ aircraft yet.
 
 - A script creates an incident, registers 5 mock aircraft, and runs take control, arm,
   confirm, takeoff, hold and RTL, with every step visible over WebSocket and in the audit.
-- `audit-verify` passes, and it fails after a manual edit of one row.
+- `audit-verify` passes after the run.
 
 **Stop:** report, then wait.
 
@@ -401,6 +427,8 @@ networking or a discovery server).
   - Warn about or block takeoff. A supervisor override is audited.
 - **Packaging and operations:**
   - Offline bundle (image tarballs, PMTiles, checksums, install script).
+  - Serve the API docs page (Swagger UI) from vendored assets, with no CDN (M1a gap).
+  - Export the audit chain head periodically, so truncation is detectable (M1a gap).
   - Disk-space guard.
   - Incident export bundle.
   - Upgrade and rollback procedure.

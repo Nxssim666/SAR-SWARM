@@ -1,4 +1,4 @@
-"""System endpoints and application wiring."""
+"""System endpoints, settings, logging and application wiring."""
 
 import json
 import logging
@@ -35,18 +35,37 @@ async def test_version_reports_service_api_and_station(client: httpx.AsyncClient
     }
 
 
-async def test_openapi_is_served_under_versioned_prefix(client: httpx.AsyncClient) -> None:
-    response = await client.get("/api/v1/openapi.json")
+async def test_request_id_is_echoed_or_generated(client: httpx.AsyncClient) -> None:
+    echoed = await client.get("/api/v1/health", headers={"X-Request-ID": "console-42"})
+    generated = await client.get("/api/v1/health", headers={"X-Request-ID": "bad id with spaces"})
 
-    assert response.status_code == 200
-    paths = response.json()["paths"]
-    assert {"/api/v1/health", "/api/v1/version"} <= set(paths)
+    assert echoed.headers["X-Request-ID"] == "console-42"
+    assert generated.headers["X-Request-ID"] != "bad id with spaces"
+    assert len(generated.headers["X-Request-ID"]) == 36
 
 
-async def test_unknown_path_is_404(client: httpx.AsyncClient) -> None:
+async def test_unknown_path_is_a_problem_document(client: httpx.AsyncClient) -> None:
     response = await client.get("/api/v1/does-not-exist")
 
     assert response.status_code == 404
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["status"] == 404
+
+
+async def test_wrong_method_is_405_with_allow_header(client: httpx.AsyncClient) -> None:
+    response = await client.delete("/api/v1/health")
+
+    assert response.status_code == 405
+    assert response.headers["allow"] == "GET"
+    assert response.headers["content-type"] == "application/problem+json"
+
+
+async def test_allow_header_lists_every_method_of_the_resource(client: httpx.AsyncClient) -> None:
+    # GET and POST /users are separate routes; the 405 must still name both.
+    response = await client.request("OPTIONS", "/api/v1/users")
+
+    assert response.status_code == 405
+    assert response.headers["allow"] == "GET, POST"
 
 
 def test_settings_read_prefixed_environment(monkeypatch: pytest.MonkeyPatch) -> None:

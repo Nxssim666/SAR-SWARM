@@ -16,9 +16,10 @@ decentralized multicopter search swarm that the ground system tasks through a br
 > weapons, targeting or military functionality of any kind (see
 > [ADR 0002](docs/decisions/0002-scope-safety-and-assumptions.md)).
 
-> **Status: M0.** Architecture, ADRs and scaffolds are done. The fleet service and console
-> are skeletons (health and version endpoints, app shell). See [PLAN.md](PLAN.md) for
-> milestones M1–M6.
+> **Status: M1a.** The fleet service has its data model, persistence, login and roles, a
+> tamper-evident audit trail, and a REST API with a committed OpenAPI contract
+> ([docs/api](docs/api/README.md)). Live aircraft, commands and the operator console follow in
+> M1b–M3. See [PLAN.md](PLAN.md).
 
 ## Layout
 

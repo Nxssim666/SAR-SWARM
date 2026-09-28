@@ -35,6 +35,16 @@ class Settings(BaseSettings):
         description="Directory for the operational and telemetry databases.",
     )
 
+    session_idle_timeout_s: int = Field(
+        default=4 * 3600, ge=60, description="A session unused for this long expires."
+    )
+    session_max_lifetime_s: int = Field(
+        default=12 * 3600, ge=300, description="A session expires this long after login (a shift)."
+    )
+    login_max_failures_per_user: int = Field(default=5, ge=1)
+    login_max_failures_per_ip: int = Field(default=20, ge=1)
+    login_failure_window_s: int = Field(default=300, ge=1)
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

@@ -1,21 +1,13 @@
-"""``fleet-service`` / ``python -m fleet_service``: serve the API with uvicorn."""
+"""``fleet-service`` / ``python -m fleet_service``: see ``fleet_service.cli``."""
 
-import uvicorn
+import sys
 
-from fleet_service.config import get_settings
+from fleet_service.cli import main as _cli_main
 
 
 def main() -> None:
-    """Start the server on the configured host and port."""
-    settings = get_settings()
-    uvicorn.run(
-        "fleet_service.main:create_app",
-        factory=True,
-        host=settings.host,
-        port=settings.port,
-        log_config=None,  # create_app configures logging
-        proxy_headers=True,
-    )
+    """Console-script entry point."""
+    sys.exit(_cli_main())
 
 
 if __name__ == "__main__":

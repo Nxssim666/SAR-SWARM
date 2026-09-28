@@ -5,8 +5,10 @@ Ground control system for a civilian search-and-rescue drone fleet: up to 50 PX4
 with different roles, one field ground station, and no cloud. This page is the living overview.
 The reasons behind it are in [`decisions/`](decisions/0001-record-architecture-decisions.md).
 
-Status: **M0**. The fleet service and console are scaffolds. Everything marked with a
-milestone below is designed but not built yet. See [`../PLAN.md`](../PLAN.md).
+Status: **M1a**. The fleet service has its persistent domain, auth/RBAC, a hash-chained audit
+trail and a REST API ([`api/README.md`](api/README.md)). The console is a shell. Everything
+marked with a later milestone below is designed but not built yet. See
+[`../PLAN.md`](../PLAN.md).
 
 ## System context
 

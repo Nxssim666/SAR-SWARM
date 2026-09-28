@@ -10,6 +10,11 @@ services:
     environment:
       SARGCS_STATION_NAME: ${SARGCS_STATION_NAME:-ground-station-1}
       SARGCS_LOG_LEVEL: ${SARGCS_LOG_LEVEL:-INFO}
+      # Only the gateway can reach this service, so trust its X-Forwarded-For: audit
+      # events then record the operator device's address, not the gateway's.
+      FORWARDED_ALLOW_IPS: "*"
+    # First admin (once, after `up`):
+    #   docker compose -f deploy/compose.yaml exec fleet-service fleet-service create-admin --username chief
     volumes:
       - fleet-data:/data
     expose:

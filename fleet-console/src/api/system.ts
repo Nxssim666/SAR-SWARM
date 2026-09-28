@@ -1,10 +1,7 @@
-// System endpoints of the fleet service. From M1 these types are generated from openapi.json.
+// System endpoints of the fleet service. Types come from the generated OpenAPI schema.
+import type { components } from './generated/schema';
 
-export interface Health {
-  status: 'ok';
-  /** ISO 8601 UTC time on the ground station, used to detect client clock skew. */
-  server_time: string;
-}
+export type Health = components['schemas']['Health'];
 
 export async function fetchHealth(signal: AbortSignal): Promise<Health> {
   const response = await fetch('/api/v1/health', {

@@ -1,0 +1,191 @@
+"""
+Enumerations of the domain model and the state transitions the REST API may perform.
+
+Values are stored in the database and sent over the API, so they are part of the
+contract: add values freely, never rename or remove one without a migration and an ADR.
+"""
+
+from enum import StrEnum
+
+
+class Role(StrEnum):
+    """Operator roles, lowest to highest authority (ADR 0009)."""
+
+    OBSERVER = "observer"
+    OPERATOR = "operator"
+    SUPERVISOR = "supervisor"
+    ADMIN = "admin"
+
+
+ROLE_RANK: dict[Role, int] = {role: rank for rank, role in enumerate(Role)}
+
+
+class Airframe(StrEnum):
+    """Aircraft type; drives planning constraints (turn radius, hover ability)."""
+
+    FIXED_WING = "fixed_wing"
+    MULTIROTOR_HEXA = "multirotor_hexa"
+    MULTIROTOR_QUAD = "multirotor_quad"
+
+
+class IncidentStatus(StrEnum):
+    """Lifecycle of an incident; ``closed`` is terminal and read-only."""
+
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
+    CLOSED = "closed"
+
+
+INCIDENT_TRANSITIONS: dict[IncidentStatus, frozenset[IncidentStatus]] = {
+    IncidentStatus.ACTIVE: frozenset({IncidentStatus.SUSPENDED, IncidentStatus.CLOSED}),
+    IncidentStatus.SUSPENDED: frozenset({IncidentStatus.ACTIVE, IncidentStatus.CLOSED}),
+    IncidentStatus.CLOSED: frozenset(),
+}
+
+
+class SearchAreaStatus(StrEnum):
+    """Search progress of an area; set by operators (ground teams too) or, from M4, missions."""
+
+    UNASSIGNED = "unassigned"
+    ASSIGNED = "assigned"
+    IN_PROGRESS = "in_progress"
+    SEARCHED = "searched"
+
+
+class GeofenceKind(StrEnum):
+    """Inclusion: aircraft must stay inside. Exclusion: aircraft must stay outside."""
+
+    INCLUSION = "inclusion"
+    EXCLUSION = "exclusion"
+
+
+class MissionKind(StrEnum):
+    """Waypoint route, GCS-planned area search (model A), swarm area search (model B, ADR 0003)."""
+
+    WAYPOINT = "waypoint"
+    AREA_SEARCH = "area_search"
+    SWARM_AREA = "swarm_area"
+
+
+class MissionStatus(StrEnum):
+    """Mission lifecycle. ``active``, ``paused`` and ``completed`` are set by execution only."""
+
+    DRAFT = "draft"
+    PLANNED = "planned"
+    ACTIVE = "active"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    ABORTED = "aborted"
+
+
+# Transitions an operator may request through the REST API; execution (M1b/M4) owns the rest.
+MISSION_REST_TRANSITIONS: dict[MissionStatus, frozenset[MissionStatus]] = {
+    MissionStatus.DRAFT: frozenset({MissionStatus.PLANNED, MissionStatus.ABORTED}),
+    MissionStatus.PLANNED: frozenset({MissionStatus.DRAFT, MissionStatus.ABORTED}),
+}
+EDITABLE_MISSION_STATUSES = frozenset({MissionStatus.DRAFT, MissionStatus.PLANNED})
+
+MAX_MISSION_WAYPOINTS = 1000
+# The onboard swarm protocol's limit on transit waypoints (swarm_sar.core.messages.MAX_WAYPOINTS).
+MAX_SWARM_MISSION_WAYPOINTS = 64
+
+
+class TaskStatus(StrEnum):
+    """An aircraft's assignment to a mission."""
+
+    PENDING = "pending"
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+TASK_REST_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
+    TaskStatus.PENDING: frozenset({TaskStatus.CANCELLED}),
+}
+
+
+class VideoCodec(StrEnum):
+    """Codec of a video source (ADR 0012: H.264 is the baseline)."""
+
+    H264 = "h264"
+    H265 = "h265"
+    UNKNOWN = "unknown"
+
+
+class AlertKind(StrEnum):
+    """What an alert is about (engine from M1b/M4)."""
+
+    LINK_STALE = "link_stale"
+    LINK_LOST = "link_lost"
+    BATTERY_LOW = "battery_low"
+    BATTERY_CRITICAL = "battery_critical"
+    GPS_LOST = "gps_lost"
+    GEOFENCE_BREACH = "geofence_breach"
+    MISSION_COMPLETE = "mission_complete"
+    ROUTE_DEVIATION = "route_deviation"
+    DECONFLICTION_RISK = "deconfliction_risk"
+    COMMAND_TIMEOUT = "command_timeout"
+    CONTROL_ORPHANED = "control_orphaned"
+    VIDEO_DOWN = "video_down"
+
+
+class AlertSeverity(StrEnum):
+    """How urgently an operator must look."""
+
+    INFO = "info"
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+
+class AlertState(StrEnum):
+    """Alert lifecycle."""
+
+    ACTIVE = "active"
+    ACKNOWLEDGED = "acknowledged"
+    CLEARED = "cleared"
+
+
+class CommandKind(StrEnum):
+    """Commands the GCS can send (ADR 0002 scope; no flight termination)."""
+
+    ARM = "arm"
+    DISARM = "disarm"
+    TAKEOFF = "takeoff"
+    HOLD = "hold"
+    RESUME = "resume"
+    RETURN_TO_LAUNCH = "return_to_launch"
+    LAND = "land"
+    GOTO = "goto"
+    MISSION_UPLOAD = "mission_upload"
+    MISSION_START = "mission_start"
+    MISSION_PAUSE = "mission_pause"
+    GEOFENCE_UPLOAD = "geofence_upload"
+
+
+class CommandState(StrEnum):
+    """Overall state of a (possibly bulk) command (ADR 0011)."""
+
+    AWAITING_CONFIRMATION = "awaiting_confirmation"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+
+
+class CommandTargetState(StrEnum):
+    """Outcome of a command for one aircraft."""
+
+    PENDING = "pending"
+    DISPATCHED = "dispatched"
+    ACKED = "acked"
+    NACKED = "nacked"
+    TIMEOUT = "timeout"
+    REJECTED = "rejected"
+
+
+class LeaseState(StrEnum):
+    """Control lease of an aircraft (ADR 0011)."""
+
+    HELD = "held"
+    ORPHANED = "orphaned"

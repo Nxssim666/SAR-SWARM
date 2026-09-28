@@ -53,11 +53,25 @@ python -m uv --directory fleet-service run fleet-service     # API on http://127
 - Settings are environment variables with the `SARGCS_` prefix; see
   `fleet-service/src/fleet_service/config.py`.
 
+## First admin and the API
+
+```bash
+python -m uv --directory fleet-service run fleet-service create-admin --username chief
+```
+
+This prompts for a password of 10 or more characters. Log in through `/api/v1/docs`
+(Authorize → Bearer token from `POST /auth/login`), or see `docs/api/README.md`. Data lives in
+`fleet-service/data/`, which is gitignored. Delete that directory to start over.
+
+After changing the API, run `fleet-service export-openapi`, then `npm run gen:api` in
+`fleet-console/`. The tests fail until both generated files are committed.
+
 ## Container stack (Linux or Docker Desktop)
 
 ```bash
 docker compose -f deploy/compose.yaml up -d --build
 # https://localhost  (Caddy internal CA: accept or trust its root certificate once)
+docker compose -f deploy/compose.yaml exec fleet-service fleet-service create-admin --username chief
 ```
 
 ## Onboard swarm_sar packages

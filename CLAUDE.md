@@ -38,7 +38,19 @@ status are in `PLAN.md`, the design is in `docs/architecture.md`, and the reason
   - Headings are degrees true, clockwise from north.
   - SI units.
 - **Pydantic models forbid unknown fields.** Every API change updates the committed specs in
-  `docs/api/` (from M1a). CI checks for drift.
+  `docs/api/` (`export-openapi`) and the console types (`npm run gen:api`). Tests fail on drift.
+- **Fleet-service API patterns** (see `docs/api/README.md`, ADR 0018, ADR 0019):
+  - Protect every route with `**requires(Permission.X)`. The authorization-matrix test fails
+    for a route without one.
+  - Raise `errors.NotFound`, `Conflict` or `InvalidRequest` with a stable `slug`; never return
+    ad-hoc error bodies.
+  - Mutations write `services.audit.record(...)` in the same transaction, then commit.
+  - PATCH bodies subclass `PatchModel`, and fields default to `optional()`. Read
+    `patch_values()`.
+  - Use exactly **one DB session per request** (one connection per SQLite file), and never
+    await slow work (hashing, aircraft I/O) inside a transaction.
+  - Model changes need `db revision` (sequential ids). The drift test compares models with
+    migrations.
 - **Tests go in the same change** (ADR 0015):
   - A bug fix starts with a failing test.
   - Each safety rule has a regression test.
@@ -53,7 +65,7 @@ fleet-service/   Python ≥3.12, FastAPI, uv (pyproject.toml, uv.lock); code in 
 fleet-console/   React 19 + TS 6 + Vite 8; code in src/
 deploy/          compose.yaml, Caddyfile (gateway: TLS, static console, /api proxy)
 src/             ROS 2 colcon workspace: swarm_sar, swarm_sar_interfaces (onboard; unchanged)
-docs/            architecture.md, decisions/, runbooks/, api/ (from M1a)
+docs/            architecture.md, decisions/ (ADRs), runbooks/, api/ (openapi.json + README)
 scripts/check.py every lint/type/test/build, cross-platform
 sim/             PX4 SITL/Gazebo/SIH harness (from M2a)
 ```
@@ -75,11 +87,16 @@ python -m uv --directory fleet-service run fleet-service          # http://127.0
 python -m uv --directory fleet-service run pytest -q
 python -m uv --directory fleet-service run ruff check . && python -m uv --directory fleet-service run ruff format --check .
 python -m uv --directory fleet-service run mypy
+python -m uv --directory fleet-service run fleet-service create-admin --username chief   # first admin
+python -m uv --directory fleet-service run fleet-service export-openapi   # after any API change
+python -m uv --directory fleet-service run fleet-service db revision --database ops -m "..."  # after model changes
+python -m uv --directory fleet-service run fleet-service audit-verify
 
 # fleet-console (from fleet-console/)
 npm ci
 npm run dev            # http://127.0.0.1:5173, proxies /api → :8000 (FLEET_SERVICE_URL)
 npm run lint && npm run format:check && npm run typecheck && npm run test && npm run build
+npm run gen:api        # regenerate src/api/generated/schema.d.ts after export-openapi
 
 # onboard swarm_sar (from repo root)
 python -m uv run --no-project --with-requirements requirements-standalone.txt python -m pytest -q
@@ -98,8 +115,8 @@ its `mock` driver from M1b.
 | Milestone | State |
 |---|---|
 | M0 Architecture, ADRs, scaffold | Done |
-| M1a Data model, persistence, auth/RBAC, REST, OpenAPI | Next |
-| M1b Live core: registry, mock driver, commands, leases, WS, audit | — |
+| M1a Data model, persistence, auth/RBAC, REST, OpenAPI | Done |
+| M1b Live core: registry, mock driver, commands, leases, WS | Next |
 | M2a PX4 SITL + MAVSDK (1–5) | Needs a Linux/Docker decision |
 | M2b SIH 25/50, NATS, ROS 2 bridge, mock video | — |
 | M3 Console MVP | — |
