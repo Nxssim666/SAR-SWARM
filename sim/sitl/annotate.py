@@ -51,7 +51,7 @@ def report_tests(junit: Path) -> None:
             problem = case.find("error")
         if problem is not None:
             totals[problem.tag] += 1
-            details = problem.text or problem.get("message", "")
+            details = problem.text or problem.get("message") or ""
             annotate("error", f"SITL {problem.tag}: {name}", details)
         elif case.find("skipped") is not None:
             totals["skipped"] += 1
