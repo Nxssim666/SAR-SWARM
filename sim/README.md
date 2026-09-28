@@ -41,6 +41,8 @@ Parameters set for the tests:
 - `NAV_DLL_ACT=2` and `COM_DL_LOSS_T=5`: return home after 5 s without a ground station.
 - `SYS_FAILURE_EN=1`: allow injected failures.
 - `COM_DISARM_PRFLT=-1`: no auto-disarm before takeoff.
+- Airplane only: `RWTO_TKOFF=0`, `FW_LAUN_DETCN_ON=0` (launch-style takeoff). The rc1 SIH
+  airplane cannot finish a runway takeoff; see ADR 0023.
 
 Change them in `compose.yaml` with `PX4_PARAM_<NAME>` variables.
 

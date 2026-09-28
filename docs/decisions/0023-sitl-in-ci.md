@@ -59,6 +59,19 @@ Facts found in M2a:
      returns the aircraft, and the link comes back live;
   6. GNSS failure injected with MAVSDK's failure plugin: no fix, position `null`, and the
      `gps_lost` alert.
+- **Fixed-wing takeoff is launch-style** (`RWTO_TKOFF=0`, `FW_LAUN_DETCN_ON=0` on the
+  airplane). Measured in CI with four variants:
+
+  | Variant | Result |
+  |---|---|
+  | v1.18.0-rc1 runway takeoff (the default) | Taxis at about 6 m/s and never rotates |
+  | The same with `SIH_T_MAX` doubled | The same |
+  | **Launch-style** | Takeoff detected; climbs at about 0.2 m/s, 10 m after ~50 s |
+  | The newest main build | A real takeoff, then a dive into the ground at the handover to loiter ([PX4 #27344](https://github.com/PX4/PX4-Autopilot/issues/27344)) |
+
+  The station's fixed-wing test checks tracking, the takeoff ack, being airborne and a
+  verified return; it asserts nothing about flight performance, which SIH does not model
+  faithfully in this version.
 - **Link emulator** (`sim/linkem.py`, standard library only): a UDP relay with per-link
   loss, latency, jitter and blackout. It is used in-process by the tests and has a CLI for
   manual runs.

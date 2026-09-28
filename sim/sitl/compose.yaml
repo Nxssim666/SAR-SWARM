@@ -55,6 +55,10 @@ services:
       <<: *env
       PX4_SIM_MODEL: sihsim_airplane
       PX4_HOME_LON: "8.546587"
+      # Launch-style takeoff: the SIH airplane of v1.18.0-rc1 cannot finish a runway takeoff
+      # (it taxis at ~6 m/s and never rotates; measured in CI, ADR 0023).
+      PX4_PARAM_RWTO_TKOFF: "0"
+      PX4_PARAM_FW_LAUN_DETCN_ON: "0"
   px4-4:
     <<: *px4
     command: ["-d", "-i", "4"]
