@@ -48,7 +48,11 @@ jobs:
           mkdir -p sitl-results
           docker compose -f sim/sitl/compose.yaml ps -a > sitl-results/containers.txt
           docker compose -f sim/sitl/compose.yaml logs --no-color --timestamps > sitl-results/px4.log
-      - uses: actions/upload-artifact@v4
+      - name: Report results as annotations (readable without signing in)
+        if: always()
+        working-directory: .
+        run: python3 sim/sitl/annotate.py sitl-results
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: sitl-results
