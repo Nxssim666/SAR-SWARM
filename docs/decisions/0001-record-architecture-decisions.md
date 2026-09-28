@@ -50,3 +50,5 @@ a safety rule, a protocol or convention, or an assumption made in place of an an
 | [0019](0019-database-access.md) | Database access, migrations at startup, audit in the same transaction |
 | [0020](0020-live-core-commands-control-websocket.md) | Live core: command pipeline, control leases, WebSocket protocol |
 | [0021](0021-simulation-mode.md) | Simulation mode and the mock driver |
+| [0022](0022-mavlink-driver-mavsdk-v4.md) | MAVLink driver: MAVSDK v4 in-process, shared links, aircraft by system id |
+| [0023](0023-sitl-in-ci.md) | PX4 SITL in CI: pinned SIH image, integration tests, link emulator |

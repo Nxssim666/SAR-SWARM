@@ -101,7 +101,9 @@ def contract_app(
     for name in (OPS_DB, TELEMETRY_DB):
         shutil.copy(migrated_template / name, data_dir / name)
     asyncio.run(_insert_admin(data_dir))
-    yield create_app(Settings(data_dir=data_dir), passwords=fast_passwords_for_tests())
+    yield create_app(
+        Settings(data_dir=data_dir, mavlink_links=False), passwords=fast_passwords_for_tests()
+    )
     schemathesis_asgi.shutdown_lifespans()
 
 

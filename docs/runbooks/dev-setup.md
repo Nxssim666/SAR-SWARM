@@ -1,7 +1,7 @@
 # Development setup
 
-The fleet service and console run natively on Windows, Linux and macOS. PX4 SITL
-(M2 onwards) needs Linux with Docker. On Windows that means WSL2 with Docker Desktop.
+The fleet service and console run natively on Windows, Linux and macOS. PX4 SITL needs
+Linux with Docker; it runs in CI (see [simulation.md](simulation.md)).
 
 ## Prerequisites
 
@@ -102,7 +102,7 @@ python -m uv run --env-file simulation.env fleet-service
   It prints the telemetry age, rate and bandwidth per console.
 
 The simulator is not PX4: see ADR 0021 for what it doesn't model. Delete `data-sim/` to
-start over.
+start over. For MAVLink and PX4 testing, see [simulation.md](simulation.md).
 
 ## Container stack (Linux or Docker Desktop)
 

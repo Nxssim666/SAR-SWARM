@@ -1,6 +1,6 @@
 # 0017. Simulation: mock fleet, PX4 SITL with Gazebo and SIH
 
-- Status: Accepted
+- Status: Accepted; refined by [0021](0021-simulation-mode.md) (mock) and [0023](0023-sitl-in-ci.md) (SITL in CI, image, Gazebo in M2b)
 - Date: 2026-09-28
 
 ## Context

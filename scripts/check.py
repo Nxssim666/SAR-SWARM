@@ -94,8 +94,10 @@ def check_service(results: list[Result]) -> None:
     cwd = ROOT / "fleet-service"
     if not run(results, "service", "sync", [*uv, "sync", "--locked"], cwd):
         return
-    run(results, "service", "ruff check", [*uv, "run", "ruff", "check", "."], cwd)
-    run(results, "service", "ruff format", [*uv, "run", "ruff", "format", "--check", "."], cwd)
+    # sim/ (link emulator) shares the service's environment and rules.
+    run(results, "service", "ruff check", [*uv, "run", "ruff", "check", ".", "../sim"], cwd)
+    run(results, "service", "ruff format",
+        [*uv, "run", "ruff", "format", "--check", ".", "../sim"], cwd)
     run(results, "service", "mypy", [*uv, "run", "mypy"], cwd)
     run(results, "service", "pytest", [*uv, "run", "pytest", "-q"], cwd)
 

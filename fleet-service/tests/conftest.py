@@ -44,7 +44,9 @@ def data_dir(tmp_path: Path, migrated_template: Path) -> Path:
 @pytest.fixture
 def settings(data_dir: Path) -> Settings:
     """Settings isolated from the developer's environment."""
-    return Settings(station_name="test-station", data_dir=data_dir, log_json=True)
+    return Settings(
+        station_name="test-station", data_dir=data_dir, log_json=True, mavlink_links=False
+    )
 
 
 @pytest.fixture

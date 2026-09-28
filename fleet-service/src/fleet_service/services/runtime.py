@@ -26,6 +26,7 @@ from fleet_service.config import Settings
 from fleet_service.db.engine import Database
 from fleet_service.domain.commands import Limits
 from fleet_service.domain.geo import GeoPoint
+from fleet_service.drivers.mavlink import MavlinkLinks
 from fleet_service.drivers.mock import MockFleet
 from fleet_service.services.alerts import AlertService
 from fleet_service.services.commands import CommandService
@@ -71,7 +72,10 @@ class Runtime:
             lost_after=timedelta(seconds=settings.link_lost_after_s),
             controller_of=self.leases.view,
         )
-        self.fleet = FleetManager(self.registry, self.simulator)
+        self.links = (
+            MavlinkLinks(clock) if settings.mavlink_links and not settings.simulation else None
+        )
+        self.fleet = FleetManager(self.registry, self.simulator, self.links)
         self.alerts = AlertService(
             self.bus, settings.battery_low_pct, settings.battery_critical_pct
         )
@@ -118,6 +122,8 @@ class Runtime:
         self._tasks.clear()
         for aircraft_id in self.registry.ids():
             self.fleet.unregister(aircraft_id)
+        if self.links is not None:
+            await self.links.close()
         self.recorder.close()
 
     # --- the periodic work (called by the loops, or directly by tests) ------------------------

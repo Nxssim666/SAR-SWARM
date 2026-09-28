@@ -1,5 +1,5 @@
 # Field ground station: `docker compose -f deploy/compose.yaml up -d --build`.
-# NATS (M2), MediaMTX (M5) and the simulation profiles (M2) are added in their milestones.
+# NATS (M2b) and MediaMTX (M5) are added in their milestones; PX4 SITL is in sim/sitl/.
 name: sar-gcs
 
 services:
@@ -19,6 +19,10 @@ services:
       - fleet-data:/data
     expose:
       - "8000"
+    # MAVLink from the radio (through mavlink-router on the host, see mavlink-router/main.conf):
+    # register aircraft with mavlink_connection udpin://0.0.0.0:14550 (ADR 0022).
+    ports:
+      - "14550:14550/udp"
 
   # Caddy: serves the console, proxies the API, terminates TLS with its internal CA (no Internet).
   console:

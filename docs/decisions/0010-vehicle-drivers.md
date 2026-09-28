@@ -1,6 +1,6 @@
 # 0010. Vehicle integration: driver interface, MAVSDK, ROS 2 bridge, mock
 
-- Status: Accepted
+- Status: Accepted; the `mavsdk_server`-per-aircraft design is superseded by [0022](0022-mavlink-driver-mavsdk-v4.md)
 - Date: 2026-09-28
 
 ## Context

@@ -79,6 +79,32 @@ async def test_invalid_registrations_are_rejected(
     assert response.json()["type"] == "urn:sar-gcs:problem:validation-error"
 
 
+async def test_a_mavlink_connection_needs_a_system_id(
+    client: httpx.AsyncClient, auth: dict[Role, dict[str, str]]
+) -> None:
+    created = await client.post(
+        AIRCRAFT,
+        json={"callsign": "X1", "airframe": "fixed_wing", "mavlink_connection": "udp://:14550"},
+        headers=auth[Role.SUPERVISOR],
+    )
+    linked = await aircraft(
+        client,
+        auth[Role.SUPERVISOR],
+        "X2",
+        mavlink_system_id=3,
+        mavlink_connection="udpin://0.0.0.0:14550",
+    )
+    unlinked = await client.patch(
+        f"{AIRCRAFT}/{linked['id']}",
+        json={"mavlink_system_id": None},
+        headers=auth[Role.SUPERVISOR],
+    )
+
+    for response in (created, unlinked):
+        assert response.status_code == 422
+        assert response.json()["type"] == "urn:sar-gcs:problem:system-id-required"
+
+
 async def test_patch_null_clears_links_and_omitted_fields_stay(
     client: httpx.AsyncClient, auth: dict[Role, dict[str, str]]
 ) -> None:

@@ -71,7 +71,7 @@ Branch on `type`, not on `detail`. Types in v1:
 | 404 | `not-found` | The addressed resource does not exist |
 | 409 | `incident-closed`, `invalid-transition`, `mission-not-editable`, `mission-not-deletable`, `aircraft-in-use`, `area-in-use`, `incident-not-empty`, `children-outside-operating-area`, `aircraft-incompatible`, `aircraft-identity-taken`, `task-exists`, `username-taken`, `group-name-taken`, `relay-path-taken`, `last-admin` | The request conflicts with current state |
 | 409 | `command-id-reused`, `control-held`, `not-controller`, `no-controller`, `already-controller`, `handover-pending`, `no-handover-request`, `alert-not-active`, `simulation-disabled` | Commands, control, alerts, simulation (see below) |
-| 422 | `validation-error` (with `errors[]`), `unknown-reference`, `reference-mismatch`, `outside-operating-area`, `search-area-required`, `too-many-waypoints` | The input is invalid |
+| 422 | `validation-error` (with `errors[]`), `unknown-reference`, `reference-mismatch`, `outside-operating-area`, `search-area-required`, `too-many-waypoints`, `system-id-required` | The input is invalid |
 | 428 | `confirmation-required` | Re-send the identical command with `confirmation_token` |
 | 429 | `rate-limited` | Too many failed logins; see `Retry-After` |
 
@@ -106,7 +106,7 @@ because they may be passwords.
 | Resource | Notes |
 |---|---|
 | `users` | Never deleted; deactivate instead (revokes sessions). The last active admin cannot be demoted or deactivated. |
-| `aircraft` | Callsign (stored upper-case), MAVLink system ID (1–254) and swarm `drone_id` are each unique. A waypoint or area-search task needs `mavlink_system_id`; a swarm task needs `swarm_drone_id` (ADR 0003). An aircraft with command history cannot be deleted (409): its record is kept. |
+| `aircraft` | Callsign (stored upper-case), MAVLink system ID (1–254) and swarm `drone_id` are each unique. A waypoint or area-search task needs `mavlink_system_id`; a swarm task needs `swarm_drone_id` (ADR 0003). `mavlink_connection` (e.g. `udpin://0.0.0.0:14550`, or `serial:///dev/ttyUSB0:57600`) needs `mavlink_system_id` (422 `system-id-required`): many aircraft share one connection and are told apart by system id (ADR 0022). Changing either re-links the aircraft; it is `offline` until heard on the new link. An aircraft with command history cannot be deleted (409): its record is kept. |
 | `groups` | `aircraft_ids` is a set; PATCH replaces it. |
 | `incidents` | `active` ↔ `suspended` → `closed` (terminal; the incident and its children become read-only). The base can't move, nor the radius shrink, while any geometry would fall outside. Delete only when empty. |
 | `search-areas` | `status` can be set by hand (ground teams' results). The geometry is frozen while a non-draft mission uses the area. |
@@ -127,7 +127,9 @@ of the trail can be detected too.
   - `link`: `live`; `stale` after 3 s without telemetry; `lost` after 15 s; `offline` means
     never heard from, or no driver.
   - The latest `telemetry`. Unknown values are `null`: without a GNSS fix, `position` is
-    `null`, never a stale guess.
+    `null`, never a stale guess. `source` is the driver (`mock`, `mavlink`).
+    `flight_mode` includes `offboard` (an onboard computer steers the aircraft); for PX4, a
+    reposition in progress shows as `goto` (ADR 0022).
   - Its `controller` (lease).
 - `GET /aircraft/{id}/telemetry?since&until&limit` returns the recorded history (1 sample
   per second by default), oldest first, with `truncated` when `limit` cut it short.

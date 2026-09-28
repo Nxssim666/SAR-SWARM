@@ -66,6 +66,16 @@ status are in `PLAN.md`, the design is in `docs/architecture.md`, and the reason
   - WebSocket tests create the httpx-ws transport inside the test task, not in a fixture.
   - WebSocket message models are in `api/ws_messages.py`. After changing them, run
     `export-asyncapi`.
+- **MAVLink patterns** (ADR 0022, ADR 0023; `drivers/mavlink.py`):
+  - One hub (MAVSDK instance) per connection URL; aircraft are matched by
+    `mavlink_system_id`, never by port.
+  - Telemetry is emitted only when new data arrived. MAVSDK NaN becomes `None`.
+  - "No answer" (MAVSDK `TIMEOUT`/`NO_SYSTEM`) must stay a pipeline timeout, not a nack.
+  - The driver's plugin subscriptions must be released (`aclose`) before a hub destroys its
+    MAVSDK instance.
+  - Unit-test apps set `mavlink_links=False` (conftest does), so they never bind UDP ports.
+    Tests that need links use `tests/link_support.py` and `tests/mavlink_vehicle.py`
+    (loopback) or `tests/integration` (PX4 SITL, CI only, marker `sitl`).
 - **Tests go in the same change** (ADR 0015):
   - A bug fix starts with a failing test.
   - Each safety rule has a regression test.
@@ -82,7 +92,8 @@ deploy/          compose.yaml, Caddyfile (gateway: TLS, static console, /api pro
 src/             ROS 2 colcon workspace: swarm_sar, swarm_sar_interfaces (onboard; unchanged)
 docs/            architecture.md, decisions/ (ADRs), runbooks/, api/ (openapi.json, asyncapi.json, README)
 scripts/check.py every lint/type/test/build, cross-platform
-sim/             PX4 SITL/Gazebo/SIH harness (from M2a)
+sim/             sitl/compose.yaml (PX4 SIH fleet, CI), linkem.py (link emulator); see sim/README.md
+.github/workflows/  ci.yml (mirrors check.py), sitl.yml (PX4 SITL integration tests)
 ```
 
 ## Commands
@@ -131,8 +142,16 @@ python -m uv run python scripts/m1b_acceptance.py --password <pw>  # live end-to
 python -m uv run python scripts/load_smoke.py --password <pw> --aircraft 50 --clients 3 --seconds 60
 ```
 
-PX4 SITL/Gazebo/SIH arrives in M2a in `sim/`. The onboard standalone simulator
-(`run_standalone.py`) is separate and simulates the swarm_sar companions.
+**PX4 SITL** (ADR 0023) runs in CI (`sitl` workflow), or on a Linux host with Docker:
+
+```bash
+docker compose -f sim/sitl/compose.yaml up -d                      # 5 PX4 SIH instances
+cd fleet-service && SARGCS_SITL=1 uv run pytest -m sitl tests/integration -v
+python sim/linkem.py --listen 14544 --forward 127.0.0.1:24544 --loss 0.2   # link emulator
+```
+
+See `docs/runbooks/simulation.md`. The onboard standalone simulator (`run_standalone.py`) is
+separate and simulates the swarm_sar companions.
 
 ## Milestone status
 
@@ -141,7 +160,7 @@ PX4 SITL/Gazebo/SIH arrives in M2a in `sim/`. The onboard standalone simulator
 | M0 Architecture, ADRs, scaffold | Done |
 | M1a Data model, persistence, auth/RBAC, REST, OpenAPI | Done |
 | M1b Live core: registry, mock driver, commands, leases, WS | Done |
-| M2a PX4 SITL + MAVSDK (1–5) | Next; needs a Linux/Docker decision (M3 could go first) |
+| M2a PX4 SITL + MAVLink driver (1–5) | Built; local checks green; SITL CI run pending (needs a GitHub remote) |
 | M2b SIH 25/50, NATS, ROS 2 bridge, mock video | — |
 | M3 Console MVP | — |
 | M4 Mission planning, patterns, deconfliction, alerts | — |

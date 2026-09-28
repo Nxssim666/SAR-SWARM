@@ -1,0 +1,64 @@
+# PX4 SITL fleet for integration tests (ADR 0023): five PX4 instances with the SIH
+# simulator built in (headless, no Gazebo), one container each, on the host network.
+#
+#   docker compose -f sim/sitl/compose.yaml up -d      # Linux with Docker only
+#
+# Instance i has MAVLink system id i+1 and sends
+#   - its ground station link to UDP 14550 (shared by all instances), and
+#   - its onboard/API link to UDP 14540+i.
+# Homes are 25 m apart east of the PX4 default home (Zurich, 488 m AMSL).
+#
+# Parameters for the tests:
+#   - NAV_DLL_ACT=2: return when the ground station link is lost for COM_DL_LOSS_T s (the
+#     aircraft's own failsafe, ADR 0002 S1).
+#   - SYS_FAILURE_EN=1: allow injected sensor failures (GNSS loss test).
+#   - COM_DISARM_PRFLT=-1 (never auto-disarm before takeoff; the tests confirm each step).
+
+x-px4: &px4
+  # v1.18.0-rc1, pinned by digest; move to the 1.18.0 release when it is published.
+  image: px4io/px4-sitl:v1.18.0-rc1@sha256:39d5a950208a5a45fccbbb0670bd8716663ed0b350ef738447581395e0c92d97
+  network_mode: host
+  init: true
+  stop_grace_period: 2s
+  environment: &env
+    PX4_SIM_MODEL: sihsim_hex
+    PX4_HOME_LAT: "47.397742"
+    PX4_HOME_ALT: "488.0"
+    PX4_PARAM_NAV_DLL_ACT: "2"
+    PX4_PARAM_COM_DL_LOSS_T: "5"
+    PX4_PARAM_SYS_FAILURE_EN: "1"
+    PX4_PARAM_COM_DISARM_PRFLT: "-1"
+
+services:
+  px4-0:
+    <<: *px4
+    command: ["-d", "-i", "0"]
+    environment:
+      <<: *env
+      PX4_HOME_LON: "8.545594"
+  px4-1:
+    <<: *px4
+    command: ["-d", "-i", "1"]
+    environment:
+      <<: *env
+      PX4_HOME_LON: "8.545925"
+  px4-2:
+    <<: *px4
+    command: ["-d", "-i", "2"]
+    environment:
+      <<: *env
+      PX4_HOME_LON: "8.546256"
+  px4-3:
+    <<: *px4
+    command: ["-d", "-i", "3"]
+    environment:
+      <<: *env
+      PX4_SIM_MODEL: sihsim_airplane
+      PX4_HOME_LON: "8.546587"
+  px4-4:
+    <<: *px4
+    command: ["-d", "-i", "4"]
+    environment:
+      <<: *env
+      PX4_SIM_MODEL: sihsim_quadx
+      PX4_HOME_LON: "8.546918"

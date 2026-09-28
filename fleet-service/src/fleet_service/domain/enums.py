@@ -215,6 +215,7 @@ class FlightMode(StrEnum):
     RETURN = "return"
     LAND = "land"
     MANUAL = "manual"  # a pilot flies it (RC)
+    OFFBOARD = "offboard"  # an onboard computer steers it (the swarm companion, ADR 0003)
     UNKNOWN = "unknown"
 
 

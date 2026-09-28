@@ -1358,7 +1358,7 @@ export interface components {
          * @description Autopilot-agnostic flight mode shown to operators (drivers map to it).
          * @enum {string}
          */
-        FlightMode: "hold" | "takeoff" | "goto" | "mission" | "return" | "land" | "manual" | "unknown";
+        FlightMode: "hold" | "takeoff" | "goto" | "mission" | "return" | "land" | "manual" | "offboard" | "unknown";
         /**
          * GeoPoint
          * @description A WGS84 position with explicit keys (never a bare pair).

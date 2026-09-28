@@ -21,6 +21,7 @@ from fleet_service.domain.commands import VehicleView
 from fleet_service.domain.enums import Airframe, LinkState
 from fleet_service.domain.telemetry import TelemetrySample
 from fleet_service.drivers.base import VehicleDriver
+from fleet_service.drivers.mavlink import MavlinkDriver, MavlinkLinks, normalize_url
 from fleet_service.drivers.mock import MockFleet
 from fleet_service.services.views import AircraftLive, LeaseView, TelemetryView
 
@@ -37,6 +38,7 @@ class LiveRecord:
     driver: VehicleDriver | None = None
     sample: TelemetrySample | None = None
     link: LinkState = LinkState.OFFLINE
+    route: tuple[str, int] | None = None  # MAVLink connection and system id behind the driver
 
 
 class FleetRegistry:
@@ -143,11 +145,20 @@ class FleetRegistry:
 
 
 class FleetManager:
-    """Keeps drivers in step with the aircraft registry in the database."""
+    """Keeps drivers in step with the aircraft registry in the database.
 
-    def __init__(self, registry: FleetRegistry, simulator: MockFleet | None) -> None:
+    In simulation mode every aircraft gets a simulated one (ADR 0021). Otherwise an aircraft
+    whose registration names a MAVLink connection and system id gets a MAVLink driver on
+    that connection's hub (ADR 0022); changing either replaces the driver, and forgets the
+    old link's telemetry. The two are never mixed.
+    """
+
+    def __init__(
+        self, registry: FleetRegistry, simulator: MockFleet | None, links: MavlinkLinks | None
+    ) -> None:
         self.registry = registry
         self.simulator = simulator
+        self.links = links if simulator is None else None
 
     async def load(self, db: AsyncSession) -> None:
         """Register every aircraft in the database (at startup)."""
@@ -155,23 +166,52 @@ class FleetManager:
             self.register(aircraft)
 
     def register(self, aircraft: Aircraft) -> None:
-        """Track a new aircraft, or update the identity of a tracked one."""
+        """Track a new aircraft, or update the identity and link of a tracked one."""
+        route = self._route(aircraft)
         record = self.registry.get(aircraft.id)
         if record is not None:
             record.callsign = aircraft.callsign
             record.airframe = aircraft.airframe
+            if self.links is not None and route != record.route:
+                self._release(record)
+                record.sample, record.link = None, LinkState.OFFLINE
+                self._attach(record, aircraft, route)
             self.registry.announce(aircraft.id)
             return
-        driver = self.simulator.add(aircraft.id, aircraft.airframe) if self.simulator else None
-        record = LiveRecord(aircraft.id, aircraft.callsign, aircraft.airframe, driver)
-        if driver is not None:
-            driver.start(self.registry.ingest)
+        record = LiveRecord(aircraft.id, aircraft.callsign, aircraft.airframe)
+        if self.simulator is not None:
+            record.driver = self.simulator.add(aircraft.id, aircraft.airframe)
+            record.driver.start(self.registry.ingest)
+        else:
+            self._attach(record, aircraft, route)
         self.registry.add(record)
 
     def unregister(self, aircraft_id: str) -> None:
         """Stop tracking an aircraft and release its driver."""
         record = self.registry.remove(aircraft_id)
-        if record is not None and record.driver is not None:
-            record.driver.stop()
+        if record is not None:
+            self._release(record)
         if self.simulator is not None:
             self.simulator.remove(aircraft_id)
+
+    def _route(self, aircraft: Aircraft) -> tuple[str, int] | None:
+        if aircraft.mavlink_connection is None or aircraft.mavlink_system_id is None:
+            return None
+        return normalize_url(aircraft.mavlink_connection), aircraft.mavlink_system_id
+
+    def _attach(
+        self, record: LiveRecord, aircraft: Aircraft, route: tuple[str, int] | None
+    ) -> None:
+        record.route = route
+        if self.links is None or route is None:
+            return
+        url, system_id = route
+        record.driver = self.links.driver(aircraft.id, url, system_id, aircraft.airframe)
+        record.driver.start(self.registry.ingest)
+
+    def _release(self, record: LiveRecord) -> None:
+        driver, record.driver, record.route = record.driver, None, None
+        if isinstance(driver, MavlinkDriver) and self.links is not None:
+            self.links.release(driver)
+        elif driver is not None:
+            driver.stop()

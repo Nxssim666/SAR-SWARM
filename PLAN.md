@@ -18,7 +18,7 @@ the development host and is checked in CI.
 | M0 Architecture, ADRs, scaffold | **Done** (2026-09-28) |
 | M1a Data model, persistence, auth/RBAC, REST, OpenAPI | **Done** (2026-09-28) |
 | M1b Live fleet core: registry, mock driver, commands, leases, WebSocket | **Done** (2026-09-28) |
-| M2a PX4 SITL harness + MAVSDK driver (1–5 aircraft) | Next; needs a decision: Linux/Docker host (see below) |
+| M2a PX4 SITL harness + MAVSDK driver (1–5 aircraft) | **Built** (2026-09-28); local checks green, **SITL CI run pending** |
 | M2b Scale and swarm: SIH 25/50, NATS, ROS 2 bridge, mock video | — |
 | M3 Console MVP | — |
 | M4 Mission planning, patterns, bulk tasking, deconfliction, alerts | — |
@@ -30,10 +30,8 @@ is several weeks of work and a review checkpoint in the middle lowers risk.
 
 ## Decisions needed from the user
 
-1. **Before M2a:** where PX4 SITL runs. The options are to enable WSL2 + Docker Desktop on the
-   Windows host (needs admin rights and a reboot), use a separate Ubuntu 24.04 machine, or run
-   SITL in CI only. M1a, M1b and M3 don't need it (mock driver). If the decision takes time,
-   M3 (the console) can be built next against simulation mode, with M2a following.
+1. ~~Before M2a: where PX4 SITL runs.~~ **Decided: CI only** (GitHub Actions; ADR 0023).
+   Needed now: the GitHub repository to push to, with the GitHub connector authorized.
 2. **Before M4:** the region(s) to prepare offline basemaps for, and whether a DEM is available
    for contour search.
 3. **Any time:** confirm or override the stack (ADRs 0004–0017) and assumptions A1–A11 (ADR 0002).
@@ -248,41 +246,80 @@ radio links):
 
 ---
 
-## M2a: PX4 SITL harness and MAVSDK driver (1–5 aircraft)
-
-**Prerequisite:** decision 1 above.
+## M2a: PX4 SITL harness and MAVLink driver (1–5 aircraft)
 
 **Goal:** the fleet service tracks and commands real PX4 SITL vehicles.
 
-**Scope**
+**Decisions** (the user): SITL runs **in CI only**, and the MAVLink driver uses **native
+MAVSDK v4** (in-process, no `mavsdk_server`). See ADR 0022 and ADR 0023.
 
-- `sim/`: Dockerfile(s) pinning a PX4 release and Gazebo Harmonic; launch scripts for
-  N vehicles (`px4 -i n`) with unique system IDs and ports `14540+n`.
-  - Airframes: fixed-wing (gz `rc_cessna`/`advanced_plane`, SIH airplane) and hexacopter
-    (an x500-derived gz model, verified or created; SIH multicopter stand-in).
-  - Generated `fleet.yaml` registers the aircraft.
-- **`mavsdk` driver:** one `mavsdk_server` per aircraft, supervised. Uses the telemetry, action,
-  mission (upload with verification), geofence, param and failure plugins.
-- **Link emulator:** an asyncio UDP proxy with per-vehicle loss, latency, jitter and blackout
-  schedules, controllable from tests.
-- **Failure injection:** GPS off, battery drain (`SIM_BAT_DRAIN`), geofence breach (`GF_ACTION`).
-- `mavlink-router` config for a backup QGroundControl.
+**Built** (2026-09-28)
 
-**Tests** (integration, Linux + Docker)
+- [x] **`drivers/mavlink.py`** (ADR 0022):
+  - [x] One hub (MAVSDK instance) per connection, and aircraft matched by **MAVLink system
+        id**, so one port or radio carries the whole fleet.
+  - [x] Telemetry subscriptions become canonical samples, emitted only when new data
+        arrived. NaN becomes `null`, and a position without a 3D fix is `null`.
+  - [x] PX4 modes mapped, with a new `offboard` mode. A reposition shows as `goto` until
+        arrival, and RESUME resends a held reposition.
+  - [x] Commands: arm, disarm, takeoff, hold, resume, return, land and goto (home AMSL plus
+        relative altitude). An aircraft's refusal becomes a nack with its reason; no answer
+        becomes a timeout.
+  - [x] Hubs open with the first aircraft on a connection and close, releasing the port,
+        with the last one.
+- [x] **Fleet manager:** outside simulation mode, a MAVLink driver per linked aircraft;
+      changing the connection or system id replaces it. `SARGCS_MAVLINK_LINKS` switches links
+      off (unit tests).
+- [x] **API:** `mavlink_connection` requires `mavlink_system_id` (422 `system-id-required`).
+- [x] **`sim/sitl/compose.yaml`:** five PX4 SIH instances (3 hexa, 1 airplane, 1 quad),
+      `px4io/px4-sitl:v1.18.0-rc1` pinned by digest, homes 25 m apart, failsafe and
+      failure-injection parameters (ADR 0023).
+- [x] **`sim/linkem.py`:** UDP link emulator with loss, latency, jitter and blackout; Python
+      API and CLI.
+- [x] **`.github/workflows/sitl.yml`:** starts the fleet, runs `pytest -m sitl`, and uploads
+      the JUnit results and PX4 logs.
+- [x] `deploy/mavlink-router/main.conf`: a sample radio fan-out to the fleet service and a
+      backup QGroundControl *(unverified)*.
+- [x] Docs: ADR 0022, ADR 0023, `sim/README.md`, `docs/runbooks/simulation.md`.
 
-- 1 aircraft: connect, telemetry fields and units, arm, takeoff, hold, RTL, land.
-- 1 aircraft: upload a mission and verify it by reading it back.
-- 5 mixed aircraft: all tracked, and bulk HOLD reaches every one.
-- Link-loss and GPS-loss injection raise alerts, and PX4 failsafe behaviour is observed.
+**Tests**
 
-**Acceptance:** the integration suite passes in the Linux environment. Tracking 1 and 5
-aircraft is shown with measured latencies.
+- **Local** (any OS, in `scripts/check.py`): fleet-service has **401 tests plus
+  Schemathesis over 69 operations**, all passing; 6 SITL tests are skipped locally.
+  - MAVLink driver unit tests against stand-in plugins.
+  - **MAVLink loopback tests: the real MAVSDK v4 binding** against minimal PX4-like pymavlink
+    vehicles, through REST and the command pipeline. They cover:
+    - two system ids on one port;
+    - a full arm → return flight, every step verified;
+    - an aircraft's refusal with its reason;
+    - an unanswered command timing out;
+    - relinking an aircraft, and releasing the port.
+  - Link emulator tests.
+  - The system-id API rule.
+- **CI only** (`tests/integration/test_sitl.py`) *(unverified: not run yet)*:
+  1. five aircraft tracked on one port by system id;
+  2. hexacopter full tasking;
+  3. bulk hold of three hexacopters;
+  4. fixed-wing takeoff and return;
+  5. link loss through the emulator, with alerts and PX4's own return;
+  6. GNSS failure injection with the `gps_lost` alert.
 
-**Docs:** `sim/README.md` (versions, ports, commands), `docs/runbooks/simulation.md`.
+**Acceptance:** the `sitl` workflow is green on GitHub. **Pending:** the repository has no
+remote yet.
 
-**Risks:** the Gazebo hexa model; CPU cost of Gazebo; mavsdk_server/grpcio on the target Python.
+**Moved out of M2a**
 
-**Stop:** report, then wait.
+- Mission upload with read-back verification, and geofence upload → M4, with mission
+  planning (the MAVSDK mission and geofence plugins).
+- Battery-drain and geofence-breach injection in SITL → M4.
+- Gazebo (tier 1) → M2b, with camera and mock video.
+- Measured tracking latency for 1 and 5 SITL aircraft → the M2b scale report.
+
+**Known gaps**
+
+- Flight behaviour against PX4 is verified in CI only; the development host has no Docker.
+- The loopback vehicles are test doubles and prove nothing about PX4 compatibility.
+- The image is PX4 v1.18.0-rc1 (no prebuilt v1.17.0 image); move to 1.18.0 when released.
 
 ---
 
@@ -290,8 +327,9 @@ aircraft is shown with measured latencies.
 
 **Scope**
 
-- SIH headless profile for 25 and 50 vehicles; a scale report (latency, CPU, memory including
-  mavsdk_server).
+- SIH headless profile for 25 and 50 vehicles; a scale report (latency, CPU, memory) on a
+  runner or host large enough.
+- Gazebo Harmonic (tier 1) with a hexacopter model (derived from x500), and camera video.
 - NATS in compose, and the NATS `EventBus` implementation. The bus tests run against both
   implementations.
 - `src/sar_gcs_bridge` (ament_python, a ROS 2 Jazzy container):
@@ -430,7 +468,7 @@ networking or a discovery server).
 - **Load tests:**
   - 25 and 50 aircraft (mock at 10 Hz, plus SIH) with 6 consoles.
   - **Enforce the budgets in `docs/architecture.md`.**
-  - Measure mavsdk_server memory at 50; decide on the pymavlink fallback if it's over budget.
+  - Measure the MAVLink driver at 50 SIH aircraft (CPU, memory, thread pool); decide on the pymavlink fallback if over budget.
 
 **Tests**
 
@@ -482,9 +520,9 @@ networking or a discovery server).
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| No Linux/Docker on the development host | M2a is blocked | Decision 1. M1 and M3 proceed on the mock driver |
-| No stock Gazebo hexa model | M2a delay | Derive from x500. Use the SIH multicopter for scale |
-| mavsdk_server × 50 memory | Load budget | Measure in M5. pymavlink multiplexed fallback (ADR 0010) |
+| No Linux/Docker on the development host | SITL only in CI | Decided: CI only (ADR 0023). Loopback tests cover the MAVLink path locally |
+| No stock Gazebo hexa model | M2b delay | Derive from x500. SIH has `sihsim_hex` for scale |
+| MAVSDK v4 is new (Sept. 2026) | Driver bugs | Loopback + SITL tests; pymavlink fallback stays open (ADR 0022) |
 | CI runner too small for 50 SIH | Scale test only on a large host | Self-hosted or larger runner. Document where it was run |
 | Browser video decode at many streams | Operator workload | Grid cap of 9, on-demand streams (ADR 0012) |
 | Contour search without a DEM | Reduced pattern fidelity | DEM import. A labelled fallback |

@@ -25,7 +25,7 @@ from fleet_service.api.pages import Page
 from fleet_service.auth.permissions import Permission
 from fleet_service.db.models import Aircraft, Task
 from fleet_service.domain.enums import Airframe
-from fleet_service.errors import Conflict, problem_responses
+from fleet_service.errors import Conflict, InvalidRequest, problem_responses
 from fleet_service.ids import new_id
 from fleet_service.services import audit
 
@@ -44,7 +44,11 @@ MavlinkConnection = Annotated[
     StringConstraints(
         max_length=200, pattern=r"^(udp|udpin|udpout|tcp|tcpin|tcpout|serial)://\S+$"
     ),
-    Field(description="MAVSDK connection string, e.g. udp://:14541 (ADR 0010)."),
+    Field(
+        description="MAVLink connection the aircraft is reached on, e.g. udpin://0.0.0.0:14550 "
+        "(ADR 0022). Aircraft sharing a connection are told apart by mavlink_system_id, "
+        "which it requires."
+    ),
 ]
 SwarmDroneId = Annotated[
     int,
@@ -123,6 +127,16 @@ class AircraftUpdate(PatchModel):
         return value.upper()
 
 
+def _ensure_link_complete(connection: str | None, system_id: int | None) -> None:
+    """A connection is shared by many aircraft; only the system id says which one (ADR 0022)."""
+    if connection is not None and system_id is None:
+        raise InvalidRequest(
+            "A MAVLink connection needs the aircraft's mavlink_system_id to tell it apart.",
+            slug="system-id-required",
+            extensions={"field": "mavlink_system_id"},
+        )
+
+
 async def _ensure_unique(
     db: DbSession, callsign: str, system_id: int | None, drone_id: int | None, exclude_id: str
 ) -> None:
@@ -169,6 +183,7 @@ async def create_aircraft(
     principal: CurrentPrincipal,
 ) -> AircraftOut:
     """Register an aircraft."""
+    _ensure_link_complete(body.mavlink_connection, body.mavlink_system_id)
     await _ensure_unique(db, body.callsign, body.mavlink_system_id, body.swarm_drone_id, "")
     now = context.clock.now()
     aircraft = Aircraft(id=new_id(), **body.model_dump(), created_at=now, updated_at=now)
@@ -207,6 +222,10 @@ async def update_aircraft(
     """Change an aircraft's registration."""
     aircraft = await get_or_404(db, Aircraft, aircraft_id, "Aircraft")
     values = patch_values(body)
+    _ensure_link_complete(
+        values.get("mavlink_connection", aircraft.mavlink_connection),
+        values.get("mavlink_system_id", aircraft.mavlink_system_id),
+    )
     await _ensure_unique(
         db,
         values.get("callsign", aircraft.callsign),

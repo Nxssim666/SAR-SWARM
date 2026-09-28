@@ -7101,7 +7101,7 @@
                 "type": "string",
                 "maxLength": 200,
                 "pattern": "^(udp|udpin|udpout|tcp|tcpin|tcpout|serial)://\\S+$",
-                "description": "MAVSDK connection string, e.g. udp://:14541 (ADR 0010)."
+                "description": "MAVLink connection the aircraft is reached on, e.g. udpin://0.0.0.0:14550 (ADR 0022). Aircraft sharing a connection are told apart by mavlink_system_id, which it requires."
               },
               {
                 "type": "null"
@@ -7383,7 +7383,7 @@
                 "type": "string",
                 "maxLength": 200,
                 "pattern": "^(udp|udpin|udpout|tcp|tcpin|tcpout|serial)://\\S+$",
-                "description": "MAVSDK connection string, e.g. udp://:14541 (ADR 0010)."
+                "description": "MAVLink connection the aircraft is reached on, e.g. udpin://0.0.0.0:14550 (ADR 0022). Aircraft sharing a connection are told apart by mavlink_system_id, which it requires."
               },
               {
                 "type": "null"
@@ -8319,6 +8319,7 @@
           "return",
           "land",
           "manual",
+          "offboard",
           "unknown"
         ],
         "title": "FlightMode",

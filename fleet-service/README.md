@@ -9,7 +9,8 @@ python -m uv sync                                   # create .venv from uv.lock
 python -m uv run fleet-service create-admin --username chief   # first admin (prompts for password)
 python -m uv run fleet-service                      # serve on 127.0.0.1:8000 (migrates data/ first)
 python -m uv run --env-file simulation.env fleet-service      # simulation mode (ADR 0021), data-sim/
-python -m uv run pytest                             # tests (~3.5 min including Schemathesis)
+python -m uv run pytest                             # tests (~4 min including Schemathesis)
+SARGCS_SITL=1 python -m uv run pytest -m sitl tests/integration   # PX4 SITL (Linux + Docker; see sim/)
 python -m uv run ruff check . && python -m uv run ruff format --check . && python -m uv run mypy
 python -m uv run fleet-service export-openapi       # after API changes: docs/api/openapi.json
 python -m uv run fleet-service export-asyncapi      # after WebSocket changes: docs/api/asyncapi.json
@@ -30,7 +31,7 @@ a CDN, so it needs Internet until M6. The WebSocket is `/api/v1/ws`. Settings ar
 |---|---|
 | `api/` | Routers, request dependencies, the WebSocket and its messages |
 | `domain/` | Pure rules: enums, geo, geofences, command rules, telemetry sample |
-| `drivers/` | Vehicle drivers: the interface, and the mock used in simulation mode |
+| `drivers/` | Vehicle drivers: the interface, MAVLink (MAVSDK v4, ADR 0022), and the mock used in simulation mode |
 | `services/` | Fleet registry, commands, leases, alerts, recorder, audit, and the runtime that runs them |
 | `bus.py` | The in-process event bus |
 | `auth/` | Accounts, sessions, permissions |

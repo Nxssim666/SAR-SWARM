@@ -5,16 +5,18 @@ Ground control system for a civilian search-and-rescue drone fleet: up to 50 PX4
 with different roles, one field ground station, and no cloud. This page is the living overview.
 The reasons behind it are in [`decisions/`](decisions/0001-record-architecture-decisions.md).
 
-Status: **M1b**. The fleet service is built through its live core:
+Status: **M2a**. The fleet service is built through its live core and its MAVLink link:
 
 - persistent domain, auth/RBAC and a hash-chained audit trail;
 - the in-process bus, the fleet registry, and the mock driver in simulation mode;
+- the MAVLink driver on MAVSDK v4, one hub per connection, with aircraft matched by system
+  id (ADR 0022);
 - the command pipeline, control leases and alerts;
 - REST and WebSocket APIs ([`api/README.md`](api/README.md)).
 
-The console is still a shell. Everything marked with a later milestone below (NATS, the ROS
-bridge, MediaMTX, the MAVSDK driver) is designed but not built yet. Measured M1b figures are
-in [`../PLAN.md`](../PLAN.md).
+PX4 SITL runs in CI (ADR 0023). The console is still a shell. Everything marked with a later
+milestone below (NATS, the ROS bridge, MediaMTX) is designed but not built yet. Measured
+figures are in [`../PLAN.md`](../PLAN.md).
 
 ## System context
 
@@ -58,14 +60,13 @@ flowchart TB
     N[[nats - M2]]
     M[mediamtx - M5]
     R[ros-bridge - M2<br/>ROS 2 Jazzy, reuses swarm_sar codec]
-    MR[mavlink-router - M2]
-    MS[mavsdk_server × N - M2]
+    MR[mavlink-router<br/>sample config]
   end
   B -- HTTPS /api, WSS /api/v1/ws --> C --> F
   B -- WHEP / WebRTC --> C --> M
   F --- DB & TS
   F <--> N <--> R
-  F <-- gRPC --> MS <-- MAVLink UDP --> MR
+  F <-- MAVLink UDP<br/>MAVSDK v4 in-process --> MR
   MR <-- radio --> AC[aircraft]
   R <-- DDS --> AC
   M <-- RTSP/RTP/SRT --- AC
@@ -80,7 +81,7 @@ services/   fleet registry (live state, link state), command dispatcher, control
             alert engine, mission service, audit writer, telemetry recorder
 domain/     pure, fully unit-tested logic: command rules & preconditions, search patterns,
             deconfliction, geo validation, units/frames
-drivers/    VehicleDriver implementations: mock (M1), mavsdk (M2); swarm via bus (M2)
+drivers/    VehicleDriver implementations: mock (M1), mavlink via MAVSDK v4 (M2a); swarm via bus (M2b)
 bus/        EventBus: in-process (M1), NATS (M2)
 db/         SQLAlchemy models, repositories, Alembic migrations
 auth/       accounts, sessions, permissions
@@ -139,7 +140,7 @@ sequenceDiagram
 | Command accepted → dispatched, p95 | ≤ 100 ms |
 | Link-state change → alert on console, p95 | ≤ 1 s after the threshold |
 | Fleet-service CPU | ≤ 1 core average |
-| Fleet-service RSS (excluding mavsdk_server processes) | ≤ 500 MB |
+| Fleet-service RSS (MAVSDK runs in-process) | ≤ 500 MB |
 | Console map frame rate | ≥ 30 fps on the reference laptop |
 | WebSocket bandwidth per console | ≤ 150 KB/s at the default coalescing rate |
 
@@ -162,7 +163,7 @@ sequenceDiagram
 | `fleet-service/` | Backend (Python, FastAPI). See its `README.md`. |
 | `fleet-console/` | Operator console (React, TypeScript). See its `README.md`. |
 | `deploy/` | Compose file and gateway config for the ground station |
-| `sim/` (M2) | PX4 SITL / Gazebo / SIH harness, link emulator, mock video |
+| `sim/` | PX4 SITL (SIH) fleet for CI, link emulator; Gazebo and mock video in M2b |
 | `src/` | ROS 2 colcon workspace: the onboard `swarm_sar` packages (unchanged) and, from M2, `sar_gcs_bridge` |
 | `docs/` | This page, ADRs, API specs (M1), runbooks |
 | `scripts/check.py` | Runs every lint, type check, test and build |

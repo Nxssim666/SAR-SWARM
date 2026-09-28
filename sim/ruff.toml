@@ -1,0 +1,2 @@
+# The simulation tools follow the fleet service's lint rules.
+extend = "../fleet-service/pyproject.toml"

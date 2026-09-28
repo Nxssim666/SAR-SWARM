@@ -1,0 +1,60 @@
+# The fleet service against PX4 itself (ADR 0023): five PX4 SIH instances in containers,
+# the SITL integration tests over real MAVLink, logs kept as artifacts.
+name: sitl
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sitl-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sitl:
+    name: PX4 SITL integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: fleet-service
+    steps:
+      - uses: actions/checkout@v5
+      - name: Start the PX4 fleet
+        working-directory: .
+        run: |
+          docker compose -f sim/sitl/compose.yaml pull --quiet
+          docker compose -f sim/sitl/compose.yaml up -d
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Integration tests
+        env:
+          SARGCS_SITL: "1"
+        run: >
+          uv run pytest -m sitl tests/integration -v -p no:cacheprovider
+          --junitxml=../sitl-results/junit.xml -o log_cli=true -o log_cli_level=WARNING
+      - name: Collect PX4 logs
+        if: always()
+        working-directory: .
+        run: |
+          mkdir -p sitl-results
+          docker compose -f sim/sitl/compose.yaml ps -a > sitl-results/containers.txt
+          docker compose -f sim/sitl/compose.yaml logs --no-color --timestamps > sitl-results/px4.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sitl-results
+          path: sitl-results/
+          retention-days: 14
+      - name: Stop the PX4 fleet
+        if: always()
+        working-directory: .
+        run: docker compose -f sim/sitl/compose.yaml down

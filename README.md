@@ -16,11 +16,11 @@ decentralized multicopter search swarm that the ground system tasks through a br
 > weapons, targeting or military functionality of any kind (see
 > [ADR 0002](docs/decisions/0002-scope-safety-and-assumptions.md)).
 
-> **Status: M1b.** The fleet service tracks and commands aircraft live, with simulated
-> aircraft for now. It has a confirmation-guarded command pipeline, operator control
-> handover, alerts, a WebSocket feed, and a tamper-evident audit trail, all behind REST and
-> WebSocket contracts ([docs/api](docs/api/README.md)). PX4 SITL (M2) and the operator
-> console (M3) follow. See [PLAN.md](PLAN.md).
+> **Status: M2a.** The fleet service tracks and commands aircraft live, simulated or PX4
+> over MAVLink. It has a confirmation-guarded command pipeline, operator control handover,
+> alerts, a WebSocket feed, and a tamper-evident audit trail, all behind REST and WebSocket
+> contracts ([docs/api](docs/api/README.md)). PX4 SITL runs in CI
+> ([sim/](sim/README.md)). The operator console (M3) follows. See [PLAN.md](PLAN.md).
 
 ## Layout
 
@@ -29,6 +29,7 @@ decentralized multicopter search swarm that the ground system tasks through a br
 | [`fleet-service/`](fleet-service/) | Backend: FastAPI, fleet state, tasking, commands, audit, REST + WebSocket |
 | [`fleet-console/`](fleet-console/) | Operator console: React + TypeScript, MapLibre (from M3) |
 | [`deploy/`](deploy/) | Docker Compose + Caddy gateway for the field ground station |
+| [`sim/`](sim/README.md) | PX4 SITL fleet (CI) and the link emulator |
 | [`src/`](src/) | ROS 2 workspace: onboard [`swarm_sar`](src/swarm_sar/README.md) + `swarm_sar_interfaces` |
 | [`docs/`](docs/) | [Architecture](docs/architecture.md), [ADRs](docs/decisions/0001-record-architecture-decisions.md), [runbooks](docs/runbooks/dev-setup.md) |
 | [`scripts/check.py`](scripts/check.py) | Runs every lint, type check, test and build |

@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     sim_seed: int = Field(default=0, ge=0)
 
     # --- links and alerts (ADR 0010) ---
+    mavlink_links: bool = Field(
+        default=True,
+        description="Open the MAVLink connections of registered aircraft (ADR 0022). Off in "
+        "unit tests, which must not bind UDP ports; ignored in simulation mode.",
+    )
     link_stale_after_s: float = Field(default=3.0, gt=0.0, le=60.0)
     link_lost_after_s: float = Field(default=15.0, gt=0.0, le=600.0)
     battery_low_pct: float = Field(default=30.0, ge=0.0, le=100.0)
