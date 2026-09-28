@@ -1,0 +1,80 @@
+# Mirrors scripts/check.py, one job per suite so failures are easy to locate.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  onboard:
+    name: onboard swarm_sar (py${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv run --no-project --with-requirements requirements-standalone.txt python -m pytest -q
+
+  fleet-service:
+    name: fleet-service (py${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.14"]
+    defaults:
+      run:
+        working-directory: fleet-service
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - run: uv run pytest -q
+
+  fleet-console:
+    name: fleet-console
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: fleet-console
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: fleet-console/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build
+
+  images:
+    name: container images build
+    runs-on: ubuntu-24.04
+    needs: [fleet-service, fleet-console]
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker compose -f deploy/compose.yaml config --quiet
+      - run: docker compose -f deploy/compose.yaml build

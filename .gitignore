@@ -7,4 +7,25 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
 *.egg-info/
+.venv/
+# Repo-local tools (portable Node.js etc., see docs/runbooks/dev-setup.md)
+.tools/
+# Node
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+# Runtime data: operational/telemetry databases, recordings
+fleet-service/data/
+*.db
+*.db-wal
+*.db-shm
+# Machine-specific Claude Code files (launch.json points at this host's .tools paths)
+.claude/launch.json
+.claude/settings.local.json
+# Local environment overrides
+.env
+.env.*
+!.env.example

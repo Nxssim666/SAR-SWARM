@@ -1,0 +1,25 @@
+# Ground-station gateway. TLS comes from Caddy's internal CA because the field has no
+# Internet; trust its root certificate on operator devices once (docs/runbooks/).
+# SARGCS_SITE_ADDRESS: the ground station's LAN hostname or IP, e.g. gcs.local or 10.0.0.2.
+
+{$SARGCS_SITE_ADDRESS:localhost} {
+	tls internal
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy fleet-service:8000
+	}
+
+	handle {
+		root * /srv/console
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		Content-Security-Policy "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; frame-ancestors 'none'"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+}
