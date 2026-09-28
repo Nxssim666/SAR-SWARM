@@ -66,6 +66,44 @@ This prompts for a password of 10 or more characters. Log in through `/api/v1/do
 After changing the API, run `fleet-service export-openapi`, then `npm run gen:api` in
 `fleet-console/`. The tests fail until both generated files are committed.
 
+## Simulation mode (live aircraft without hardware)
+
+`fleet-service/simulation.env` switches on simulation mode (ADR 0021). Every registered
+aircraft is then backed by a simulated one: kinematics, modes and PX4-like failsafes. It
+keeps its data in `fleet-service/data-sim/`, apart from normal development data.
+
+```bash
+cd fleet-service
+python -m uv run --env-file simulation.env fleet-service create-admin --username chief
+python -m uv run --env-file simulation.env fleet-service
+```
+
+- Register aircraft (`POST /api/v1/aircraft`). They spawn on a 15 m grid at the simulation
+  origin, which defaults to Zurich; set `SARGCS_SIM_ORIGIN_LATITUDE` and
+  `SARGCS_SIM_ORIGIN_LONGITUDE` to move it.
+- Take control and send commands (see `docs/api/README.md`).
+- Inject faults with `POST /api/v1/simulation/aircraft/{id}/faults`, e.g. `{"link": false}`,
+  `{"gps": false}` or `{"battery_pct": 12}`.
+- **End-to-end check:**
+
+  ```bash
+  python -m uv run python scripts/m1b_acceptance.py --password <chief's password>
+  ```
+
+  It runs 5 aircraft through arm, takeoff, hold and return, and checks the WebSocket feed
+  and the audit trail. Then run
+  `python -m uv run --env-file simulation.env fleet-service audit-verify`.
+- **Load smoke:**
+
+  ```bash
+  python -m uv run python scripts/load_smoke.py --password <pw> --aircraft 50 --clients 3 --seconds 60
+  ```
+
+  It prints the telemetry age, rate and bandwidth per console.
+
+The simulator is not PX4: see ADR 0021 for what it doesn't model. Delete `data-sim/` to
+start over.
+
 ## Container stack (Linux or Docker Desktop)
 
 ```bash

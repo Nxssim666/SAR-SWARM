@@ -17,8 +17,8 @@ the development host and is checked in CI.
 |---|---|
 | M0 Architecture, ADRs, scaffold | **Done** (2026-09-28) |
 | M1a Data model, persistence, auth/RBAC, REST, OpenAPI | **Done** (2026-09-28) |
-| M1b Live fleet core: registry, mock driver, commands, leases, WebSocket | Next |
-| M2a PX4 SITL harness + MAVSDK driver (1–5 aircraft) | Blocked on a decision: Linux/Docker host (see below) |
+| M1b Live fleet core: registry, mock driver, commands, leases, WebSocket | **Done** (2026-09-28) |
+| M2a PX4 SITL harness + MAVSDK driver (1–5 aircraft) | Next; needs a decision: Linux/Docker host (see below) |
 | M2b Scale and swarm: SIH 25/50, NATS, ROS 2 bridge, mock video | — |
 | M3 Console MVP | — |
 | M4 Mission planning, patterns, bulk tasking, deconfliction, alerts | — |
@@ -32,7 +32,8 @@ is several weeks of work and a review checkpoint in the middle lowers risk.
 
 1. **Before M2a:** where PX4 SITL runs. The options are to enable WSL2 + Docker Desktop on the
    Windows host (needs admin rights and a reboot), use a separate Ubuntu 24.04 machine, or run
-   SITL in CI only. M1a, M1b and M3 don't need it (mock driver).
+   SITL in CI only. M1a, M1b and M3 don't need it (mock driver). If the decision takes time,
+   M3 (the console) can be built next against simulation mode, with M2a following.
 2. **Before M4:** the region(s) to prepare offline basemaps for, and whether a DEM is available
    for contour search.
 3. **Any time:** confirm or override the stack (ADRs 0004–0017) and assumptions A1–A11 (ADR 0002).
@@ -161,60 +162,89 @@ aircraft yet.
 
 ---
 
-## M1b: Live fleet core (registry, mock driver, command pipeline, leases, WebSocket)
+## M1b: Live fleet core (mock driver, live state, commands, leases, alerts, WebSocket) ✅
 
 **Goal:** live aircraft state and safe command handling end to end, against simulated aircraft.
 
-**Scope**
+**Built** (2026-09-28; ADR 0020, ADR 0021)
 
-- `bus/`: `EventBus` interface with an in-process implementation and the delivery classes
-  (ADR 0008).
-- `drivers/`: the `VehicleDriver` interface, capabilities and canonical `TelemetrySample`.
-  The **mock driver** is a kinematic multirotor and fixed-wing simulation with modes, battery
-  drain, and link-loss and GPS-loss injection, and it is seedable.
-- **Fleet registry:** in-memory live state, link state (live → stale → lost), telemetry
-  recorder (1 Hz batches into `telemetry.db`), and `GET /telemetry/{aircraft}/history`.
-- **Command pipeline** (ADR 0011):
-  - Idempotent `command_id`.
-  - Permission, lease and capability checks, and precondition checks.
-  - **428 confirmation with a request-bound token.**
-  - Per-aircraft dispatch, ack/nack/timeout, and effect verification.
-  - Bulk results.
-  - Commands: arm, disarm (on the ground only), takeoff, hold, resume, RTL, land, goto.
-- **Control leases:** take, release, handover request/accept/decline with a timeout,
-  supervisor force (with a reason), disconnect grace period, then orphaned with an alert.
-- **Basic alerts:** link stale/lost, low battery, GPS loss, command timeout. States are active,
-  acknowledged and cleared, and duplicates are suppressed.
-- New permissions `aircraft.hold`, `aircraft.command`, `control.override`, `alerts.ack`
-  (ADR 0018 pattern), covered by the authorization matrix.
-- **WebSocket** `/api/v1/ws`:
-  - The first message authenticates.
-  - Subscribe and unsubscribe, with a snapshot then deltas.
-  - Per-connection `seq`, per-client telemetry coalescing, and heartbeats.
-  - Revoked sessions are closed.
-- AsyncAPI generated to `docs/api/asyncapi.yaml`, with a drift check.
+- [x] `bus.py`: in-process `EventBus` with reliable subscriptions (broken on overflow, never
+      lossy) and latest-value subscriptions (ADR 0008).
+- [x] `drivers/`: the `VehicleDriver` interface and canonical `TelemetrySample`.
+  - [x] **Mock driver:** multirotor and fixed-wing kinematics, modes and refusals, PX4-like
+        failsafes (link 10 s → return, GNSS lost → land, battery 10 % → return and 5 % →
+        land), fault injection, seeded.
+  - [x] **Simulation mode** is station-wide (`SARGCS_SIMULATION`, `simulation.env`) and never
+        mixed with real links.
+- [x] **Fleet registry and manager:** live state, link live/stale/lost/offline, drivers kept
+      in step with the aircraft registry, telemetry history at 1 Hz
+      (`GET /aircraft/{id}/telemetry`), `GET /fleet/state`.
+- [x] **Command pipeline** (ADR 0011/0020): arm, disarm, takeoff, hold, resume, return, land
+      and goto.
+  - [x] Idempotent `command_id`.
+  - [x] Per-aircraft authority, capability, link, state and limit rules, including goto
+        geofences.
+  - [x] **428 with a server summary and an HMAC token bound to the request**, re-checked at
+        dispatch.
+  - [x] Concurrent dispatch with a timeout, per-aircraft outcomes, and effect verification
+        from telemetry.
+- [x] **Control leases:** take, release, handover with a 30 s expiry, supervisor assignment
+      with a reason, presence-based orphaning with an alert and no command.
+- [x] **Alerts:** link, battery, GNSS, orphaned control, command timeout, unverified effect;
+      acknowledge; audited raise and clear.
+- [x] **WebSocket** `/api/v1/ws`:
+  - [x] Auth as the first message; snapshots, then events.
+  - [x] Coalesced telemetry at the client's rate; reliable topics close with 4429 rather
+        than skip events.
+  - [x] Revoked sessions closed immediately; idle clients closed.
+- [x] **AsyncAPI 3** generated to `docs/api/asyncapi.json` (JSON, not YAML; ADR 0020), with a
+      drift test.
+- [x] Permissions `aircraft.hold`, `aircraft.command`, `alerts.ack` (operator) and
+      `control.override` (supervisor). Migrations 0002 for ops and telemetry.
+- [x] Scripts: `scripts/m1b_acceptance.py` and `scripts/load_smoke.py`.
 
-**Tests**
+**Tests:** fleet-service has **367 tests plus Schemathesis over 69 operations**, all
+passing:
 
-- **Safety regression tests, one per ADR 0011 rule.** Examples: a non-controller can HOLD
-  but not RTL; confirmation is required for bulk commands; a changed request invalidates the
-  token; a lost link allows only HOLD, RTL or LAND; a duplicate `command_id` returns the first
-  outcome.
-- Audit coverage: every command, outcome and control change is recorded.
-- WebSocket protocol tests: auth, subscriptions, gap detection, coalescing.
-- Mock driver determinism.
-- Contract: Schemathesis and the authorization matrix extend automatically to the new
-  operations.
-- Load smoke test: 50 mock aircraft at 10 Hz for 60 s with 3 WebSocket clients. Record the
-  latencies; the budgets are enforced in M5.
+- One test per ADR 0011 rule.
+- The command rules, row by row.
+- Mock physics and failsafes.
+- Bus delivery classes.
+- Leases and handover; alerts.
+- 15 WebSocket protocol tests, with every message validated against the AsyncAPI models.
+- One real-loop test with 50 aircraft.
 
-**Acceptance**
+The authorization matrix covers every new operation.
 
-- A script creates an incident, registers 5 mock aircraft, and runs take control, arm,
-  confirm, takeoff, hold and RTL, with every step visible over WebSocket and in the audit.
-- `audit-verify` passes after the run.
+**Acceptance** (live server, simulation mode): **passed.**
 
-**Stop:** report, then wait.
+- 5 aircraft (3 hexa, 2 fixed-wing): take control, then arm, takeoff, hold and return as
+  confirmed bulk commands.
+- All 5 airborne after 13 s, landed and disarmed 33 s after the return.
+- Every command acked by all 5, with 20 effects verified from telemetry.
+- 132 WebSocket messages with no sequence gap.
+- `audit-verify` intact over 47 events.
+
+**Load smoke** (60 s, 50 simulated aircraft at 10 Hz, 3 consoles at 4 Hz; the GCS only, no
+radio links):
+
+| Measure | Result |
+|---|---|
+| Newest-telemetry age at the console (p50 / p95 / p99) | 55 / 110 / 120 ms |
+| Batches per second | 3.8 |
+| Bandwidth per console | 118 KB/s (budget ≤ 150 KB/s) |
+| Aircraft seen by every console | all 50 |
+| Server RSS / CPU after 191 s | 131 MB / 12.5 s |
+
+**Known gaps**
+
+- Commands answer synchronously within the 5 s timeout (ADR 0020). This must be revisited
+  if real links need longer (M2).
+- Presence, pending effect verifications and confirmation tokens live in memory and are
+  lost on restart (resync in M6).
+- The mock driver models no dynamics, wind, terrain or partial packet loss (ADR 0021).
+  Vehicle realism comes with PX4 SITL in M2.
+- The API docs page still loads Swagger UI from a CDN (M6).
 
 ---
 

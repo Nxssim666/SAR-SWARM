@@ -16,10 +16,11 @@ decentralized multicopter search swarm that the ground system tasks through a br
 > weapons, targeting or military functionality of any kind (see
 > [ADR 0002](docs/decisions/0002-scope-safety-and-assumptions.md)).
 
-> **Status: M1a.** The fleet service has its data model, persistence, login and roles, a
-> tamper-evident audit trail, and a REST API with a committed OpenAPI contract
-> ([docs/api](docs/api/README.md)). Live aircraft, commands and the operator console follow in
-> M1b–M3. See [PLAN.md](PLAN.md).
+> **Status: M1b.** The fleet service tracks and commands aircraft live, with simulated
+> aircraft for now. It has a confirmation-guarded command pipeline, operator control
+> handover, alerts, a WebSocket feed, and a tamper-evident audit trail, all behind REST and
+> WebSocket contracts ([docs/api](docs/api/README.md)). PX4 SITL (M2) and the operator
+> console (M3) follow. See [PLAN.md](PLAN.md).
 
 ## Layout
 

@@ -5,10 +5,16 @@ Ground control system for a civilian search-and-rescue drone fleet: up to 50 PX4
 with different roles, one field ground station, and no cloud. This page is the living overview.
 The reasons behind it are in [`decisions/`](decisions/0001-record-architecture-decisions.md).
 
-Status: **M1a**. The fleet service has its persistent domain, auth/RBAC, a hash-chained audit
-trail and a REST API ([`api/README.md`](api/README.md)). The console is a shell. Everything
-marked with a later milestone below is designed but not built yet. See
-[`../PLAN.md`](../PLAN.md).
+Status: **M1b**. The fleet service is built through its live core:
+
+- persistent domain, auth/RBAC and a hash-chained audit trail;
+- the in-process bus, the fleet registry, and the mock driver in simulation mode;
+- the command pipeline, control leases and alerts;
+- REST and WebSocket APIs ([`api/README.md`](api/README.md)).
+
+The console is still a shell. Everything marked with a later milestone below (NATS, the ROS
+bridge, MediaMTX, the MAVSDK driver) is designed but not built yet. Measured M1b figures are
+in [`../PLAN.md`](../PLAN.md).
 
 ## System context
 

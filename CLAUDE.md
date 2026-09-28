@@ -51,6 +51,21 @@ status are in `PLAN.md`, the design is in `docs/architecture.md`, and the reason
     await slow work (hashing, aircraft I/O) inside a transaction.
   - Model changes need `db revision` (sequential ids). The drift test compares models with
     migrations.
+- **Live core patterns** (ADR 0020, ADR 0021; code in `services/`, `drivers/`, `bus.py`):
+  - Command rules are pure functions in `domain/commands.py`. Add a rule there with a
+    row-by-row test, not in a handler.
+  - Unknown vehicle state is never assumed favourable.
+  - Services take the caller's `AsyncSession`. Tick-driven work (`Runtime.evaluate`) opens
+    short sessions of its own.
+  - WebSocket connections and background loops must **never** hold a session: there is one
+    connection per SQLite file.
+  - Publish live changes on the bus (`bus.TELEMETRY`, `ALERTS`, `COMMANDS`, `CONTROL`,
+    `SESSIONS`) after committing. After registry changes, call `registry.announce(id)`.
+  - Tests use `create_app(start_loops=False)` with `FakeClock` and drive the runtime with
+    `tests/live_support.Sim` (`fly`, `idle`). Only `test_runtime_loops.py` uses real time.
+  - WebSocket tests create the httpx-ws transport inside the test task, not in a fixture.
+  - WebSocket message models are in `api/ws_messages.py`. After changing them, run
+    `export-asyncapi`.
 - **Tests go in the same change** (ADR 0015):
   - A bug fix starts with a failing test.
   - Each safety rule has a regression test.
@@ -65,7 +80,7 @@ fleet-service/   Python ≥3.12, FastAPI, uv (pyproject.toml, uv.lock); code in 
 fleet-console/   React 19 + TS 6 + Vite 8; code in src/
 deploy/          compose.yaml, Caddyfile (gateway: TLS, static console, /api proxy)
 src/             ROS 2 colcon workspace: swarm_sar, swarm_sar_interfaces (onboard; unchanged)
-docs/            architecture.md, decisions/ (ADRs), runbooks/, api/ (openapi.json + README)
+docs/            architecture.md, decisions/ (ADRs), runbooks/, api/ (openapi.json, asyncapi.json, README)
 scripts/check.py every lint/type/test/build, cross-platform
 sim/             PX4 SITL/Gazebo/SIH harness (from M2a)
 ```
@@ -89,6 +104,7 @@ python -m uv --directory fleet-service run ruff check . && python -m uv --direct
 python -m uv --directory fleet-service run mypy
 python -m uv --directory fleet-service run fleet-service create-admin --username chief   # first admin
 python -m uv --directory fleet-service run fleet-service export-openapi   # after any API change
+python -m uv --directory fleet-service run fleet-service export-asyncapi  # after WebSocket message changes
 python -m uv --directory fleet-service run fleet-service db revision --database ops -m "..."  # after model changes
 python -m uv --directory fleet-service run fleet-service audit-verify
 
@@ -106,9 +122,17 @@ python -m uv run --no-project --with-requirements requirements-standalone.txt py
 docker compose -f deploy/compose.yaml up -d --build
 ```
 
-**Simulation (PX4 SITL/Gazebo/SIH):** arrives in M2a in `sim/`. Until then, the onboard
-standalone simulator (`run_standalone.py`) is the only simulator, and the fleet service will use
-its `mock` driver from M1b.
+**Simulation mode** (ADR 0021): every registered aircraft is simulated. From `fleet-service/`:
+
+```bash
+python -m uv run --env-file simulation.env fleet-service create-admin --username chief
+python -m uv run --env-file simulation.env fleet-service          # data in data-sim/
+python -m uv run python scripts/m1b_acceptance.py --password <pw>  # live end-to-end run
+python -m uv run python scripts/load_smoke.py --password <pw> --aircraft 50 --clients 3 --seconds 60
+```
+
+PX4 SITL/Gazebo/SIH arrives in M2a in `sim/`. The onboard standalone simulator
+(`run_standalone.py`) is separate and simulates the swarm_sar companions.
 
 ## Milestone status
 
@@ -116,8 +140,8 @@ its `mock` driver from M1b.
 |---|---|
 | M0 Architecture, ADRs, scaffold | Done |
 | M1a Data model, persistence, auth/RBAC, REST, OpenAPI | Done |
-| M1b Live core: registry, mock driver, commands, leases, WS | Next |
-| M2a PX4 SITL + MAVSDK (1–5) | Needs a Linux/Docker decision |
+| M1b Live core: registry, mock driver, commands, leases, WS | Done |
+| M2a PX4 SITL + MAVSDK (1–5) | Next; needs a Linux/Docker decision (M3 could go first) |
 | M2b SIH 25/50, NATS, ROS 2 bridge, mock video | — |
 | M3 Console MVP | — |
 | M4 Mission planning, patterns, deconfliction, alerts | — |

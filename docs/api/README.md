@@ -1,11 +1,11 @@
 # Fleet service API (v1)
 
-The machine-readable contract is [`openapi.json`](openapi.json). It is generated from the
-code by `fleet-service export-openapi`, committed, and CI fails when it is stale. Interactive
-docs are at `/api/v1/docs` on a running service. This page explains the conventions the schema
-can't express. The decisions behind them are in ADRs 0009, 0013, 0014, 0018 and 0019.
-
-The WebSocket API and its AsyncAPI document arrive in M1b.
+The machine-readable contracts are [`openapi.json`](openapi.json) (REST) and
+[`asyncapi.json`](asyncapi.json) (WebSocket). Both are generated from the code
+(`fleet-service export-openapi`, `fleet-service export-asyncapi`) and committed, and the tests
+fail when either is stale. Interactive docs are at `/api/v1/docs` on a running service. This
+page explains what the schemas can't express. The decisions behind it are in ADRs 0009, 0011,
+0013, 0014 and 0018–0021.
 
 ## Authentication
 
@@ -40,8 +40,8 @@ below, `authenticated` (any valid session) or absent (public: health, version, l
 | Permission | Roles |
 |---|---|
 | `fleet.view` | observer, operator, supervisor, admin |
-| `missions.plan` | operator, supervisor, admin |
-| `fleet.manage`, `incidents.manage`, `geofences.manage`, `users.view`, `audit.read` | supervisor, admin |
+| `missions.plan`, `aircraft.hold`, `aircraft.command`, `alerts.ack` | operator, supervisor, admin |
+| `control.override`, `fleet.manage`, `incidents.manage`, `geofences.manage`, `users.view`, `audit.read` | supervisor, admin |
 | `users.manage` | admin |
 
 A 403 problem names the permission it lacked in `required_permission`.
@@ -70,7 +70,9 @@ Branch on `type`, not on `detail`. Types in v1:
 | 403 | `forbidden`, `invalid-credentials` | Missing permission; wrong current password |
 | 404 | `not-found` | The addressed resource does not exist |
 | 409 | `incident-closed`, `invalid-transition`, `mission-not-editable`, `mission-not-deletable`, `aircraft-in-use`, `area-in-use`, `incident-not-empty`, `children-outside-operating-area`, `aircraft-incompatible`, `aircraft-identity-taken`, `task-exists`, `username-taken`, `group-name-taken`, `relay-path-taken`, `last-admin` | The request conflicts with current state |
+| 409 | `command-id-reused`, `control-held`, `not-controller`, `no-controller`, `already-controller`, `handover-pending`, `no-handover-request`, `alert-not-active`, `simulation-disabled` | Commands, control, alerts, simulation (see below) |
 | 422 | `validation-error` (with `errors[]`), `unknown-reference`, `reference-mismatch`, `outside-operating-area`, `search-area-required`, `too-many-waypoints` | The input is invalid |
+| 428 | `confirmation-required` | Re-send the identical command with `confirmation_token` |
 | 429 | `rate-limited` | Too many failed logins; see `Retry-After` |
 
 Validation errors list `errors: [{loc, msg, type}]`. Submitted values are never echoed,
@@ -104,7 +106,7 @@ because they may be passwords.
 | Resource | Notes |
 |---|---|
 | `users` | Never deleted; deactivate instead (revokes sessions). The last active admin cannot be demoted or deactivated. |
-| `aircraft` | Callsign (stored upper-case), MAVLink system ID (1–254) and swarm `drone_id` are each unique. A waypoint or area-search task needs `mavlink_system_id`; a swarm task needs `swarm_drone_id` (ADR 0003). |
+| `aircraft` | Callsign (stored upper-case), MAVLink system ID (1–254) and swarm `drone_id` are each unique. A waypoint or area-search task needs `mavlink_system_id`; a swarm task needs `swarm_drone_id` (ADR 0003). An aircraft with command history cannot be deleted (409): its record is kept. |
 | `groups` | `aircraft_ids` is a set; PATCH replaces it. |
 | `incidents` | `active` ↔ `suspended` → `closed` (terminal; the incident and its children become read-only). The base can't move, nor the radius shrink, while any geometry would fall outside. Delete only when empty. |
 | `search-areas` | `status` can be set by hand (ground teams' results). The geometry is frozen while a non-draft mission uses the area. |
@@ -118,3 +120,145 @@ because they may be passwords.
 Integrity of the audit trail is checked on the host with `fleet-service audit-verify`. It
 prints the chain head (`seq`, `hash`); record that value elsewhere so truncation of the end
 of the trail can be detected too.
+
+## Live state
+
+- `GET /fleet/state` returns `{simulation, server_time, aircraft: [...]}`. Each aircraft has:
+  - `link`: `live`; `stale` after 3 s without telemetry; `lost` after 15 s; `offline` means
+    never heard from, or no driver.
+  - The latest `telemetry`. Unknown values are `null`: without a GNSS fix, `position` is
+    `null`, never a stale guess.
+  - Its `controller` (lease).
+- `GET /aircraft/{id}/telemetry?since&until&limit` returns the recorded history (1 sample
+  per second by default), oldest first, with `truncated` when `limit` cut it short.
+- `simulation: true` means every aircraft is simulated (ADR 0021). Consoles must show it.
+  `POST /simulation/aircraft/{id}/faults` with `{link, gps, battery_pct}` injects faults in
+  that mode; outside it the response is 409 `simulation-disabled`.
+
+## Commands
+
+```http
+POST /api/v1/commands
+{"command_id": "<uuid you generate>", "kind": "takeoff",
+ "aircraft_ids": ["…", "…"], "altitude_relative_m": 40}
+```
+
+**Kinds and parameters:**
+
+| Kind | Parameters |
+|---|---|
+| `arm`, `disarm`, `hold`, `resume`, `return_to_launch`, `land` | None |
+| `takeoff` | `altitude_relative_m` (required) |
+| `goto` | `target: {latitude, longitude}`, optional `altitude_relative_m` |
+
+**Who may send what** (ADR 0011):
+
+- `hold` needs `aircraft.hold`, and every operator may hold every aircraft.
+- Everything else needs the aircraft's control lease, or `control.override` (supervisors),
+  which counts as an **override**.
+
+**Confirmation.** These commands are answered with **428** `confirmation-required`:
+
+- `arm` and `takeoff`;
+- anything sent to more than one aircraft;
+- a `goto` farther than 1 km;
+- any override.
+
+The response carries a `summary` the operator must see:
+
+- `reasons`;
+- per-aircraft `warnings` (stale link, low battery, no 3D fix);
+- the aircraft that will be `rejected`, with `code` and `message`;
+- the `override` flag.
+
+It also carries a `confirmation_token`, valid for 30 s. Re-send the **identical** body plus
+`confirmation_token` to execute. Any change to the request needs a new confirmation. An
+expired or invalid token gets a fresh 428 and nothing is sent. Authorization and
+preconditions are checked again when the confirmed command is sent.
+
+**Outcome.** The response is always the command, with one target per aircraft:
+
+- `state` is one of `dispatched`, `acked`, `nacked`, `timeout`, `rejected`, and later
+  `verified` or `unverified` once telemetry shows, or fails to show, the effect within 10 s.
+- `reason_code` and `reason` explain it.
+
+Rejections, where nothing was sent to that aircraft:
+
+| `reason_code` | Meaning |
+|---|---|
+| `forbidden`, `no-control` | Role, or control lease |
+| `no-link`, `link-degraded` | No telemetry; stale/lost link, where only hold, return and land are tried |
+| `not-in-air`, `in-air`, `already-armed`, `not-armed`, `not-holding` | Vehicle state; unknown is never assumed favourable |
+| `no-gps-fix`, `battery-unknown`, `battery-low` | Flight readiness (minimum 40 % to arm or take off) |
+| `altitude-limit`, `distance-limit`, `geofence` | 120 m above home, 10 km goto, geofences of active incidents |
+| `rate-limited`, `unsupported` | One command per aircraft per 0.25 s; the link can't carry it |
+
+After dispatch the codes are `refused` (the aircraft said no; `reason` has its answer),
+`timeout` (no answer within 5 s, which also raises an alert), `driver-error` and `no-effect`
+(unverified).
+
+**Replay:** re-sending a `command_id` returns its outcome without sending it again. Reusing
+a `command_id` for a different request returns 409 `command-id-reused`.
+`GET /commands?limit` lists recent commands, newest first; `GET /commands/{id}` returns one.
+
+## Control
+
+| Call | Who | Effect |
+|---|---|---|
+| `POST /aircraft/{id}/control` | `aircraft.command` | Take control of an aircraft nobody controls (409 `control-held` otherwise) |
+| `DELETE /aircraft/{id}/control` | Holder | Release |
+| `POST /aircraft/{id}/control/handover` | Another operator | Ask for it; expires after 30 s unanswered, and control stays |
+| `POST …/handover/accept` or `…/decline` | Holder | Hand over, or keep it |
+| `PUT /aircraft/{id}/control` with `user_id` (or `null`) and `reason` | `control.override` | Assign, force or release, with a reason (audited) |
+| `GET /control-leases` | `fleet.view` | Every lease, with `state` `held` or `orphaned` and any pending request |
+
+A holder unseen for 60 s (no request and no WebSocket message) makes the lease `orphaned`.
+Supervisors get an alert, and **the aircraft keeps doing what it was doing**: nothing is ever
+commanded because someone went away. The lease is `held` again when the holder returns.
+
+## Alerts
+
+`GET /alerts?state&aircraft_id` lists alerts newest first. `POST /alerts/{id}/acknowledge`
+needs `alerts.ack`.
+
+- **Condition alerts** open and close with their condition:
+  - `link_stale` and `link_lost`;
+  - `battery_low` (< 30 %) and `battery_critical` (< 15 %);
+  - `gps_lost` (in flight);
+  - `control_orphaned`.
+
+  Acknowledging only marks them seen.
+- **Event alerts** close when acknowledged: `command_timeout` and `command_unverified`.
+
+Raising, acknowledging and clearing are all audited.
+
+## WebSocket (`/api/v1/ws`)
+
+Contract: [`asyncapi.json`](asyncapi.json). A session:
+
+```text
+-> {"type": "auth", "token": "sgcs_…"}                 first message, within 5 s
+<- {"type": "welcome", "seq": 1, "user": …, "permissions": […], "simulation": true, …}
+-> {"type": "subscribe", "topics": ["fleet.telemetry", "alerts", "commands", "control"],
+    "telemetry_hz": 4}
+<- {"type": "snapshot", "topic": "fleet.telemetry", "seq": 2, "data": {"aircraft": […]}}
+<- … one snapshot per topic, then {"type": "event", "topic": …, "seq": n, "data": …}
+-> {"type": "ping"}   (at least every 30 s)   <- {"type": "pong", …}
+```
+
+- **Never put the token in the URL.** It goes in the first message only.
+- **Topics:**
+  - `fleet.telemetry` sends the aircraft whose state changed, at most `telemetry_hz` times
+    per second (0.5–10), newest state only.
+  - `alerts`, `commands` and `control` deliver every change, in order.
+- `seq` increases by one per message. A client that reconnects should resubscribe; the
+  snapshots resync it.
+- **Close codes:**
+
+  | Code | Meaning |
+  |---|---|
+  | 4400 | Malformed first message |
+  | 4401 | Invalid session, or the session was revoked (logout, deactivation, password reset); a `session_ended` message comes first |
+  | 4403 | Not permitted |
+  | 4408 | No `auth` within 5 s, or no client message for 30 s |
+  | 4429 | The client fell behind on reliable events: reconnect and resync. Events are never silently skipped |

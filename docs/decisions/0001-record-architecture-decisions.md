@@ -48,3 +48,5 @@ a safety rule, a protocol or convention, or an assumption made in place of an an
 | [0017](0017-simulation.md) | Simulation: mock fleet, PX4 SITL with Gazebo and SIH |
 | [0018](0018-permission-catalogue.md) | Permission catalogue v1 |
 | [0019](0019-database-access.md) | Database access, migrations at startup, audit in the same transaction |
+| [0020](0020-live-core-commands-control-websocket.md) | Live core: command pipeline, control leases, WebSocket protocol |
+| [0021](0021-simulation-mode.md) | Simulation mode and the mock driver |
