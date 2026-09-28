@@ -1,0 +1,5 @@
+# Everything needed to run the simulator and tests without ROS 2.
+# (ffmpeg is also needed for .mp4 output; .gif works without it.)
+numpy>=1.22,<3
+matplotlib>=3.5,<4
+pytest>=7,<10
