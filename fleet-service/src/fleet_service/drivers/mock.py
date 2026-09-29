@@ -21,7 +21,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
-from fleet_service.domain.commands import FLIGHT_COMMANDS
+from fleet_service.domain.commands import AUTOPILOT_COMMANDS
 from fleet_service.domain.enums import Airframe, CommandKind, FlightMode, GpsFix
 from fleet_service.domain.geo import GeoPoint
 from fleet_service.domain.telemetry import TelemetrySample
@@ -365,7 +365,7 @@ class MockDriver:
     """The driver of one simulated aircraft."""
 
     source = "mock"
-    capabilities = FLIGHT_COMMANDS
+    capabilities = AUTOPILOT_COMMANDS
 
     def __init__(self, aircraft_id: str, vehicle: MockVehicle) -> None:
         self.aircraft_id = aircraft_id

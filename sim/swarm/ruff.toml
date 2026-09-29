@@ -1,0 +1,6 @@
+# Onboard (ROS) style, like the bridge: it runs with the onboard swarm_sar package.
+extend = "../../src/sar_gcs_bridge/ruff.toml"
+
+[format]
+quote-style = "single"
+exclude = ["*.py"]  # flake8 style, not ruff's formatter (like the onboard code)

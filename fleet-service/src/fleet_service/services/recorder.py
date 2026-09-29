@@ -42,7 +42,7 @@ class TelemetryRecorder:
                     climb_rate_mps=sample.climb_rate_mps,
                     battery_pct=sample.battery_pct,
                     battery_v=sample.battery_v,
-                    gps_fix=sample.gps_fix.code,
+                    gps_fix=sample.gps_fix.code if sample.gps_fix else None,
                     satellites=sample.satellites,
                     flight_mode=sample.flight_mode.value,
                     armed=sample.armed,

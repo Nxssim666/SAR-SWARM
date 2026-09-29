@@ -98,8 +98,26 @@ def check_service(results: list[Result]) -> None:
     run(results, "service", "ruff check", [*uv, "run", "ruff", "check", ".", "../sim"], cwd)
     run(results, "service", "ruff format",
         [*uv, "run", "ruff", "format", "--check", ".", "../sim"], cwd)
+    # The swarm bridge (ROS package, onboard style) is linted with its own rules.
+    run(results, "service", "ruff bridge",
+        [*uv, "run", "ruff", "check", "--config", "../src/sar_gcs_bridge/ruff.toml",
+         "../src/sar_gcs_bridge"], cwd)
     run(results, "service", "mypy", [*uv, "run", "mypy"], cwd)
-    run(results, "service", "pytest", [*uv, "run", "pytest", "-q"], cwd)
+    env = dict(os.environ)
+    if nats_server_found():
+        env["SARGCS_REQUIRE_NATS"] = "1"  # found: the NATS tests must run, not skip
+    else:
+        print("!!! nats-server not found (NATS_SERVER_BIN, PATH or .tools/nats): "
+              "the NATS tests will be skipped", flush=True)
+    run(results, "service", "pytest", [*uv, "run", "pytest", "-q"], cwd, env)
+
+
+def nats_server_found() -> bool:
+    """Whether the fleet-service NATS tests can start a nats-server (tests/nats_support.py)."""
+    candidates = [os.environ.get("NATS_SERVER_BIN"), shutil.which("nats-server"),
+                  str(ROOT / ".tools" / "nats" / "nats-server.exe"),
+                  str(ROOT / ".tools" / "nats" / "nats-server")]
+    return any(c and Path(c).is_file() for c in candidates)
 
 
 def check_console(results: list[Result]) -> None:

@@ -6,7 +6,7 @@ These are output models: built from in-memory state and rows, never parsed from 
 
 from typing import Any
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from fleet_service.domain.enums import (
     Airframe,
@@ -19,16 +19,62 @@ from fleet_service.domain.enums import (
     FlightMode,
     GpsFix,
     LeaseState,
+    LinkSource,
     LinkState,
+    SwarmFault,
+    SwarmHealth,
+    SwarmPhase,
 )
 from fleet_service.domain.geo import GeoPoint
-from fleet_service.domain.telemetry import TelemetrySample
+from fleet_service.domain.telemetry import SwarmState, TelemetrySample
 
 
 class View(BaseModel):
     """Base of live views."""
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SurvivorSightingView(View):
+    """Where a swarm drone's estimate puts a person (the onboard "target" estimate)."""
+
+    position: GeoPoint
+    std_m: float = Field(description="1-sigma horizontal uncertainty [m].")
+    stamp: AwareDatetime
+
+
+class SwarmView(View):
+    """What an aircraft's swarm companion reports (ADR 0003)."""
+
+    drone_id: int
+    phase: SwarmPhase
+    health: SwarmHealth
+    faults: list[SwarmFault]
+    mission_sequence: int = Field(description="Active swarm mission (0: none).")
+    command_sequence: int = Field(description="Last operator command the drone processed.")
+    nearest_obstacle_m: float | None = Field(description="Null: no obstacle known.")
+    survivor_sighting: SurvivorSightingView | None
+
+    @classmethod
+    def of(cls, s: SwarmState) -> "SwarmView":
+        """Build from the swarm block of a sample."""
+        sighting = s.survivor_sighting
+        return cls(
+            drone_id=s.drone_id,
+            phase=s.phase,
+            health=s.health,
+            faults=sorted(s.faults),
+            mission_sequence=s.mission_sequence,
+            command_sequence=s.command_sequence,
+            nearest_obstacle_m=s.nearest_obstacle_m,
+            survivor_sighting=SurvivorSightingView(
+                position=GeoPoint(latitude=sighting.latitude, longitude=sighting.longitude),
+                std_m=sighting.std_m,
+                stamp=sighting.stamp,
+            )
+            if sighting
+            else None,
+        )
 
 
 class TelemetryView(View):
@@ -44,12 +90,13 @@ class TelemetryView(View):
     climb_rate_mps: float | None
     battery_pct: float | None
     battery_v: float | None
-    gps_fix: GpsFix
+    gps_fix: GpsFix | None = Field(description="Null: the link does not report GNSS quality.")
     satellites: int | None
     flight_mode: FlightMode
     armed: bool | None
     in_air: bool | None
     home: GeoPoint | None
+    swarm: SwarmView | None = Field(description="Only for aircraft with a swarm link.")
 
     @classmethod
     def of(cls, s: TelemetrySample) -> "TelemetryView":
@@ -81,6 +128,7 @@ class TelemetryView(View):
             armed=s.armed,
             in_air=s.in_air,
             home=home,
+            swarm=SwarmView.of(s.swarm) if s.swarm else None,
         )
 
 
@@ -125,6 +173,10 @@ class AircraftLive(View):
     callsign: str
     airframe: Airframe
     link: LinkState
+    links: dict[LinkSource, LinkState] = Field(
+        description="Per-link state of an aircraft with a MAVLink and a swarm link "
+        "(ADR 0025); empty otherwise, where ``link`` says it all."
+    )
     last_seen_at: AwareDatetime | None
     telemetry: TelemetryView | None
     controller: LeaseView | None

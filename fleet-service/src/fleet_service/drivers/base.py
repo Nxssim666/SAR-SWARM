@@ -19,13 +19,31 @@ TelemetrySink = Callable[[TelemetrySample], None]
 
 
 @dataclass(frozen=True)
+class AreaMission:
+    """A swarm area search, as the swarm protocol carries it (ADR 0003, ADR 0024)."""
+
+    mission_id: str
+    origin: tuple[float, float]  # latitude, longitude of the shared mission frame
+    altitude_relative_m: float  # above each drone's home
+    grid_resolution_m: float
+    waypoints: tuple[tuple[float, float], ...]  # transit, flown first
+    area: tuple[tuple[float, float], ...]  # polygon, not closed
+
+
+@dataclass(frozen=True)
 class DriverCommand:
-    """A command for one aircraft, already authorized and checked."""
+    """A command for one aircraft, already authorized and checked.
+
+    ``command_id`` is shared by every aircraft of one (bulk) command, so a link that can
+    address many aircraft at once (the swarm bridge) sends it once.
+    """
 
     kind: CommandKind
     altitude_relative_m: float | None = None
     latitude: float | None = None
     longitude: float | None = None
+    command_id: str | None = None
+    mission: AreaMission | None = None
 
 
 class Outcome(StrEnum):

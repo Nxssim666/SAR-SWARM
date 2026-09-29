@@ -36,7 +36,7 @@ from mavsdk.asyncio.plugins.action import ActionAsync, ActionError, ActionResult
 from mavsdk.asyncio.plugins.telemetry import TelemetryAsync
 
 from fleet_service.clock import Clock
-from fleet_service.domain.commands import FLIGHT_COMMANDS
+from fleet_service.domain.commands import AUTOPILOT_COMMANDS
 from fleet_service.domain.enums import Airframe, CommandKind, FlightMode, GpsFix
 from fleet_service.domain.geo import GeoPoint, distance_m
 from fleet_service.domain.telemetry import TelemetrySample
@@ -153,7 +153,7 @@ class MavlinkDriver:
     """One aircraft on a MAVLink hub, identified by its system id."""
 
     source = "mavlink"
-    capabilities = FLIGHT_COMMANDS
+    capabilities = AUTOPILOT_COMMANDS
 
     def __init__(
         self,

@@ -9,20 +9,22 @@ they need it, so a burst of samples costs nothing beyond keeping the newest.
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fleet_service.bus import TELEMETRY, EventBus
+from fleet_service.clock import Clock
 from fleet_service.db.models import Aircraft
 from fleet_service.domain.commands import VehicleView
-from fleet_service.domain.enums import Airframe, LinkState
+from fleet_service.domain.enums import Airframe, LinkSource, LinkState
 from fleet_service.domain.telemetry import TelemetrySample
 from fleet_service.drivers.base import VehicleDriver
 from fleet_service.drivers.mavlink import MavlinkDriver, MavlinkLinks, normalize_url
 from fleet_service.drivers.mock import MockFleet
+from fleet_service.drivers.swarm import LinkedDriver, SwarmDriver, SwarmLink
 from fleet_service.services.views import AircraftLive, LeaseView, TelemetryView
 
 ControllerLookup = Callable[[str], LeaseView | None]
@@ -38,7 +40,16 @@ class LiveRecord:
     driver: VehicleDriver | None = None
     sample: TelemetrySample | None = None
     link: LinkState = LinkState.OFFLINE
-    route: tuple[str, int] | None = None  # MAVLink connection and system id behind the driver
+    route: "Route | None" = None  # the links behind the driver
+    links: dict[LinkSource, LinkState] = field(default_factory=dict)  # both links: each one
+
+
+@dataclass(frozen=True)
+class Route:
+    """An aircraft's links: MAVLink (connection, system id) and swarm drone id."""
+
+    mavlink: tuple[str, int] | None
+    swarm_drone_id: int | None
 
 
 class FleetRegistry:
@@ -93,18 +104,29 @@ class FleetRegistry:
         for record in self._records.values():
             if record.sample is None:
                 continue  # never heard from: stays offline, which is not a loss
-            age = now - record.sample.ts
-            if age <= self._stale_after:
-                state = LinkState.LIVE
-            elif age <= self._lost_after:
-                state = LinkState.STALE
-            else:
-                state = LinkState.LOST
-            if state is not record.link:
-                changes.append((record.aircraft_id, record.link, state))
-                record.link = state
+            state = self._age_state(now - record.sample.ts)
+            links = self._source_links(record, now)
+            if state is not record.link or links != record.links:
+                if state is not record.link:
+                    changes.append((record.aircraft_id, record.link, state))
+                record.link, record.links = state, links
                 self.announce(record.aircraft_id)
         return changes
+
+    def _age_state(self, age: timedelta) -> LinkState:
+        if age <= self._stale_after:
+            return LinkState.LIVE
+        if age <= self._lost_after:
+            return LinkState.STALE
+        return LinkState.LOST
+
+    def _source_links(self, record: LiveRecord, now: datetime) -> dict[LinkSource, LinkState]:
+        if not isinstance(record.driver, LinkedDriver):
+            return {}
+        return {
+            source: LinkState.OFFLINE if heard is None else self._age_state(now - heard)
+            for source, heard in record.driver.last_heard().items()
+        }
 
     def announce(self, aircraft_id: str) -> None:
         """Tell subscribers that an aircraft's live state changed."""
@@ -134,6 +156,7 @@ class FleetRegistry:
             callsign=record.callsign,
             airframe=record.airframe,
             link=record.link,
+            links=record.links,
             last_seen_at=record.sample.ts if record.sample else None,
             telemetry=TelemetryView.of(record.sample) if record.sample else None,
             controller=self._controller_of(record.aircraft_id),
@@ -148,17 +171,28 @@ class FleetManager:
     """Keeps drivers in step with the aircraft registry in the database.
 
     In simulation mode every aircraft gets a simulated one (ADR 0021). Otherwise an aircraft
-    whose registration names a MAVLink connection and system id gets a MAVLink driver on
-    that connection's hub (ADR 0022); changing either replaces the driver, and forgets the
-    old link's telemetry. The two are never mixed.
+    gets a driver for each link its registration names: MAVLink (connection and system id,
+    on that connection's hub, ADR 0022) and swarm (drone id, through the bridge, ADR 0024);
+    with both, one ``LinkedDriver`` merges them (ADR 0025). Changing a link replaces the
+    driver and forgets the old telemetry. Simulated and real links are never mixed.
     """
 
     def __init__(
-        self, registry: FleetRegistry, simulator: MockFleet | None, links: MavlinkLinks | None
+        self,
+        registry: FleetRegistry,
+        simulator: MockFleet | None,
+        links: MavlinkLinks | None,
+        swarm: SwarmLink | None = None,
+        *,
+        clock: Clock | None = None,
+        fresh_for: timedelta = timedelta(seconds=3),
     ) -> None:
         self.registry = registry
         self.simulator = simulator
         self.links = links if simulator is None else None
+        self.swarm = swarm if simulator is None else None
+        self._clock = clock
+        self._fresh_for = fresh_for
 
     async def load(self, db: AsyncSession) -> None:
         """Register every aircraft in the database (at startup)."""
@@ -166,15 +200,15 @@ class FleetManager:
             self.register(aircraft)
 
     def register(self, aircraft: Aircraft) -> None:
-        """Track a new aircraft, or update the identity and link of a tracked one."""
+        """Track a new aircraft, or update the identity and links of a tracked one."""
         route = self._route(aircraft)
         record = self.registry.get(aircraft.id)
         if record is not None:
             record.callsign = aircraft.callsign
             record.airframe = aircraft.airframe
-            if self.links is not None and route != record.route:
+            if self.simulator is None and route != record.route:
                 self._release(record)
-                record.sample, record.link = None, LinkState.OFFLINE
+                record.sample, record.link, record.links = None, LinkState.OFFLINE, {}
                 self._attach(record, aircraft, route)
             self.registry.announce(aircraft.id)
             return
@@ -194,24 +228,46 @@ class FleetManager:
         if self.simulator is not None:
             self.simulator.remove(aircraft_id)
 
-    def _route(self, aircraft: Aircraft) -> tuple[str, int] | None:
-        if aircraft.mavlink_connection is None or aircraft.mavlink_system_id is None:
-            return None
-        return normalize_url(aircraft.mavlink_connection), aircraft.mavlink_system_id
+    def swarm_aircraft(self) -> list[str]:
+        """Aircraft with a swarm link: the drones a swarm mission reaches (ADR 0024)."""
+        return [
+            aircraft_id
+            for aircraft_id in self.registry.ids()
+            if (record := self.registry.get(aircraft_id))
+            and record.route is not None
+            and record.route.swarm_drone_id is not None
+        ]
 
-    def _attach(
-        self, record: LiveRecord, aircraft: Aircraft, route: tuple[str, int] | None
-    ) -> None:
+    def _route(self, aircraft: Aircraft) -> Route:
+        mavlink = None
+        if aircraft.mavlink_connection is not None and aircraft.mavlink_system_id is not None:
+            mavlink = (normalize_url(aircraft.mavlink_connection), aircraft.mavlink_system_id)
+        return Route(mavlink=mavlink, swarm_drone_id=aircraft.swarm_drone_id)
+
+    def _attach(self, record: LiveRecord, aircraft: Aircraft, route: Route) -> None:
         record.route = route
-        if self.links is None or route is None:
-            return
-        url, system_id = route
-        record.driver = self.links.driver(aircraft.id, url, system_id, aircraft.airframe)
-        record.driver.start(self.registry.ingest)
+        mavlink: MavlinkDriver | None = None
+        swarm: SwarmDriver | None = None
+        if self.links is not None and route.mavlink is not None:
+            url, system_id = route.mavlink
+            mavlink = self.links.driver(aircraft.id, url, system_id, aircraft.airframe)
+        if self.swarm is not None and route.swarm_drone_id is not None:
+            swarm = self.swarm.driver(aircraft.id, route.swarm_drone_id)
+        driver: VehicleDriver | None = mavlink or swarm
+        if mavlink is not None and swarm is not None:
+            assert self._clock is not None  # noqa: S101 - the runtime passes it with links
+            driver = LinkedDriver(mavlink, swarm, self._clock, self._fresh_for)
+        record.driver = driver
+        if driver is not None:
+            driver.start(self.registry.ingest)
 
     def _release(self, record: LiveRecord) -> None:
         driver, record.driver, record.route = record.driver, None, None
-        if isinstance(driver, MavlinkDriver) and self.links is not None:
-            self.links.release(driver)
-        elif driver is not None:
-            driver.stop()
+        parts = [driver.mavlink, driver.swarm] if isinstance(driver, LinkedDriver) else [driver]
+        for part in parts:
+            if isinstance(part, MavlinkDriver) and self.links is not None:
+                self.links.release(part)
+            elif isinstance(part, SwarmDriver) and self.swarm is not None:
+                self.swarm.release(part)
+            elif part is not None:
+                part.stop()

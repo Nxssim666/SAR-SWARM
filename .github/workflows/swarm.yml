@@ -1,0 +1,107 @@
+# The swarm path (ADR 0024, ADR 0026): three simulated swarm_sar drones on ROS 2 Jazzy,
+# the sar_gcs_bridge, NATS, and the fleet service's swarm link; and mock video (MediaMTX).
+name: swarm
+
+on:
+  push:
+    branches: [main, "exp/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: swarm-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swarm:
+    name: swarm bridge integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: fleet-service
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build the ROS 2 image (onboard packages, bridge, swarm simulation)
+        working-directory: .
+        run: docker compose -f sim/swarm/compose.yaml build
+      - name: Bridge tests and ament linters in the ROS 2 image
+        working-directory: .
+        run: >
+          docker compose -f sim/swarm/compose.yaml run --rm --no-deps bridge
+          bash -c "cd /ws/src/sar_gcs_bridge && python3 -m pytest -q -p no:cacheprovider test"
+      - name: Start NATS, the swarm and the bridge
+        working-directory: .
+        run: docker compose -f sim/swarm/compose.yaml up -d
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Integration tests
+        env:
+          SARGCS_SWARM: "1"
+        run: >
+          uv run pytest -m swarm tests/integration/test_swarm.py -v -p no:cacheprovider
+          --junitxml=../swarm-results/junit.xml -o log_cli=true -o log_cli_level=WARNING
+      - name: Collect logs
+        if: always()
+        working-directory: .
+        run: |
+          mkdir -p swarm-results
+          docker compose -f sim/swarm/compose.yaml ps -a > swarm-results/containers.txt
+          docker compose -f sim/swarm/compose.yaml logs --no-color --timestamps \
+            > swarm-results/px4.log
+      - name: Report results as annotations (readable without signing in)
+        if: always()
+        working-directory: .
+        run: python3 sim/sitl/annotate.py swarm-results
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: swarm-results
+          path: swarm-results/
+          retention-days: 14
+      - name: Stop
+        if: always()
+        working-directory: .
+        run: docker compose -f sim/swarm/compose.yaml down
+
+  mock-video:
+    name: mock video (MediaMTX)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Start MediaMTX with four test streams
+        run: docker compose -f sim/video/compose.yaml up -d
+      - name: Every stream is ready with H.264
+        run: python3 sim/video/check.py --streams 4 --timeout 90
+      - name: A stream decodes at 640x360
+        run: |
+          probe=$(docker compose -f sim/video/compose.yaml exec -T mediamtx \
+            ffprobe -v error -rtsp_transport tcp -select_streams v:0 \
+            -show_entries stream=codec_name,width,height -of csv=p=0 \
+            rtsp://127.0.0.1:8554/aircraft-01)
+          echo "ffprobe: $probe"
+          if [ "$probe" != "h264,640,360" ]; then
+            echo "::error title=Mock video::unexpected stream: $probe"
+            exit 1
+          fi
+          echo "::notice title=Mock video::4 streams ready; aircraft-01 is $probe"
+      - name: MediaMTX log
+        if: always()
+        run: |
+          docker compose -f sim/video/compose.yaml logs --no-color | tail -40 > mediamtx.log
+          python3 - <<'EOF'
+          from pathlib import Path
+          text = Path("mediamtx.log").read_text()[-3800:]
+          escaped = text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::notice title=MediaMTX log::{escaped}")
+          EOF
+      - name: Stop
+        if: always()
+        run: docker compose -f sim/video/compose.yaml down

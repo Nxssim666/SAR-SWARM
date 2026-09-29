@@ -97,7 +97,7 @@ def code(kind: CommandKind, sample: TelemetrySample | None, **kw: Any) -> str | 
         (CommandKind.LAND, GROUND, "not-in-air"),
         (CommandKind.RESUME, FLYING, None),
         (CommandKind.RESUME, replace(FLYING, flight_mode=FlightMode.GOTO), "not-holding"),
-        (CommandKind.MISSION_START, FLYING, "unsupported"),
+        (CommandKind.MISSION_START, FLYING, "swarm-unknown"),  # no swarm companion heard
     ],
 )
 def test_preconditions(kind: CommandKind, sample: TelemetrySample, expected: str | None) -> None:

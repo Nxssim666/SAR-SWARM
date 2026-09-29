@@ -1,0 +1,422 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SAR fleet: swarm bridge messages on NATS (ADR 0024)",
+  "subjects": {
+    "status": "sar.v1.swarm.<swarm>.status: SwarmStatus",
+    "command": "sar.v1.swarm.<swarm>.command: SwarmCommandRequest -> BridgeReply",
+    "mission": "sar.v1.swarm.<swarm>.mission: SwarmMissionRequest -> BridgeReply",
+    "bridge": "sar.v1.swarm.<swarm>.bridge: BridgeHeartbeat"
+  },
+  "$defs": {
+    "BridgeHeartbeat": {
+      "additionalProperties": false,
+      "description": "The bridge is running and hears these drones.",
+      "properties": {
+        "bridge_version": {
+          "title": "Bridge Version",
+          "type": "string"
+        },
+        "swarm": {
+          "title": "Swarm",
+          "type": "string"
+        },
+        "stamp": {
+          "title": "Stamp",
+          "type": "number"
+        },
+        "drones_heard": {
+          "items": {
+            "maximum": 2147483647,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "title": "Drones Heard",
+          "type": "array"
+        }
+      },
+      "required": [
+        "bridge_version",
+        "swarm",
+        "stamp",
+        "drones_heard"
+      ],
+      "title": "BridgeHeartbeat",
+      "type": "object"
+    },
+    "BridgeReply": {
+      "additionalProperties": false,
+      "description": "The sequence the bridge published under, or why it refused.",
+      "properties": {
+        "sequence": {
+          "anyOf": [
+            {
+              "maximum": 9223372036854775807,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sequence"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        }
+      },
+      "title": "BridgeReply",
+      "type": "object"
+    },
+    "SurvivorSighting": {
+      "additionalProperties": false,
+      "description": "Where a drone's estimate puts a person, with its 1-sigma horizontal uncertainty.",
+      "properties": {
+        "latitude": {
+          "maximum": 90,
+          "minimum": -90,
+          "title": "Latitude",
+          "type": "number"
+        },
+        "longitude": {
+          "maximum": 180,
+          "minimum": -180,
+          "title": "Longitude",
+          "type": "number"
+        },
+        "std_m": {
+          "minimum": 0,
+          "title": "Std M",
+          "type": "number"
+        },
+        "stamp": {
+          "description": "When the estimate was valid [s, Unix epoch].",
+          "title": "Stamp",
+          "type": "number"
+        }
+      },
+      "required": [
+        "latitude",
+        "longitude",
+        "std_m",
+        "stamp"
+      ],
+      "title": "SurvivorSighting",
+      "type": "object"
+    },
+    "SwarmCommandKind": {
+      "description": "Operator commands of the onboard protocol (``SwarmCommand``).",
+      "enum": [
+        "hold",
+        "resume",
+        "return_to_launch",
+        "land"
+      ],
+      "title": "SwarmCommandKind",
+      "type": "string"
+    },
+    "SwarmCommandRequest": {
+      "additionalProperties": false,
+      "description": "Ask the bridge to publish an operator command to some drones.",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/SwarmCommandKind"
+        },
+        "drone_ids": {
+          "items": {
+            "maximum": 2147483647,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxItems": 1024,
+          "minItems": 1,
+          "title": "Drone Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "drone_ids"
+      ],
+      "title": "SwarmCommandRequest",
+      "type": "object"
+    },
+    "SwarmFault": {
+      "description": "Bits of the onboard ``DroneState.faults``, by name.",
+      "enum": [
+        "fc_link",
+        "pose_stale",
+        "pose_invalid",
+        "attitude_stale",
+        "no_global_reference",
+        "depth_stale",
+        "depth_blind",
+        "outside_geofence",
+        "altitude_mismatch",
+        "waypoint_unreachable",
+        "mission_rejected",
+        "control_overrun",
+        "radio_silent"
+      ],
+      "title": "SwarmFault",
+      "type": "string"
+    },
+    "SwarmHealth": {
+      "description": "A swarm companion's own health verdict (onboard ``DroneState.HEALTH_*``).",
+      "enum": [
+        "ok",
+        "degraded",
+        "critical"
+      ],
+      "title": "SwarmHealth",
+      "type": "string"
+    },
+    "SwarmMissionRequest": {
+      "additionalProperties": false,
+      "description": "Ask the bridge to publish an area mission to the whole swarm.",
+      "properties": {
+        "mission_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Mission Id",
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/$defs/WirePoint"
+        },
+        "altitude_relative_m": {
+          "description": "Above each drone's home.",
+          "exclusiveMinimum": 0,
+          "title": "Altitude Relative M",
+          "type": "number"
+        },
+        "grid_resolution_m": {
+          "exclusiveMinimum": 0,
+          "title": "Grid Resolution M",
+          "type": "number"
+        },
+        "waypoints": {
+          "items": {
+            "$ref": "#/$defs/WirePoint"
+          },
+          "maxItems": 64,
+          "title": "Waypoints",
+          "type": "array"
+        },
+        "area": {
+          "items": {
+            "$ref": "#/$defs/WirePoint"
+          },
+          "maxItems": 256,
+          "minItems": 3,
+          "title": "Area",
+          "type": "array"
+        }
+      },
+      "required": [
+        "mission_id",
+        "origin",
+        "altitude_relative_m",
+        "grid_resolution_m",
+        "waypoints",
+        "area"
+      ],
+      "title": "SwarmMissionRequest",
+      "type": "object"
+    },
+    "SwarmPhase": {
+      "description": "What a swarm companion is doing (onboard ``DroneState.PHASE_*``, ADR 0003).",
+      "enum": [
+        "standby",
+        "transit",
+        "search",
+        "track",
+        "hold"
+      ],
+      "title": "SwarmPhase",
+      "type": "string"
+    },
+    "SwarmStatus": {
+      "additionalProperties": false,
+      "description": "One drone's state, as last broadcast by its companion.",
+      "properties": {
+        "drone_id": {
+          "maximum": 2147483647,
+          "minimum": 0,
+          "title": "Drone Id",
+          "type": "integer"
+        },
+        "stamp": {
+          "description": "The drone's own time of the state [s, Unix epoch].",
+          "title": "Stamp",
+          "type": "number"
+        },
+        "received_at": {
+          "description": "When the bridge heard it [s, Unix epoch].",
+          "title": "Received At",
+          "type": "number"
+        },
+        "phase": {
+          "$ref": "#/$defs/SwarmPhase"
+        },
+        "health": {
+          "$ref": "#/$defs/SwarmHealth"
+        },
+        "faults": {
+          "items": {
+            "$ref": "#/$defs/SwarmFault"
+          },
+          "title": "Faults",
+          "type": "array"
+        },
+        "mission_sequence": {
+          "description": "Active mission (0: none).",
+          "maximum": 9223372036854775807,
+          "minimum": 0,
+          "title": "Mission Sequence",
+          "type": "integer"
+        },
+        "command_sequence": {
+          "description": "Last operator command processed.",
+          "maximum": 9223372036854775807,
+          "minimum": 0,
+          "title": "Command Sequence",
+          "type": "integer"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WirePoint"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "heading_deg": {
+          "anyOf": [
+            {
+              "exclusiveMaximum": 360,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Degrees true, clockwise.",
+          "title": "Heading Deg"
+        },
+        "groundspeed_mps": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Groundspeed Mps"
+        },
+        "velocity_north_mps": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Velocity North Mps"
+        },
+        "velocity_east_mps": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Velocity East Mps"
+        },
+        "nearest_obstacle_m": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Null: none known.",
+          "title": "Nearest Obstacle M"
+        },
+        "survivor_sighting": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SurvivorSighting"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "drone_id",
+        "stamp",
+        "received_at",
+        "phase",
+        "health",
+        "faults",
+        "mission_sequence",
+        "command_sequence",
+        "position",
+        "heading_deg",
+        "groundspeed_mps",
+        "velocity_north_mps",
+        "velocity_east_mps",
+        "nearest_obstacle_m",
+        "survivor_sighting"
+      ],
+      "title": "SwarmStatus",
+      "type": "object"
+    },
+    "WirePoint": {
+      "additionalProperties": false,
+      "description": "A WGS84 position in degrees.",
+      "properties": {
+        "latitude": {
+          "maximum": 90,
+          "minimum": -90,
+          "title": "Latitude",
+          "type": "number"
+        },
+        "longitude": {
+          "maximum": 180,
+          "minimum": -180,
+          "title": "Longitude",
+          "type": "number"
+        }
+      },
+      "required": [
+        "latitude",
+        "longitude"
+      ],
+      "title": "WirePoint",
+      "type": "object"
+    }
+  }
+}

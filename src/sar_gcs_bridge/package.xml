@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>sar_gcs_bridge</name>
+  <version>1.0.0</version>
+  <description>Ground-station bridge for civilian search and rescue: carries the swarm_sar protocol (drone states, area missions, operator commands) between ROS 2 and the fleet service over NATS.</description>
+  <maintainer email="nxssim666@gmail.com">Ahmed-Nassim Laatiki</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>builtin_interfaces</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>swarm_sar</exec_depend>
+  <exec_depend>swarm_sar_interfaces</exec_depend>
+  <!-- nats-py is installed with pip in the container (sim/swarm/Dockerfile); no rosdep key. -->
+
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

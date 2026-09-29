@@ -1,5 +1,5 @@
 """
-Turn SITL results into GitHub Actions annotations (CI only).
+Turn integration results (SITL, scale, swarm) into GitHub Actions annotations.
 
 Annotations are readable through the public checks API, without the authentication that
 job logs and artifacts need, so anyone can see why a run failed:
@@ -53,7 +53,7 @@ def annotate(kind: str, title: str, message: str) -> None:
 
 def report_tests(junit: Path) -> None:
     if not junit.exists():
-        annotate("error", "SITL tests", f"{junit} missing: the tests did not run")
+        annotate("error", "Tests", f"{junit} missing: the tests did not run")
         return
     root = ET.parse(junit).getroot()  # noqa: S314 - our own pytest output
     totals: dict[str, int] = defaultdict(int)
@@ -66,14 +66,14 @@ def report_tests(junit: Path) -> None:
         if problem is not None:
             totals[problem.tag] += 1
             details = problem.text or problem.get("message") or ""
-            annotate("error", f"SITL {problem.tag}: {name}", details)
+            annotate("error", f"Test {problem.tag}: {name}", details)
         elif case.find("skipped") is not None:
             totals["skipped"] += 1
         else:
             totals["passed"] += 1
             passed.append(f"{name} ({float(case.get('time', '0')):.1f} s)")
     counts = ", ".join(f"{kind} {count}" for kind, count in sorted(totals.items()))
-    annotate("notice", "SITL totals", "\n".join([counts, *passed]))
+    annotate("notice", "Test totals", "\n".join([counts, *passed]))
 
 
 def report_px4(log: Path) -> None:
@@ -90,7 +90,7 @@ def report_px4(log: Path) -> None:
         chosen = sorted(sorted(chosen, key=lambda c: -errors[c])[:MAX_PX4_TAILS])
     for container in chosen:
         lines = by_container[container]
-        annotate("notice", f"PX4 log tail: {container}", "\n".join(lines[-PX4_TAIL_LINES:]))
+        annotate("notice", f"Log tail: {container}", "\n".join(lines[-PX4_TAIL_LINES:]))
 
 
 def report_scale(report: Path) -> None:

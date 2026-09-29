@@ -62,6 +62,29 @@ class Settings(BaseSettings):
         description="Open the MAVLink connections of registered aircraft (ADR 0022). Off in "
         "unit tests, which must not bind UDP ports; ignored in simulation mode.",
     )
+    mavlink_threads: int = Field(
+        default=64,
+        ge=8,
+        le=512,
+        description="Threads for MAVSDK's blocking calls (arm, takeoff, hold...): at least "
+        "the largest bulk command, so none waits for another aircraft's answer.",
+    )
+    nats_url: str | None = Field(
+        default=None,
+        description="NATS server of the swarm bridge (ADR 0024), e.g. nats://127.0.0.1:4222. "
+        "Unset: no swarm link. Ignored in simulation mode.",
+    )
+    swarm_name: str = Field(
+        default="default",
+        pattern=r"^[a-z0-9][a-z0-9_-]{0,62}$",
+        description="The swarm's name in NATS subjects (sar.v1.swarm.<name>.*).",
+    )
+    swarm_grid_resolution_m: float = Field(
+        default=5.0,
+        gt=0.0,
+        le=100.0,
+        description="Coverage grid cell size sent with swarm missions (the onboard default).",
+    )
     link_stale_after_s: float = Field(default=3.0, gt=0.0, le=60.0)
     link_lost_after_s: float = Field(default=15.0, gt=0.0, le=600.0)
     battery_low_pct: float = Field(default=30.0, ge=0.0, le=100.0)

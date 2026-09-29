@@ -107,6 +107,18 @@ class GotoCommand(_CommandRequest):
     altitude_relative_m: AltitudeRelative | None = None
 
 
+class MissionStartCommand(_CommandRequest):
+    """Start a planned swarm area mission (ADR 0024). Always confirmed.
+
+    The swarm protocol cannot address a mission: every drone on the swarm link adopts it,
+    so ``aircraft_ids`` must be every swarm aircraft, and exactly the mission's tasks.
+    GCS-planned missions (waypoint, area search) cannot be started yet (M4).
+    """
+
+    kind: Literal["mission_start"]
+    mission_id: EntityId
+
+
 CommandRequest = Annotated[
     ArmCommand
     | DisarmCommand
@@ -115,7 +127,8 @@ CommandRequest = Annotated[
     | ResumeCommand
     | ReturnCommand
     | LandCommand
-    | GotoCommand,
+    | GotoCommand
+    | MissionStartCommand,
     Field(discriminator="kind"),
 ]
 
@@ -145,6 +158,7 @@ def spec_of(body: _CommandRequest) -> CommandSpec:
         confirmation_token=body.confirmation_token,
         takeoff_altitude_m=body.altitude_relative_m if isinstance(body, TakeoffCommand) else None,
         goto=goto,
+        mission_id=body.mission_id if isinstance(body, MissionStartCommand) else None,
     )
 
 

@@ -4,7 +4,7 @@ name: sitl
 
 on:
   push:
-    branches: [main]
+    branches: [main, "exp/**"]
   pull_request:
   workflow_dispatch:
 
@@ -35,6 +35,15 @@ jobs:
           python-version: "3.12"
           enable-cache: true
       - run: uv sync --locked
+      - name: Tracking measurement at 5 aircraft (ADR 0026; before the flights)
+        env:
+          SARGCS_SCALE_FLEET: ../sim/sitl/generated/fleet.json
+          SARGCS_SCALE_REPORT: ../sitl-results/scale-report.json
+          SARGCS_SCALE_WINDOW_S: "30"
+        run: |
+          uv run python ../sim/sitl/fleet.py --count 5 --out ../sim/sitl/generated
+          uv run pytest -m sitl_scale tests/integration/test_scale.py -k tracked -v \
+            -p no:cacheprovider --junitxml=../sitl-results/junit-scale.xml
       - name: Integration tests
         env:
           SARGCS_SITL: "1"

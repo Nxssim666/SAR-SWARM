@@ -306,6 +306,17 @@
           "link": {
             "$ref": "#/components/schemas/LinkState"
           },
+          "links": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/LinkState"
+            },
+            "description": "Per-link state of an aircraft with a MAVLink and a swarm link (ADR 0025); empty otherwise, where ``link`` says it all.",
+            "propertyNames": {
+              "$ref": "#/components/schemas/LinkSource"
+            },
+            "title": "Links",
+            "type": "object"
+          },
           "last_seen_at": {
             "anyOf": [
               {
@@ -344,6 +355,7 @@
           "callsign",
           "airframe",
           "link",
+          "links",
           "last_seen_at",
           "telemetry",
           "controller"
@@ -1173,6 +1185,15 @@
         "title": "LeaseView",
         "type": "object"
       },
+      "LinkSource": {
+        "description": "The links an aircraft can have (ADR 0025).",
+        "enum": [
+          "mavlink",
+          "swarm"
+        ],
+        "title": "LinkSource",
+        "type": "string"
+      },
       "LinkState": {
         "description": "Freshness of an aircraft's telemetry (ADR 0010).",
         "enum": [
@@ -1330,6 +1351,139 @@
           "topics"
         ],
         "title": "SubscribeMessage",
+        "type": "object"
+      },
+      "SurvivorSightingView": {
+        "description": "Where a swarm drone's estimate puts a person (the onboard \"target\" estimate).",
+        "properties": {
+          "position": {
+            "$ref": "#/components/schemas/GeoPoint"
+          },
+          "std_m": {
+            "description": "1-sigma horizontal uncertainty [m].",
+            "title": "Std M",
+            "type": "number"
+          },
+          "stamp": {
+            "format": "date-time",
+            "title": "Stamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "position",
+          "std_m",
+          "stamp"
+        ],
+        "title": "SurvivorSightingView",
+        "type": "object"
+      },
+      "SwarmFault": {
+        "description": "Bits of the onboard ``DroneState.faults``, by name.",
+        "enum": [
+          "fc_link",
+          "pose_stale",
+          "pose_invalid",
+          "attitude_stale",
+          "no_global_reference",
+          "depth_stale",
+          "depth_blind",
+          "outside_geofence",
+          "altitude_mismatch",
+          "waypoint_unreachable",
+          "mission_rejected",
+          "control_overrun",
+          "radio_silent"
+        ],
+        "title": "SwarmFault",
+        "type": "string"
+      },
+      "SwarmHealth": {
+        "description": "A swarm companion's own health verdict (onboard ``DroneState.HEALTH_*``).",
+        "enum": [
+          "ok",
+          "degraded",
+          "critical"
+        ],
+        "title": "SwarmHealth",
+        "type": "string"
+      },
+      "SwarmPhase": {
+        "description": "What a swarm companion is doing (onboard ``DroneState.PHASE_*``, ADR 0003).",
+        "enum": [
+          "standby",
+          "transit",
+          "search",
+          "track",
+          "hold"
+        ],
+        "title": "SwarmPhase",
+        "type": "string"
+      },
+      "SwarmView": {
+        "description": "What an aircraft's swarm companion reports (ADR 0003).",
+        "properties": {
+          "drone_id": {
+            "title": "Drone Id",
+            "type": "integer"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/SwarmPhase"
+          },
+          "health": {
+            "$ref": "#/components/schemas/SwarmHealth"
+          },
+          "faults": {
+            "items": {
+              "$ref": "#/components/schemas/SwarmFault"
+            },
+            "title": "Faults",
+            "type": "array"
+          },
+          "mission_sequence": {
+            "description": "Active swarm mission (0: none).",
+            "title": "Mission Sequence",
+            "type": "integer"
+          },
+          "command_sequence": {
+            "description": "Last operator command the drone processed.",
+            "title": "Command Sequence",
+            "type": "integer"
+          },
+          "nearest_obstacle_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null: no obstacle known.",
+            "title": "Nearest Obstacle M"
+          },
+          "survivor_sighting": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SurvivorSightingView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "drone_id",
+          "phase",
+          "health",
+          "faults",
+          "mission_sequence",
+          "command_sequence",
+          "nearest_obstacle_m",
+          "survivor_sighting"
+        ],
+        "title": "SwarmView",
         "type": "object"
       },
       "TelemetryBatch": {
@@ -1525,7 +1679,15 @@
             "title": "Battery V"
           },
           "gps_fix": {
-            "$ref": "#/components/schemas/GpsFix"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GpsFix"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null: the link does not report GNSS quality."
           },
           "satellites": {
             "anyOf": [
@@ -1572,6 +1734,17 @@
                 "type": "null"
               }
             ]
+          },
+          "swarm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SwarmView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Only for aircraft with a swarm link."
           }
         },
         "required": [
@@ -1590,7 +1763,8 @@
           "flight_mode",
           "armed",
           "in_air",
-          "home"
+          "home",
+          "swarm"
         ],
         "title": "TelemetryView",
         "type": "object"

@@ -257,3 +257,50 @@ _GPS_CODES = {
     GpsFix.RTK_FLOAT: 5,
     GpsFix.RTK_FIXED: 6,
 }
+
+
+class SwarmPhase(StrEnum):
+    """What a swarm companion is doing (onboard ``DroneState.PHASE_*``, ADR 0003)."""
+
+    STANDBY = "standby"  # no mission
+    TRANSIT = "transit"
+    SEARCH = "search"
+    TRACK = "track"  # converging on a survivor sighting
+    HOLD = "hold"
+
+
+# Phases in which a companion is working a mission (what RESUME and a mission start lead to).
+SWARM_WORKING = frozenset({SwarmPhase.TRANSIT, SwarmPhase.SEARCH, SwarmPhase.TRACK})
+
+
+class SwarmHealth(StrEnum):
+    """A swarm companion's own health verdict (onboard ``DroneState.HEALTH_*``)."""
+
+    OK = "ok"
+    DEGRADED = "degraded"
+    CRITICAL = "critical"
+
+
+class SwarmFault(StrEnum):
+    """Bits of the onboard ``DroneState.faults``, by name."""
+
+    FC_LINK = "fc_link"
+    POSE_STALE = "pose_stale"
+    POSE_INVALID = "pose_invalid"
+    ATTITUDE_STALE = "attitude_stale"
+    NO_GLOBAL_REFERENCE = "no_global_reference"
+    DEPTH_STALE = "depth_stale"
+    DEPTH_BLIND = "depth_blind"
+    OUTSIDE_GEOFENCE = "outside_geofence"
+    ALTITUDE_MISMATCH = "altitude_mismatch"
+    WAYPOINT_UNREACHABLE = "waypoint_unreachable"
+    MISSION_REJECTED = "mission_rejected"
+    CONTROL_OVERRUN = "control_overrun"
+    RADIO_SILENT = "radio_silent"
+
+
+class LinkSource(StrEnum):
+    """The links an aircraft can have (ADR 0025)."""
+
+    MAVLINK = "mavlink"
+    SWARM = "swarm"

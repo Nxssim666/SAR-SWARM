@@ -18,6 +18,7 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import Awaitable, Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 from fleet_service.bus import EventBus
@@ -28,6 +29,7 @@ from fleet_service.domain.commands import Limits
 from fleet_service.domain.geo import GeoPoint
 from fleet_service.drivers.mavlink import MavlinkLinks
 from fleet_service.drivers.mock import MockFleet
+from fleet_service.drivers.swarm import SwarmLink
 from fleet_service.services.alerts import AlertService
 from fleet_service.services.commands import CommandService
 from fleet_service.services.fleet import FleetManager, FleetRegistry
@@ -75,7 +77,19 @@ class Runtime:
         self.links = (
             MavlinkLinks(clock) if settings.mavlink_links and not settings.simulation else None
         )
-        self.fleet = FleetManager(self.registry, self.simulator, self.links)
+        self.swarm = (
+            SwarmLink(settings.nats_url, settings.swarm_name, clock)
+            if settings.nats_url and not settings.simulation
+            else None
+        )
+        self.fleet = FleetManager(
+            self.registry,
+            self.simulator,
+            self.links,
+            self.swarm,
+            clock=clock,
+            fresh_for=timedelta(seconds=settings.link_stale_after_s),
+        )
         self.alerts = AlertService(
             self.bus, settings.battery_low_pct, settings.battery_critical_pct
         )
@@ -96,12 +110,20 @@ class Runtime:
             effect_timeout_s=settings.command_effect_timeout_s,
             min_interval_s=settings.command_min_interval_s,
             confirmation_ttl_s=settings.confirmation_ttl_s,
+            swarm_grid_resolution_m=settings.swarm_grid_resolution_m,
+            swarm_aircraft=self.fleet.swarm_aircraft,
         )
         self.recorder = TelemetryRecorder(self.bus, self.registry)
         self._tasks: list[asyncio.Task[None]] = []
 
     async def start(self, start_loops: bool) -> None:
         """Load live state from the database and, unless testing, start the loops."""
+        if self.links is not None:
+            # MAVSDK's asyncio API runs each blocking call in the loop's default executor;
+            # asyncio's default pool (8 threads on 4 cores) queued bulk commands (M2b).
+            asyncio.get_running_loop().set_default_executor(
+                ThreadPoolExecutor(self.settings.mavlink_threads, thread_name_prefix="mavsdk")
+            )
         async with self.database.ops_session() as db:
             await self.fleet.load(db)
             await self.leases.load(db, self.clock.now())
@@ -124,6 +146,8 @@ class Runtime:
             self.fleet.unregister(aircraft_id)
         if self.links is not None:
             await self.links.close()
+        if self.swarm is not None:
+            await self.swarm.close()
         self.recorder.close()
 
     # --- the periodic work (called by the loops, or directly by tests) ------------------------

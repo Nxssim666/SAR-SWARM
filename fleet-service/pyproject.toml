@@ -11,6 +11,7 @@ dependencies = [
     "argon2-cffi>=25.1",
     "fastapi>=0.135",
     "mavsdk>=4.0",
+    "nats-py>=2.16",
     "pydantic>=2.11",
     "pydantic-settings>=2.10",
     "pyproj>=3.7",
@@ -70,8 +71,10 @@ select = [
 [tool.mypy]
 strict = true
 python_version = "3.12"
-mypy_path = "src,tests,../sim"
+mypy_path = "src,tests,../sim,../src/sar_gcs_bridge"
 files = ["src", "tests", "scripts", "../sim"]
+# sim/swarm runs with the onboard package (ROS style, untyped): linted, not type-checked.
+exclude = ['sim[\\/]swarm[\\/]']
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
@@ -82,10 +85,11 @@ follow_untyped_imports = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["../sim"]
+pythonpath = ["../sim", "../src/sar_gcs_bridge"]
 markers = [
     "sitl: needs the PX4 SITL fleet of sim/sitl/compose.yaml; runs with SARGCS_SITL=1",
     "sitl_scale: needs a generated PX4 SIH fleet (sim/sitl/fleet.py); runs with SARGCS_SCALE_FLEET",
+    "swarm: needs the swarm of sim/swarm/compose.yaml (bridge, NATS); runs with SARGCS_SWARM=1",
 ]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"

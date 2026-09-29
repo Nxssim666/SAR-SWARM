@@ -213,7 +213,7 @@ class AlertService:
                         f"{name}: battery low ({battery:.0f} %).",
                     )
                 )
-            if sample.in_air and not sample.gps_fix.has_3d:
+            if sample.in_air and sample.gps_fix is not None and not sample.gps_fix.has_3d:
                 found.append(
                     Condition(
                         AlertKind.GPS_LOST,

@@ -54,6 +54,18 @@ def test_committed_asyncapi_matches_the_code(tmp_path: Path) -> None:
     ), "docs/api/asyncapi.json is stale: run `fleet-service export-asyncapi` and commit the result"
 
 
+COMMITTED_BRIDGE_SCHEMA = COMMITTED_SPEC.with_name("swarm-bridge.json")
+
+
+def test_committed_bridge_schema_matches_the_code(tmp_path: Path) -> None:
+    generated = tmp_path / "swarm-bridge.json"
+    cli.main(["export-bridge-schema", "--output", str(generated)])
+
+    assert COMMITTED_BRIDGE_SCHEMA.read_text(encoding="utf-8") == generated.read_text(
+        encoding="utf-8"
+    ), "docs/api/swarm-bridge.json is stale: run `fleet-service export-bridge-schema`"
+
+
 def test_every_error_response_is_documented_as_problem_json(tmp_path: Path) -> None:
     schema = create_app(Settings(data_dir=tmp_path)).openapi()
 

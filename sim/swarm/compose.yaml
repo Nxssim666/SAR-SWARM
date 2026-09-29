@@ -1,0 +1,38 @@
+# The swarm side of the swarm CI workflow (ADR 0024, ADR 0026), on the host network:
+#
+#   nats       the message broker between the bridge and the fleet service
+#   swarm-sim  3 simulated swarm_sar drones (the onboard controller) on ROS 2
+#   bridge     sar_gcs_bridge: /swarm/v2/* <-> sar.v1.swarm.default.* on NATS
+#
+#   docker compose -f sim/swarm/compose.yaml up -d --build      # Linux with Docker only
+#
+# The fleet service runs on the host with NATS_URL=nats://127.0.0.1:4222.
+name: sar-swarm
+
+x-ros: &ros
+  build:
+    context: ../..
+    dockerfile: sim/swarm/Dockerfile
+  image: sar-swarm:ci
+  network_mode: host
+  ipc: host  # DDS shared-memory transport between the two containers
+  init: true
+  environment:
+    ROS_DOMAIN_ID: "42"
+    ROS_AUTOMATIC_DISCOVERY_RANGE: LOCALHOST
+
+services:
+  nats:
+    image: nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4
+    network_mode: host
+    command: ["-a", "127.0.0.1", "-p", "4222", "-m", "8222"]
+
+  swarm-sim:
+    <<: *ros
+    command: ["python3", "/ws/sim/swarm_sim.py", "--drones", "3"]
+
+  bridge:
+    <<: *ros
+    command: ["ros2", "run", "sar_gcs_bridge", "bridge_node", "--ros-args",
+              "-p", "nats_url:=nats://127.0.0.1:4222", "-p", "swarm:=default"]
+    depends_on: [nats, swarm-sim]

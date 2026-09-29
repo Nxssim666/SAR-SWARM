@@ -226,6 +226,11 @@ async def test_the_whole_fleet_is_tracked_without_stale_states(
     assert report["max_gap_s"] < settings.link_stale_after_s, report["max_gap_s"]
 
 
+async def _armed(station: Station, aircraft_id: str) -> bool:
+    telemetry = await station.telemetry(aircraft_id)
+    return telemetry is not None and telemetry["armed"] is True
+
+
 async def test_a_bulk_arm_and_disarm_of_the_whole_fleet_is_verified(station: Station) -> None:
     ids = await _register_fleet(station)
     await _all_ready(station, ids)
@@ -239,20 +244,21 @@ async def test_a_bulk_arm_and_disarm_of_the_whole_fleet_is_verified(station: Sta
     for attempt in range(1, 6):  # PX4's preflight checks may still be settling on a busy host
         started = time.monotonic()
         outcome = await station.command("arm", pending)
-        states = await station.settled(outcome, SETTLE_TIMEOUT_S)
+        await station.settled(outcome, SETTLE_TIMEOUT_S)
         timings.setdefault("arm_s", round(time.monotonic() - started, 2))
-        pending = [a for a, state in states.items() if state != "verified"]
         timings["arm_attempts"] = attempt
+        reasons.append(await station.reasons(outcome))
+        # An answer later than the command timeout still arms: judge by telemetry.
+        pending = [a for a in pending if not await _armed(station, a)]
         if not pending:
             break
-        reasons.append(await station.reasons(outcome))
         await asyncio.sleep(5.0)
-    _write_report({"bulk": timings | {"aircraft": len(aircraft_ids), "arm_failures": reasons}})
+    _write_report({"bulk": timings | {"aircraft": len(aircraft_ids), "arm_outcomes": reasons}})
     assert pending == [], f"{len(pending)} aircraft not armed after retries; per attempt: {reasons}"
 
     started = time.monotonic()
     states = await station.settled(await station.command("disarm", aircraft_ids), SETTLE_TIMEOUT_S)
     timings["disarm_s"] = round(time.monotonic() - started, 2)
-    _write_report({"bulk": timings | {"aircraft": len(aircraft_ids), "arm_failures": reasons}})
+    _write_report({"bulk": timings | {"aircraft": len(aircraft_ids), "arm_outcomes": reasons}})
 
     assert set(states.values()) == {"verified"}, states

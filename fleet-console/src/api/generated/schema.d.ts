@@ -939,6 +939,13 @@ export interface components {
             callsign: string;
             airframe: components["schemas"]["Airframe"];
             link: components["schemas"]["LinkState"];
+            /**
+             * Links
+             * @description Per-link state of an aircraft with a MAVLink and a swarm link (ADR 0025); empty otherwise, where ``link`` says it all.
+             */
+            links: {
+                [key: string]: components["schemas"]["LinkState"];
+            };
             /** Last Seen At */
             last_seen_at: string | null;
             telemetry: components["schemas"]["TelemetryView"] | null;
@@ -1745,6 +1752,12 @@ export interface components {
             pending_request: components["schemas"]["HandoverRequestView"] | null;
         };
         /**
+         * LinkSource
+         * @description The links an aircraft can have (ADR 0025).
+         * @enum {string}
+         */
+        LinkSource: "mavlink" | "swarm";
+        /**
          * LinkState
          * @description Freshness of an aircraft's telemetry (ADR 0010).
          * @enum {string}
@@ -1871,6 +1884,36 @@ export interface components {
              * @description Null when this is the last page.
              */
             next_cursor: string | null;
+        };
+        /**
+         * MissionStartCommand
+         * @description Start a planned swarm area mission (ADR 0024). Always confirmed.
+         *
+         *     The swarm protocol cannot address a mission: every drone on the swarm link adopts it,
+         *     so ``aircraft_ids`` must be every swarm aircraft, and exactly the mission's tasks.
+         *     GCS-planned missions (waypoint, area search) cannot be started yet (M4).
+         */
+        MissionStartCommand: {
+            /**
+             * Command Id
+             * Format: uuid
+             * @description Client-generated; the idempotency key.
+             */
+            command_id: string;
+            /** Aircraft Ids */
+            aircraft_ids: string[];
+            /**
+             * Confirmation Token
+             * @description From a 428 answer to this exact request.
+             */
+            confirmation_token?: string | null;
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "mission_start";
+            /** Mission Id */
+            mission_id: string;
         };
         /**
          * MissionStatus
@@ -2136,6 +2179,69 @@ export interface components {
             message: string;
         };
         /**
+         * SurvivorSightingView
+         * @description Where a swarm drone's estimate puts a person (the onboard "target" estimate).
+         */
+        SurvivorSightingView: {
+            position: components["schemas"]["GeoPoint"];
+            /**
+             * Std M
+             * @description 1-sigma horizontal uncertainty [m].
+             */
+            std_m: number;
+            /**
+             * Stamp
+             * Format: date-time
+             */
+            stamp: string;
+        };
+        /**
+         * SwarmFault
+         * @description Bits of the onboard ``DroneState.faults``, by name.
+         * @enum {string}
+         */
+        SwarmFault: "fc_link" | "pose_stale" | "pose_invalid" | "attitude_stale" | "no_global_reference" | "depth_stale" | "depth_blind" | "outside_geofence" | "altitude_mismatch" | "waypoint_unreachable" | "mission_rejected" | "control_overrun" | "radio_silent";
+        /**
+         * SwarmHealth
+         * @description A swarm companion's own health verdict (onboard ``DroneState.HEALTH_*``).
+         * @enum {string}
+         */
+        SwarmHealth: "ok" | "degraded" | "critical";
+        /**
+         * SwarmPhase
+         * @description What a swarm companion is doing (onboard ``DroneState.PHASE_*``, ADR 0003).
+         * @enum {string}
+         */
+        SwarmPhase: "standby" | "transit" | "search" | "track" | "hold";
+        /**
+         * SwarmView
+         * @description What an aircraft's swarm companion reports (ADR 0003).
+         */
+        SwarmView: {
+            /** Drone Id */
+            drone_id: number;
+            phase: components["schemas"]["SwarmPhase"];
+            health: components["schemas"]["SwarmHealth"];
+            /** Faults */
+            faults: components["schemas"]["SwarmFault"][];
+            /**
+             * Mission Sequence
+             * @description Active swarm mission (0: none).
+             */
+            mission_sequence: number;
+            /**
+             * Command Sequence
+             * @description Last operator command the drone processed.
+             */
+            command_sequence: number;
+            /**
+             * Nearest Obstacle M
+             * @description Null: no obstacle known.
+             */
+            nearest_obstacle_m: number | null;
+            survivor_sighting: components["schemas"]["SurvivorSightingView"] | null;
+        };
+        /**
          * TakeoffCommand
          * @description Take off to an altitude above home. Always confirmed.
          */
@@ -2313,7 +2419,8 @@ export interface components {
             battery_pct: number | null;
             /** Battery V */
             battery_v: number | null;
-            gps_fix: components["schemas"]["GpsFix"];
+            /** @description Null: the link does not report GNSS quality. */
+            gps_fix: components["schemas"]["GpsFix"] | null;
             /** Satellites */
             satellites: number | null;
             flight_mode: components["schemas"]["FlightMode"];
@@ -2322,6 +2429,8 @@ export interface components {
             /** In Air */
             in_air: boolean | null;
             home: components["schemas"]["GeoPoint"] | null;
+            /** @description Only for aircraft with a swarm link. */
+            swarm: components["schemas"]["SwarmView"] | null;
         };
         /**
          * UserCreate
@@ -6769,7 +6878,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ArmCommand"] | components["schemas"]["DisarmCommand"] | components["schemas"]["TakeoffCommand"] | components["schemas"]["HoldCommand"] | components["schemas"]["ResumeCommand"] | components["schemas"]["ReturnCommand"] | components["schemas"]["LandCommand"] | components["schemas"]["GotoCommand"];
+                "application/json": components["schemas"]["ArmCommand"] | components["schemas"]["DisarmCommand"] | components["schemas"]["TakeoffCommand"] | components["schemas"]["HoldCommand"] | components["schemas"]["ResumeCommand"] | components["schemas"]["ReturnCommand"] | components["schemas"]["LandCommand"] | components["schemas"]["GotoCommand"] | components["schemas"]["MissionStartCommand"];
             };
         };
         responses: {

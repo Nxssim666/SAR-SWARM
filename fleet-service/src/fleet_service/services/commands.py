@@ -32,7 +32,15 @@ from fleet_service.auth.permissions import Permission
 from fleet_service.auth.principal import Principal
 from fleet_service.bus import COMMANDS, EventBus
 from fleet_service.clock import Clock
-from fleet_service.db.models import Command, CommandTarget, Geofence, Incident
+from fleet_service.db.models import (
+    Command,
+    CommandTarget,
+    Geofence,
+    Incident,
+    Mission,
+    SearchArea,
+    Task,
+)
 from fleet_service.domain.commands import (
     GotoTarget,
     Limits,
@@ -41,6 +49,7 @@ from fleet_service.domain.commands import (
     confirmation_reasons,
     expected_effect,
     precondition,
+    swarm_mission_problem,
     warnings,
 )
 from fleet_service.domain.enums import (
@@ -50,11 +59,13 @@ from fleet_service.domain.enums import (
     CommandState,
     CommandTargetState,
     IncidentStatus,
+    MissionStatus,
+    TaskStatus,
 )
 from fleet_service.domain.geo import GeoPoint, distance_m
 from fleet_service.domain.geofence import Fence, GeofenceSet
 from fleet_service.domain.telemetry import TelemetrySample
-from fleet_service.drivers.base import DriverCommand, Outcome
+from fleet_service.drivers.base import AreaMission, DriverCommand, Outcome
 from fleet_service.errors import Conflict, InvalidRequest, ProblemError
 from fleet_service.services import audit
 from fleet_service.services.alerts import AlertService
@@ -79,8 +90,9 @@ class CommandSpec:
     confirmation_token: str | None
     takeoff_altitude_m: float | None = None
     goto: GotoTarget | None = None
+    mission_id: str | None = None
 
-    def driver_command(self) -> DriverCommand:
+    def driver_command(self, mission: AreaMission | None = None) -> DriverCommand:
         """What each aircraft is told."""
         return DriverCommand(
             self.kind,
@@ -89,6 +101,8 @@ class CommandSpec:
             ),
             latitude=self.goto.latitude if self.goto else None,
             longitude=self.goto.longitude if self.goto else None,
+            command_id=self.command_id,
+            mission=mission,
         )
 
 
@@ -158,6 +172,26 @@ class ConfirmationProblem(BaseModel):
     summary: ConfirmationSummary
 
 
+def area_mission(mission: Mission, geometry: dict[str, Any], grid_m: float) -> AreaMission:
+    """A swarm area mission from a planned mission and its search area's GeoJSON polygon.
+
+    The mission frame's origin is the area's centroid; the polygon's closing vertex is
+    dropped (the onboard protocol takes an open ring). Altitudes are above each drone's home.
+    """
+    ring = [(float(lat), float(lon)) for lon, lat in geometry["coordinates"][0]]
+    if len(ring) > 1 and ring[0] == ring[-1]:
+        ring = ring[:-1]
+    centroid = Polygon([(lon, lat) for lat, lon in ring]).centroid
+    return AreaMission(
+        mission_id=mission.id,
+        origin=(round(centroid.y, 7), round(centroid.x, 7)),
+        altitude_relative_m=mission.default_altitude_relative_m,
+        grid_resolution_m=grid_m,
+        waypoints=tuple((w.latitude, w.longitude) for w in mission.waypoints),
+        area=tuple(ring),
+    )
+
+
 @dataclass
 class _Plan:
     accepted: list[str] = field(default_factory=list)
@@ -165,6 +199,7 @@ class _Plan:
     warnings: dict[str, list[str]] = field(default_factory=dict)
     override: bool = False
     reasons: list[str] = field(default_factory=list)
+    mission: AreaMission | None = None  # mission_start: what the swarm is sent
 
 
 @dataclass(frozen=True)
@@ -193,6 +228,8 @@ class CommandService:
         effect_timeout_s: float,
         min_interval_s: float,
         confirmation_ttl_s: float,
+        swarm_grid_resolution_m: float = 5.0,
+        swarm_aircraft: Callable[[], list[str]] = list,
     ) -> None:
         self._bus = bus
         self._clock = clock
@@ -205,6 +242,8 @@ class CommandService:
         self._effect_timeout = timedelta(seconds=effect_timeout_s)
         self._min_interval = timedelta(seconds=min_interval_s)
         self._ttl = timedelta(seconds=confirmation_ttl_s)
+        self._grid_resolution_m = swarm_grid_resolution_m
+        self._swarm_aircraft = swarm_aircraft
         self._secret = secrets.token_bytes(32)  # tokens do not survive a restart, by design
         self._last_dispatch: dict[str, datetime] = {}
         self._verifications: list[_Verification] = []
@@ -252,6 +291,9 @@ class CommandService:
         plan = _Plan()
         geofences = await self._geofences(db) if spec.kind is CommandKind.GOTO else None
         farthest: float | None = None
+        mission_problem: Rejection | None = None
+        if spec.kind is CommandKind.MISSION_START:
+            mission_problem, plan.mission = await self._swarm_mission(db, spec)
         for aircraft_id in spec.aircraft_ids:
             vehicle = self._registry.vehicle_view(aircraft_id)
             assert vehicle is not None  # noqa: S101 - unknown ids were rejected above
@@ -263,6 +305,8 @@ class CommandService:
                 can_command=principal.can(Permission.AIRCRAFT_COMMAND),
                 can_override=principal.can(Permission.CONTROL_OVERRIDE),
             )
+            if rejection is None:
+                rejection = mission_problem
             if rejection is None:
                 rejection = precondition(
                     spec.kind,
@@ -301,6 +345,39 @@ class CommandService:
             limits=self._limits,
         )
         return plan
+
+    async def _swarm_mission(
+        self, db: AsyncSession, spec: CommandSpec
+    ) -> tuple[Rejection | None, AreaMission | None]:
+        """Check a mission start (ADR 0024) and build what the swarm is sent."""
+        mission = await db.get(Mission, spec.mission_id) if spec.mission_id else None
+        if mission is None:
+            raise InvalidRequest(
+                f"Mission {spec.mission_id} does not exist.",
+                slug="unknown-reference",
+                extensions={"field": "mission_id"},
+            )
+        incident = await db.get(Incident, mission.incident_id)
+        tasked = (
+            await db.scalars(
+                select(Task.aircraft_id).where(
+                    Task.mission_id == mission.id, Task.status != TaskStatus.CANCELLED
+                )
+            )
+        ).all()
+        problem = swarm_mission_problem(
+            mission.kind,
+            mission.status,
+            incident_active=incident is not None and incident.status is IncidentStatus.ACTIVE,
+            targets=spec.aircraft_ids,
+            tasked=tasked,
+            swarm_aircraft=self._swarm_aircraft(),
+        )
+        if problem is not None or mission.search_area_id is None:
+            return problem, None
+        area = await db.get(SearchArea, mission.search_area_id)
+        assert area is not None  # noqa: S101 - a foreign key
+        return None, area_mission(mission, area.geometry, self._grid_resolution_m)
 
     async def _geofences(self, db: AsyncSession) -> GeofenceSet:
         rows = await db.scalars(
@@ -455,7 +532,7 @@ class CommandService:
         await db.commit()
         for aircraft_id in plan.accepted:
             self._last_dispatch[aircraft_id] = now
-        driver_command = spec.driver_command()
+        driver_command = spec.driver_command(plan.mission)
         results = await asyncio.gather(*(self._send(a, driver_command) for a in plan.accepted))
 
         done = self._clock.now()
@@ -485,6 +562,9 @@ class CommandService:
                         command.id, aircraft_id, effect, done, done + self._effect_timeout
                     )
                 )
+        acked = [a for a, state, _, _ in results if state is CommandTargetState.ACKED]
+        if spec.kind is CommandKind.MISSION_START and acked and spec.mission_id is not None:
+            await self._activate_mission(db, actor, done, spec.mission_id, acked)
         command = await db.merge(command)
         command.state = CommandState.COMPLETED
         command.completed_at = done
@@ -501,6 +581,29 @@ class CommandService:
         view = await self.view(db, command)
         self._publish(view)
         return view
+
+    async def _activate_mission(
+        self, db: AsyncSession, actor: Actor, now: datetime, mission_id: str, acked: list[str]
+    ) -> None:
+        """A swarm adopted the mission: it and the acked aircraft's tasks become active."""
+        mission = await db.get(Mission, mission_id)
+        if mission is None or mission.status is not MissionStatus.PLANNED:
+            return
+        mission.status, mission.updated_at = MissionStatus.ACTIVE, now
+        tasks = await db.scalars(
+            select(Task).where(Task.mission_id == mission_id, Task.aircraft_id.in_(acked))
+        )
+        for task in tasks.all():
+            task.status, task.updated_at = TaskStatus.ACTIVE, now
+        await audit.record(
+            db,
+            actor,
+            now,
+            "mission.activate",
+            entity_type="mission",
+            entity_id=mission_id,
+            details={"aircraft": sorted(acked)},
+        )
 
     async def _send(
         self, aircraft_id: str, command: DriverCommand

@@ -3,7 +3,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, "exp/**"]
   pull_request:
 
 permissions:
@@ -45,10 +45,25 @@ jobs:
           python-version: ${{ matrix.python }}
           enable-cache: true
       - run: uv sync --locked
+      - name: Install nats-server (pinned, checksum verified) for the NATS tests
+        working-directory: .
+        run: |
+          version=v2.15.0
+          sum=5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92
+          file=nats-server-$version-linux-amd64.tar.gz
+          url=https://github.com/nats-io/nats-server/releases/download/$version/$file
+          curl -fsSL -o "$RUNNER_TEMP/$file" "$url"
+          echo "$sum  $RUNNER_TEMP/$file" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$file" -C "$RUNNER_TEMP"
+          bin=$RUNNER_TEMP/nats-server-$version-linux-amd64/nats-server
+          echo "NATS_SERVER_BIN=$bin" >> "$GITHUB_ENV"
       - run: uv run ruff check . ../sim
       - run: uv run ruff format --check . ../sim
+      - run: uv run ruff check --config ../src/sar_gcs_bridge/ruff.toml ../src/sar_gcs_bridge
       - run: uv run mypy
       - run: uv run pytest -q
+        env:
+          SARGCS_REQUIRE_NATS: "1"
 
   fleet-console:
     name: fleet-console

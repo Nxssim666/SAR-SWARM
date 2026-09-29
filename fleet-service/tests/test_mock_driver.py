@@ -2,6 +2,7 @@
 
 import asyncio
 import math
+from typing import Any
 
 import pytest
 
@@ -27,7 +28,7 @@ def run(v: MockVehicle, seconds: float) -> None:
         v.step(DT)
 
 
-def ok(v: MockVehicle, kind: CommandKind, **params: float) -> None:
+def ok(v: MockVehicle, kind: CommandKind, **params: Any) -> None:
     result = v.command(DriverCommand(kind, **params))
     assert result.outcome is Outcome.ACKED, result.reason
 

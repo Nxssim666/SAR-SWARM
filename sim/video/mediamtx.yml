@@ -1,0 +1,33 @@
+# MediaMTX for mock video (sim/video/compose.yaml). Each path publishes itself at start:
+# an ffmpeg test pattern, restarted if it exits.
+api: yes
+apiAddress: 127.0.0.1:9997
+rtspAddress: :8554
+hls: no
+srt: no
+rtmp: no
+
+pathDefaults:
+  runOnInitRestart: yes
+
+paths:
+  aircraft-01:
+    runOnInit: >-
+      ffmpeg -hide_banner -loglevel warning -re -f lavfi -i testsrc2=size=640x360:rate=15
+      -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -pix_fmt yuv420p
+      -f rtsp rtsp://127.0.0.1:$RTSP_PORT/$MTX_PATH
+  aircraft-02:
+    runOnInit: >-
+      ffmpeg -hide_banner -loglevel warning -re -f lavfi -i testsrc2=size=640x360:rate=15
+      -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -pix_fmt yuv420p
+      -f rtsp rtsp://127.0.0.1:$RTSP_PORT/$MTX_PATH
+  aircraft-03:
+    runOnInit: >-
+      ffmpeg -hide_banner -loglevel warning -re -f lavfi -i testsrc2=size=640x360:rate=15
+      -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -pix_fmt yuv420p
+      -f rtsp rtsp://127.0.0.1:$RTSP_PORT/$MTX_PATH
+  aircraft-04:
+    runOnInit: >-
+      ffmpeg -hide_banner -loglevel warning -re -f lavfi -i testsrc2=size=640x360:rate=15
+      -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -pix_fmt yuv420p
+      -f rtsp rtsp://127.0.0.1:$RTSP_PORT/$MTX_PATH
