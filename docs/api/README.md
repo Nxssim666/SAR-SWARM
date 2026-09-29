@@ -127,9 +127,19 @@ of the trail can be detected too.
   - `link`: `live`; `stale` after 3 s without telemetry; `lost` after 15 s; `offline` means
     never heard from, or no driver.
   - The latest `telemetry`. Unknown values are `null`: without a GNSS fix, `position` is
-    `null`, never a stale guess. `source` is the driver (`mock`, `mavlink`).
-    `flight_mode` includes `offboard` (an onboard computer steers the aircraft); for PX4, a
-    reposition in progress shows as `goto` (ADR 0022).
+    `null`, never a stale guess. `source` is the driver (`mock`, `mavlink`, `swarm`, or
+    `mavlink+swarm`). `flight_mode` includes `offboard` (an onboard computer steers the
+    aircraft); for PX4, a reposition in progress shows as `goto` (ADR 0022).
+  - **Swarm aircraft** (ADR 0003, ADR 0024):
+    - `telemetry.swarm` holds the companion's report: `phase` (`standby`, `transit`,
+      `search`, `track`, `hold`), `health`, `faults`, `mission_sequence`,
+      `command_sequence`, `nearest_obstacle_m`, and `survivor_sighting` (position,
+      `std_m`, `stamp`), the onboard estimate of where a person is.
+    - With only the swarm link, the swarm protocol carries position, heading and
+      groundspeed. Everything else is `null`, including `gps_fix`: GNSS quality unknown.
+      `flight_mode` is `unknown`.
+  - `links`: for an aircraft with both a MAVLink and a swarm link, each link's state
+    (`{"mavlink": "live", "swarm": "stale"}`); empty otherwise (ADR 0025).
   - Its `controller` (lease).
 - `GET /aircraft/{id}/telemetry?since&until&limit` returns the recorded history (1 sample
   per second by default), oldest first, with `truncated` when `limit` cut it short.
@@ -152,6 +162,19 @@ POST /api/v1/commands
 | `arm`, `disarm`, `hold`, `resume`, `return_to_launch`, `land` | None |
 | `takeoff` | `altitude_relative_m` (required) |
 | `goto` | `target: {latitude, longitude}`, optional `altitude_relative_m` |
+| `mission_start` | `mission_id` of a `planned` swarm area mission (ADR 0024) |
+
+Swarm aircraft take `hold`, `resume`, `return_to_launch`, `land` and `mission_start`.
+An aircraft with both links gets each command over the link its route picks (ADR 0025):
+arm, disarm, takeoff and goto go over MAVLink. Hold, return and land go over the swarm link
+while it is live, else over MAVLink. Resume and mission_start go over the swarm link only.
+
+**`mission_start`** sends the area to the whole swarm, because the onboard protocol cannot
+address a mission. So `aircraft_ids` must be every swarm aircraft, and exactly the
+mission's tasks. It is always confirmed. On the first ack, the mission and the acked
+tasks become `active`. A drone acks when it reports the mission's sequence, and a drone
+that rejects it (`mission_rejected`) is nacked. Waypoint and area-search missions can't be
+started yet (M4).
 
 **Who may send what** (ADR 0011):
 
@@ -161,7 +184,7 @@ POST /api/v1/commands
 
 **Confirmation.** These commands are answered with **428** `confirmation-required`:
 
-- `arm` and `takeoff`;
+- `arm`, `takeoff` and `mission_start`;
 - anything sent to more than one aircraft;
 - a `goto` farther than 1 km;
 - any override.
@@ -169,7 +192,7 @@ POST /api/v1/commands
 The response carries a `summary` the operator must see:
 
 - `reasons`;
-- per-aircraft `warnings` (stale link, low battery, no 3D fix);
+- per-aircraft `warnings` (stale link, low battery, no 3D fix, GNSS quality unknown);
 - the aircraft that will be `rejected`, with `code` and `message`;
 - the `override` flag.
 
@@ -194,8 +217,15 @@ Rejections, where nothing was sent to that aircraft:
 | `no-gps-fix`, `battery-unknown`, `battery-low` | Flight readiness (minimum 40 % to arm or take off) |
 | `altitude-limit`, `distance-limit`, `geofence` | 120 m above home, 10 km goto, geofences of active incidents |
 | `rate-limited`, `unsupported` | One command per aircraft per 0.25 s; the link can't carry it |
+| `companion-in-control` | A goto while the onboard computer flies the aircraft (`offboard`): hold it first |
+| `swarm-unknown` | `mission_start` to an aircraft whose swarm companion has not been heard |
+| `swarm-mission-partial`, `swarm-mission-tasks` | `mission_start` must name every swarm aircraft, and exactly the mission's tasks |
+| `mission-not-planned`, `incident-not-active` | The mission must be `planned`, and its incident active |
 
-After dispatch the codes are `refused` (the aircraft said no; `reason` has its answer),
+A `mission_id` that does not exist is 422 `unknown-reference`.
+
+After dispatch the codes are `refused` (the aircraft said no, or the swarm bridge refused
+the request; `reason` has its answer),
 `timeout` (no answer within 5 s, which also raises an alert), `driver-error` and `no-effect`
 (unverified).
 

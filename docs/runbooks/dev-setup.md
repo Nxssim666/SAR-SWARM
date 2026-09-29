@@ -12,6 +12,7 @@ Linux with Docker; it runs in CI (see [simulation.md](simulation.md)).
 | uv | ≥ 0.12 | `python -m pip install --user uv` (then use `python -m uv …` or add the user Scripts dir to PATH), or the installer at docs.astral.sh/uv |
 | Node.js | 24 LTS | Windows: `winget install OpenJS.NodeJS.LTS` · Linux: nodesource or fnm |
 | Docker | Engine + Compose v2 | For images and SITL. Windows 10/11: enable WSL2, then install Docker Desktop (admin rights and a reboot) |
+| nats-server | 2.15.0 | For the swarm link tests. Unpack the release for your OS from github.com/nats-io/nats-server (check it against the release's `SHA256SUMS`) to `.tools/nats/`, or set `NATS_SERVER_BIN` |
 
 **No admin rights?** A portable Node can live in the repo's gitignored `.tools/` directory:
 

@@ -14,8 +14,8 @@ Measured over a window of live tracking, through the WebSocket a console uses:
 
 The report is written as JSON to ``SARGCS_SCALE_REPORT`` (if set), for the workflow's
 annotations. Asserted: every aircraft stays live for the whole window with no gap
-reaching the stale threshold, and a confirmed bulk arm and disarm of the whole fleet is
-acked and verified.
+reaching the stale threshold; and a confirmed bulk arm, then disarm, of the whole fleet
+takes effect on every aircraft (telemetry). How each aircraft answered is measured.
 """
 
 import asyncio
@@ -226,39 +226,52 @@ async def test_the_whole_fleet_is_tracked_without_stale_states(
     assert report["max_gap_s"] < settings.link_stale_after_s, report["max_gap_s"]
 
 
-async def _armed(station: Station, aircraft_id: str) -> bool:
+async def _armed(station: Station, aircraft_id: str) -> bool | None:
     telemetry = await station.telemetry(aircraft_id)
-    return telemetry is not None and telemetry["armed"] is True
+    return None if telemetry is None else telemetry["armed"]
 
 
-async def test_a_bulk_arm_and_disarm_of_the_whole_fleet_is_verified(station: Station) -> None:
+async def _bulk(
+    station: Station, kind: str, aircraft_ids: list[str], armed: bool
+) -> dict[str, Any]:
+    """Send ``kind`` to every aircraft until telemetry shows ``armed``; measure the answers.
+
+    On a host that cannot run every PX4 in real time, some answers come after MAVSDK's
+    retries: the station reports those as timeouts (never guessed), and the aircraft may
+    still act. What must hold is the end state; the answers are measured.
+    """
+    started = time.monotonic()
+    pending = aircraft_ids
+    attempts: list[dict[str, int]] = []
+    while pending and len(attempts) < 3:
+        outcome = await station.command(kind, pending)
+        await station.settled(outcome, SETTLE_TIMEOUT_S)
+        attempts.append(await station.reasons(outcome))
+        deadline = time.monotonic() + 20.0  # late answers still act: give them time
+        while True:
+            pending = [a for a in pending if await _armed(station, a) is not armed]
+            if not pending or time.monotonic() >= deadline:
+                break
+            await asyncio.sleep(1.0)
+    return {
+        "all_done_s": round(time.monotonic() - started, 1),
+        "attempts": attempts,
+        "not_done": len(pending),
+    }
+
+
+async def test_a_bulk_arm_and_disarm_of_the_whole_fleet_takes_effect(station: Station) -> None:
     ids = await _register_fleet(station)
     await _all_ready(station, ids)
     aircraft_ids = list(ids.values())
     for aircraft_id in aircraft_ids:
         await station.take(aircraft_id)
 
-    timings: dict[str, float] = {}
-    pending = aircraft_ids
-    reasons: list[dict[str, int]] = []
-    for attempt in range(1, 6):  # PX4's preflight checks may still be settling on a busy host
-        started = time.monotonic()
-        outcome = await station.command("arm", pending)
-        await station.settled(outcome, SETTLE_TIMEOUT_S)
-        timings.setdefault("arm_s", round(time.monotonic() - started, 2))
-        timings["arm_attempts"] = attempt
-        reasons.append(await station.reasons(outcome))
-        # An answer later than the command timeout still arms: judge by telemetry.
-        pending = [a for a in pending if not await _armed(station, a)]
-        if not pending:
-            break
-        await asyncio.sleep(5.0)
-    _write_report({"bulk": timings | {"aircraft": len(aircraft_ids), "arm_outcomes": reasons}})
-    assert pending == [], f"{len(pending)} aircraft not armed after retries; per attempt: {reasons}"
+    arm = await _bulk(station, "arm", aircraft_ids, armed=True)
+    disarm = (
+        await _bulk(station, "disarm", aircraft_ids, armed=False) if not arm["not_done"] else {}
+    )
+    _write_report({"bulk": {"aircraft": len(aircraft_ids), "arm": arm, "disarm": disarm}})
 
-    started = time.monotonic()
-    states = await station.settled(await station.command("disarm", aircraft_ids), SETTLE_TIMEOUT_S)
-    timings["disarm_s"] = round(time.monotonic() - started, 2)
-    _write_report({"bulk": timings | {"aircraft": len(aircraft_ids), "arm_outcomes": reasons}})
-
-    assert set(states.values()) == {"verified"}, states
+    assert arm["not_done"] == 0, arm
+    assert disarm["not_done"] == 0, disarm

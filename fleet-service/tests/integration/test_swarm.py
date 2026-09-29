@@ -10,6 +10,7 @@ Runs only with ``SARGCS_SWARM=1`` (the ``swarm`` CI workflow, which starts
 import asyncio
 import math
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -145,11 +146,19 @@ async def test_the_link_recovers_after_a_nats_restart(station: Station) -> None:
         "docker", "compose", "-f", str(COMPOSE), "restart", "nats"
     )
     assert await asyncio.wait_for(restart.wait(), 60.0) == 0
+    restarted = datetime.now(UTC)
 
-    async def all_live_again() -> bool:
+    async def fresh_states_again() -> bool:
+        # A restart takes well under the stale threshold: wait for states sent after it,
+        # which proves both the station and the bridge reconnected.
         states = [await station.aircraft(a) for a in ids]
-        return all(s["link"] == "live" for s in states)
+        return all(
+            s["link"] == "live"
+            and s["telemetry"] is not None
+            and datetime.fromisoformat(s["telemetry"]["ts"]) > restarted
+            for s in states
+        )
 
-    await until(all_live_again, 60.0, "every drone live again after the NATS restart")
+    await until(fresh_states_again, 60.0, "states from every drone after the NATS restart")
     held = await station.command("hold", ids)
     assert set((await station.settled(held, EFFECT_TIMEOUT_S + 10)).values()) == {"verified"}

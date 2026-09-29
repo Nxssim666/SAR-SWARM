@@ -21,7 +21,7 @@ import contextlib
 import signal
 import threading
 import time
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Set
 
 from sar_gcs_bridge import wire
 from sar_gcs_bridge.core import Bridge, Outgoing
@@ -51,6 +51,7 @@ class BridgeNode:  # pragma: no cover - needs ROS 2 and NATS (tested in the ROS 
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._nc: Any = None
         self._invalid_count = 0
+        self._tasks: Set['asyncio.Future[None]'] = set()
         self.node.create_subscription(self._types.DroneState, STATUS_TOPIC, self._on_status,
                                       broadcast_qos(DEFAULT_BROADCAST_DEPTH))
         self._mission_pub = self.node.create_publisher(self._types.Mission, MISSION_TOPIC,
@@ -83,8 +84,10 @@ class BridgeNode:  # pragma: no cover - needs ROS 2 and NATS (tested in the ROS 
     def _forward_status(self, status: Any) -> None:
         message = self.core.on_status(status)
         if message is not None and self._nc is not None and self._nc.is_connected:
-            asyncio.ensure_future(
+            task = asyncio.ensure_future(
                 self._nc.publish(wire.subject(self.swarm, 'status'), wire.encode(message)))
+            self._tasks.add(task)  # keep a reference until it is done
+            task.add_done_callback(self._tasks.discard)
 
     async def _on_command(self, msg: Any) -> None:
         answer, command = self.core.command(msg.data)
@@ -117,7 +120,9 @@ class BridgeNode:  # pragma: no cover - needs ROS 2 and NATS (tested in the ROS 
             try:
                 self._nc = await nats.connect(self.nats_url, name='sar_gcs_bridge',
                                               max_reconnect_attempts=-1, reconnect_time_wait=1,
-                                              connect_timeout=2)
+                                              connect_timeout=2, error_cb=self._on_nats_error,
+                                              disconnected_cb=self._on_disconnected,
+                                              reconnected_cb=self._on_reconnected)
                 break
             except Exception as exc:  # noqa: B902 - any connection failure: retry
                 self.node.get_logger().warning(f'NATS {self.nats_url} unreachable ({exc}); '
@@ -134,6 +139,15 @@ class BridgeNode:  # pragma: no cover - needs ROS 2 and NATS (tested in the ROS 
                                        wire.encode(self.core.heartbeat()))
                 next_heartbeat = time.monotonic() + HEARTBEAT_S
             await asyncio.sleep(TICK_S)
+
+    async def _on_nats_error(self, error: Exception) -> None:
+        self.node.get_logger().warning(f'NATS: {error!r}', throttle_duration_sec=5.0)
+
+    async def _on_disconnected(self) -> None:
+        self.node.get_logger().warning('NATS disconnected; reconnecting')
+
+    async def _on_reconnected(self) -> None:
+        self.node.get_logger().info('NATS reconnected')
 
     async def close(self) -> None:
         """Close the NATS connection."""

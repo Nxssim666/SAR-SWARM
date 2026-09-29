@@ -5,18 +5,22 @@ Ground control system for a civilian search-and-rescue drone fleet: up to 50 PX4
 with different roles, one field ground station, and no cloud. This page is the living overview.
 The reasons behind it are in [`decisions/`](decisions/0001-record-architecture-decisions.md).
 
-Status: **M2a**. The fleet service is built through its live core and its MAVLink link:
+Status: **M2b**. The fleet service is built through its live core, its MAVLink link and its
+swarm link:
 
 - persistent domain, auth/RBAC and a hash-chained audit trail;
 - the in-process bus, the fleet registry, and the mock driver in simulation mode;
 - the MAVLink driver on MAVSDK v4, one hub per connection, with aircraft matched by system
   id (ADR 0022);
+- the swarm link: `sar_gcs_bridge` (ROS 2) and NATS, swarm-wide area missions, and aircraft
+  with both links merged and routed (ADR 0024, ADR 0025);
 - the command pipeline, control leases and alerts;
 - REST and WebSocket APIs ([`api/README.md`](api/README.md)).
 
-PX4 SITL runs in CI (ADR 0023). The console is still a shell. Everything marked with a later
-milestone below (NATS, the ROS bridge, MediaMTX) is designed but not built yet. Measured
-figures are in [`../PLAN.md`](../PLAN.md).
+PX4 SITL (5 aircraft, and scale runs), the simulated swarm with the bridge, and mock video
+run in CI (ADR 0023, ADR 0026). The console is still a shell. MediaMTX in the product (M5)
+and Gazebo (M2c) are designed but not built yet. Measured figures are in
+[`../PLAN.md`](../PLAN.md).
 
 ## System context
 
@@ -57,9 +61,9 @@ flowchart TB
     F[fleet-service<br/>FastAPI, asyncio]
     DB[(ops.db<br/>SQLite WAL)]
     TS[(telemetry.db<br/>SQLite WAL)]
-    N[[nats - M2]]
+    N[[nats]]
     M[mediamtx - M5]
-    R[ros-bridge - M2<br/>ROS 2 Jazzy, reuses swarm_sar codec]
+    R[sar_gcs_bridge<br/>ROS 2 Jazzy, reuses swarm_sar codec]
     MR[mavlink-router<br/>sample config]
   end
   B -- HTTPS /api, WSS /api/v1/ws --> C --> F
@@ -81,8 +85,9 @@ services/   fleet registry (live state, link state), command dispatcher, control
             alert engine, mission service, audit writer, telemetry recorder
 domain/     pure, fully unit-tested logic: command rules & preconditions, search patterns,
             deconfliction, geo validation, units/frames
-drivers/    VehicleDriver implementations: mock (M1), mavlink via MAVSDK v4 (M2a); swarm via bus (M2b)
-bus/        EventBus: in-process (M1), NATS (M2)
+drivers/    VehicleDriver implementations: mock (M1), mavlink via MAVSDK v4 (M2a),
+            swarm via the bridge over NATS, and linked (mavlink + swarm) (M2b)
+bus.py      EventBus: in-process fan-out to consoles (NATS only at the adapter boundary, ADR 0024)
 db/         SQLAlchemy models, repositories, Alembic migrations
 auth/       accounts, sessions, permissions
 ```
@@ -151,7 +156,7 @@ sequenceDiagram
 | Aircraft link degraded or lost | The link state goes to *stale* then *lost*, raising an alert. Only HOLD, RTL or LAND are accepted. The aircraft follows its own PX4 data-link-loss action. |
 | Console disconnects | The lease is kept for 60 s, then *orphaned* and supervisors are alerted. The aircraft continue their task, and the GCS issues nothing automatically. |
 | Fleet service crashes or restarts | The aircraft are unaffected. On restart, state is reloaded from `ops.db`, links reconnect and live state resyncs from the aircraft (M6). |
-| NATS down (M2+) | Swarm bridge telemetry goes stale, raising an alert. Direct MAVLink aircraft are unaffected, because their drivers run in-process. |
+| NATS down | Swarm telemetry goes stale, then lost, with alerts; swarm commands time out (never guessed). Direct MAVLink aircraft are unaffected, because their drivers run in-process. The link reconnects by itself (tested with a restarted nats-server). |
 | Disk full | Telemetry recording pauses with an alert, and operational writes keep a reserved margin (M6). |
 | Clock skew | The server is authoritative, and consoles show skew above 2 s (implemented in M0). |
 | Video relay down | Streams show *unavailable* with the reason, and flight control is unaffected. |
@@ -163,7 +168,7 @@ sequenceDiagram
 | `fleet-service/` | Backend (Python, FastAPI). See its `README.md`. |
 | `fleet-console/` | Operator console (React, TypeScript). See its `README.md`. |
 | `deploy/` | Compose file and gateway config for the ground station |
-| `sim/` | PX4 SITL (SIH) fleet for CI, link emulator; Gazebo and mock video in M2b |
-| `src/` | ROS 2 colcon workspace: the onboard `swarm_sar` packages (unchanged) and, from M2, `sar_gcs_bridge` |
+| `sim/` | PX4 SITL (SIH) fleets for CI and scale runs, link emulator, swarm simulation, mock video; Gazebo in M2c |
+| `src/` | ROS 2 colcon workspace: the onboard `swarm_sar` packages (unchanged) and `sar_gcs_bridge` (M2b) |
 | `docs/` | This page, ADRs, API specs (M1), runbooks |
 | `scripts/check.py` | Runs every lint, type check, test and build |

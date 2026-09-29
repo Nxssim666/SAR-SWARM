@@ -76,6 +76,26 @@ status are in `PLAN.md`, the design is in `docs/architecture.md`, and the reason
   - Unit-test apps set `mavlink_links=False` (conftest does), so they never bind UDP ports.
     Tests that need links use `tests/link_support.py` and `tests/mavlink_vehicle.py`
     (loopback) or `tests/integration` (PX4 SITL, CI only, marker `sitl`).
+  - With links on, the runtime sizes the loop's default executor (`mavlink_threads`):
+    MAVSDK runs every blocking call there, and a bulk command must not queue.
+- **Swarm patterns** (ADR 0024, ADR 0025; `drivers/swarm.py`, `drivers/swarm_wire.py`,
+  `src/sar_gcs_bridge`):
+  - The internal bus stays in-process; NATS is only the adapter boundary
+    (`sar.v1.swarm.<swarm>.*`).
+  - The wire contract lives in two places: `swarm_wire.py` (pydantic) and the bridge's
+    `wire.py` (stdlib). `test_bridge_contract.py` checks them against each other, and
+    `export-bridge-schema` writes `docs/api/swarm-bridge.json` (drift test).
+  - The bridge sequences and republishes. The station acks only from the drone's own
+    reported sequence; no answer is a pipeline timeout. The drivers of one command are
+    one swarm message (`DriverCommand.command_id`).
+  - A swarm mission is swarm-wide: `mission_start` names every swarm aircraft.
+  - Two-link aircraft use `merge` and `route_command` (pure, domain). Unknown GNSS is
+    `gps_fix=None`, never a fix.
+  - The bridge and `sim/swarm` are ROS code in onboard style (single quotes, 99 columns,
+    pep257). They are linted with `src/sar_gcs_bridge/ruff.toml` and tested in the
+    onboard environment (`pytest.ini` collects them); `sim/swarm` is excluded from mypy.
+  - NATS tests need a `nats-server` (`.tools/nats/` or `NATS_SERVER_BIN`).
+    `SARGCS_REQUIRE_NATS=1` makes a missing server fail instead of skip.
 - **Tests go in the same change** (ADR 0015):
   - A bug fix starts with a failing test.
   - Each safety rule has a regression test.
@@ -92,8 +112,10 @@ deploy/          compose.yaml, Caddyfile (gateway: TLS, static console, /api pro
 src/             ROS 2 colcon workspace: swarm_sar, swarm_sar_interfaces (onboard; unchanged)
 docs/            architecture.md, decisions/ (ADRs), runbooks/, api/ (openapi.json, asyncapi.json, README)
 scripts/check.py every lint/type/test/build, cross-platform
-sim/             sitl/compose.yaml (PX4 SIH fleet, CI), linkem.py (link emulator); see sim/README.md
-.github/workflows/  ci.yml (mirrors check.py), sitl.yml (PX4 SITL integration tests)
+src/sar_gcs_bridge  ROS 2 bridge: swarm protocol <-> NATS (ground-side; ADR 0024)
+sim/             sitl/ (PX4 SIH fleets: compose.yaml, fleet.py), linkem.py, swarm/ (ROS image,
+                 swarm simulation, bridge, NATS), video/ (MediaMTX mock streams); sim/README.md
+.github/workflows/  ci.yml (mirrors check.py), sitl.yml, sitl-scale.yml (25/35/50), swarm.yml
 ```
 
 ## Commands
@@ -116,6 +138,7 @@ python -m uv --directory fleet-service run mypy
 python -m uv --directory fleet-service run fleet-service create-admin --username chief   # first admin
 python -m uv --directory fleet-service run fleet-service export-openapi   # after any API change
 python -m uv --directory fleet-service run fleet-service export-asyncapi  # after WebSocket message changes
+python -m uv --directory fleet-service run fleet-service export-bridge-schema  # after swarm_wire changes
 python -m uv --directory fleet-service run fleet-service db revision --database ops -m "..."  # after model changes
 python -m uv --directory fleet-service run fleet-service audit-verify
 
@@ -148,6 +171,9 @@ python -m uv run python scripts/load_smoke.py --password <pw> --aircraft 50 --cl
 docker compose -f sim/sitl/compose.yaml up -d                      # 5 PX4 SIH instances
 cd fleet-service && SARGCS_SITL=1 uv run pytest -m sitl tests/integration -v
 python sim/linkem.py --listen 14544 --forward 127.0.0.1:24544 --loss 0.2   # link emulator
+python sim/sitl/fleet.py --count 50 --out sim/sitl/generated                 # a scale fleet
+docker compose -f sim/swarm/compose.yaml up -d --build                        # swarm + bridge + NATS
+cd fleet-service && SARGCS_SWARM=1 uv run pytest -m swarm tests/integration/test_swarm.py -v
 ```
 
 See `docs/runbooks/simulation.md`. The onboard standalone simulator (`run_standalone.py`) is

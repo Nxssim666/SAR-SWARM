@@ -8,6 +8,9 @@ most faithful.
 | **Simulation mode** (ADR 0021) | The station's own kinematic mock | Nothing (any OS) | Console work, demos, load tests to 50 aircraft |
 | **MAVLink loopback tests** (ADR 0022) | Minimal PX4-like pymavlink vehicles | Nothing (any OS) | The MAVLink driver and real MAVSDK binding, in `pytest` |
 | **PX4 SITL** (ADR 0023) | Real PX4 with the SIH simulator | Linux + Docker, or the CI `sitl` workflow | PX4 behaviour: modes, failsafes, fixed-wing, failures |
+| **Swarm link tests** (ADR 0024) | A fake bridge over a real nats-server | `nats-server` (any OS) | The swarm driver, NATS reconnects, mission starts, in `pytest` |
+| **Swarm in CI** (ADR 0026) | The onboard controller in its simulator, on ROS 2, through `sar_gcs_bridge` | Linux + Docker, or the CI `swarm` workflow | The bridge, the real protocol, swarm tasking |
+| **Scale runs** (ADR 0026) | 25, 35 and 50 PX4 SIH instances | The CI `sitl-scale` workflow | Tracking and bulk commands at fleet size |
 
 Simulation mode is described in [dev-setup.md](dev-setup.md#simulation-mode-live-aircraft-without-hardware).
 
@@ -23,6 +26,53 @@ python -m uv run pytest tests/test_mavlink_loopback.py tests/test_mavlink_driver
 
 The vehicles in `tests/mavlink_vehicle.py` are test doubles. They teleport, and they know
 only what the driver uses, so a passing loopback run says nothing about PX4 compatibility.
+
+## Swarm link tests (NATS)
+
+`tests/test_swarm_link.py` starts a real `nats-server` and a fake bridge
+(`tests/nats_support.py`) that follows the wire contract, then drives swarm aircraft through
+the REST API. The binary is looked up in `NATS_SERVER_BIN`, then `PATH`, then `.tools/nats/`.
+Without it the tests are skipped, unless `SARGCS_REQUIRE_NATS=1`. CI sets that, and so does
+`scripts/check.py` when it finds the binary.
+
+```bash
+cd fleet-service
+python -m uv run pytest tests/test_swarm_link.py tests/test_bridge_contract.py tests/test_swarm_rules.py -v
+```
+
+## The swarm in CI
+
+The `swarm` workflow (`.github/workflows/swarm.yml`) has two jobs:
+
+- **Swarm:**
+  1. Builds `sim/swarm/Dockerfile`: ROS 2 Jazzy, the onboard packages, the bridge, and the
+     swarm simulation.
+  2. Runs the bridge's tests and the ament linters inside it.
+  3. Starts `sim/swarm/compose.yaml` and runs `tests/integration/test_swarm.py`. The
+     tests track three drones, start an area mission, then hold and resume them, and
+     restart NATS in between.
+- **Mock video:** starts `sim/video/compose.yaml` and checks four H.264 streams.
+
+On a Linux host with Docker, the same runs as:
+
+```bash
+docker compose -f sim/swarm/compose.yaml up -d --build
+cd fleet-service && SARGCS_SWARM=1 uv run pytest -m swarm tests/integration/test_swarm.py -v
+```
+
+Swarm missions must suit the simulated drones: within 1 km of the site (47.397742,
+8.545594), at 4 m (±2 m) above home.
+
+## Scale runs
+
+The `sitl-scale` workflow generates fleets with `sim/sitl/fleet.py` and runs
+`tests/integration/test_scale.py`:
+
+- 60 s of tracking over the WebSocket: update rate, largest gap and latency per aircraft;
+- then a confirmed bulk arm and disarm.
+
+Its annotations carry the measurements and the containers' CPU and memory. `sitl` runs the
+same tracking measurement at 5 aircraft.
 
 ## PX4 SITL in CI
 
@@ -69,6 +119,7 @@ listen on another port through `mavlink-router`
 
 ## Windows
 
-Neither Docker nor PX4 runs on the reference Windows host. Use the loopback tests, and read
-SITL results from CI. WSL2 with Docker Desktop would run the compose file too, but its
+Neither Docker, PX4 nor ROS 2 runs on the reference Windows host. Use the loopback and swarm
+link tests (nats-server v2.15.0 for Windows lives in `.tools/nats/`), and read SITL, scale
+and swarm results from CI. WSL2 with Docker Desktop would run the compose file too, but its
 network mode needs `host.docker.internal` addressing, which is not set up here.
