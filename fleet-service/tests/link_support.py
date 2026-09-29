@@ -32,6 +32,16 @@ async def until[T](
     raise AssertionError(f"timed out after {timeout_s} s waiting for {what}; last: {last!r}")
 
 
+def ready(telemetry: dict[str, Any]) -> bool:
+    """PX4 accepts arming once it has a 3D fix, a position and a home."""
+    return (
+        telemetry["gps_fix"] in ("3d", "dgps", "rtk_float", "rtk_fixed")
+        and telemetry["position"] is not None
+        and telemetry["home"] is not None
+        and telemetry["flight_mode"] != "unknown"  # a heartbeat has been heard
+    )
+
+
 class Station:
     """The fleet service as a console sees it, over REST."""
 

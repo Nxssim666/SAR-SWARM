@@ -5,14 +5,18 @@ Annotations are readable through the public checks API, without the authenticati
 job logs and artifacts need, so anyone can see why a run failed:
 
 - one error per failed test, with its message and the end of its traceback;
-- one notice per PX4 instance, with the end of its console;
-- one notice with the totals and the tests that passed.
+- one notice per PX4 instance, with the end of its console (for a large fleet, only the
+  instances that logged the most errors);
+- one notice with the totals and the tests that passed;
+- for scale runs: the measurements (``scale-report.json``) and the containers' CPU and
+  memory (``docker-stats.txt``, sampled by the workflow).
 
 GitHub keeps at most 10 annotations of each kind per step, hence the grouping.
 
     python sim/sitl/annotate.py sitl-results
 """
 
+import json
 import sys
 import xml.etree.ElementTree as ET
 from collections import defaultdict
@@ -20,6 +24,16 @@ from pathlib import Path
 
 MAX_MESSAGE = 6000
 PX4_TAIL_LINES = 40
+MAX_PX4_TAILS = 6  # GitHub keeps 10 notices per step; leave room for the others
+_UNITS = {
+    "B": 1 / 2**20,
+    "KiB": 1 / 1024,
+    "kB": 1 / 1024,
+    "MiB": 1.0,
+    "MB": 1.0,
+    "GiB": 1024.0,
+    "GB": 1024.0,
+}
 
 
 def _escape(text: str) -> str:
@@ -70,8 +84,64 @@ def report_px4(log: Path) -> None:
         container, separator, rest = line.partition("|")
         if separator:
             by_container[container.strip()].append(rest.strip())
-    for container, lines in sorted(by_container.items()):
+    chosen = sorted(by_container)
+    if len(chosen) > MAX_PX4_TAILS:
+        errors = {c: sum("ERROR" in line for line in by_container[c]) for c in chosen}
+        chosen = sorted(sorted(chosen, key=lambda c: -errors[c])[:MAX_PX4_TAILS])
+    for container in chosen:
+        lines = by_container[container]
         annotate("notice", f"PX4 log tail: {container}", "\n".join(lines[-PX4_TAIL_LINES:]))
+
+
+def report_scale(report: Path) -> None:
+    if not report.exists():
+        return
+    data = json.loads(report.read_text(encoding="utf-8"))
+    tracking = data.get("tracking")
+    if tracking:
+        per_aircraft = tracking.pop("per_aircraft", {})
+        worst = sorted(per_aircraft.items(), key=lambda kv: -(kv[1]["max_gap_s"] or 0.0))[:5]
+        tracking["worst_gaps"] = {name: a["max_gap_s"] for name, a in worst}
+    annotate("notice", "Scale measurements", json.dumps(data, indent=1))
+
+
+def _mib(text: str) -> float:
+    number = text.rstrip("KMGiBk")
+    return float(number) * _UNITS.get(text[len(number) :], 1.0)
+
+
+def report_docker_stats(stats: Path) -> None:
+    """Totals over all containers per sample (``name,cpu%,used / limit`` lines; ``#`` stamps)."""
+    if not stats.exists():
+        return
+    samples: list[tuple[float, float, int]] = []
+    cpu = mem = 0.0
+    count = 0
+    for line in [*stats.read_text(encoding="utf-8").splitlines(), "#"]:
+        if line.startswith("#"):
+            if count:
+                samples.append((cpu, mem, count))
+            cpu = mem = 0.0
+            count = 0
+            continue
+        parts = line.split(",")
+        if len(parts) != 3:
+            continue
+        cpu += float(parts[1].rstrip("%") or 0.0)
+        mem += _mib(parts[2].split("/")[0].strip())
+        count += 1
+    if not samples:
+        return
+    cpus = [s[0] for s in samples]
+    mems = [s[1] for s in samples]
+    annotate(
+        "notice",
+        "Container resources",
+        f"{len(samples)} samples of {max(s[2] for s in samples)} containers\n"
+        f"CPU total: mean {sum(cpus) / len(cpus):.0f} %, max {max(cpus):.0f} % "
+        "(100 % = one core)\n"
+        f"memory total: mean {sum(mems) / len(mems):.0f} MiB, max {max(mems):.0f} MiB",
+    )
 
 
 def main() -> None:
@@ -79,6 +149,8 @@ def main() -> None:
     results = Path(sys.argv[1])
     report_tests(results / "junit.xml")
     report_px4(results / "px4.log")
+    report_scale(results / "scale-report.json")
+    report_docker_stats(results / "docker-stats.txt")
 
 
 if __name__ == "__main__":

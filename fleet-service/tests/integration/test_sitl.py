@@ -14,25 +14,13 @@ fixed-wing (which keeps circling home) and the link-loss quad (which PX4 returns
 
 import asyncio
 import os
-from collections.abc import AsyncIterator
-from pathlib import Path
-from typing import Any
 
-import httpx
 import pytest
-from fastapi import FastAPI
 from linkem import Impairment, LinkEmulator
 from mavsdk.asyncio import ComponentType, Configuration, Mavsdk
 from mavsdk.asyncio.plugins.failure import FailureAsync, FailureType, FailureUnit
 
-from fleet_service.auth.passwords import fast_passwords_for_tests
-from fleet_service.clock import SystemClock
-from fleet_service.config import Settings
-from fleet_service.domain.enums import Role
-from fleet_service.main import create_app
-from link_support import Station, free_udp_port, until
-
-from support import bearer, login
+from link_support import Station, free_udp_port, ready, until
 
 pytestmark = [
     pytest.mark.sitl,
@@ -46,45 +34,6 @@ HOME_AMSL_M = 488.0
 BOOT_TIMEOUT_S = 120.0  # containers start, EKF converges, home is set
 FLIGHT_TIMEOUT_S = 90.0
 HEXAS = {1: "HX-1", 2: "HX-2", 3: "HX-3"}
-
-
-@pytest.fixture
-def settings(data_dir: Path) -> Settings:
-    return Settings(
-        station_name="sitl",
-        data_dir=data_dir,
-        mavlink_links=True,
-        link_stale_after_s=2.0,
-        link_lost_after_s=6.0,
-        command_timeout_s=5.0,
-        command_effect_timeout_s=20.0,
-        confirmation_ttl_s=60.0,
-    )
-
-
-@pytest.fixture
-async def app(settings: Settings) -> AsyncIterator[FastAPI]:
-    application = create_app(
-        settings, clock=SystemClock(), passwords=fast_passwords_for_tests(), start_loops=True
-    )
-    async with application.router.lifespan_context(application):
-        yield application
-
-
-@pytest.fixture
-async def station(client: httpx.AsyncClient, user_ids: dict[Role, str]) -> Station:
-    del user_ids  # the users must exist before logging in
-    return Station(client, bearer(await login(client, Role.SUPERVISOR.value)))
-
-
-def ready(telemetry: dict[str, Any]) -> bool:
-    """PX4 accepts arming once it has a 3D fix, a position and a home."""
-    return (
-        telemetry["gps_fix"] in ("3d", "dgps", "rtk_float", "rtk_fixed")
-        and telemetry["position"] is not None
-        and telemetry["home"] is not None
-        and telemetry["flight_mode"] != "unknown"  # a heartbeat has been heard
-    )
 
 
 async def hexa_fleet(station: Station, *system_ids: int) -> dict[int, str]:

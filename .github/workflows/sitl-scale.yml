@@ -1,0 +1,77 @@
+# The fleet service against PX4 SIH fleets of 25 and 50 aircraft (ADR 0026): tracking with
+# no stale states, and a bulk arm and disarm, measured on GitHub's standard runner.
+name: sitl-scale
+
+on:
+  push:
+    branches: [main, "exp/**"]  # exp/**: measurement branches
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sitl-scale-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scale:
+    name: PX4 SIH x${{ matrix.count }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        count: [25, 50]
+    defaults:
+      run:
+        working-directory: fleet-service
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Generate the fleet
+        run: uv run python ../sim/sitl/fleet.py --count ${{ matrix.count }} --out ../sim/sitl/generated
+      - name: Start the PX4 fleet
+        working-directory: .
+        run: |
+          mkdir -p sitl-results
+          docker compose -f sim/sitl/generated/compose.yaml pull --quiet
+          docker compose -f sim/sitl/generated/compose.yaml up -d
+          # CPU and memory of every container, every 10 s, until the job ends.
+          nohup sh -c 'while true; do echo "# $(date +%s)"; docker stats --no-stream \
+            --format "{{.Name}},{{.CPUPerc}},{{.MemUsage}}"; sleep 10; done' \
+            > sitl-results/docker-stats.txt 2>&1 &
+      - name: Scale tests
+        env:
+          SARGCS_SCALE_FLEET: ../sim/sitl/generated/fleet.json
+          SARGCS_SCALE_REPORT: ../sitl-results/scale-report.json
+        run: >
+          uv run pytest -m sitl_scale tests/integration/test_scale.py -v -p no:cacheprovider
+          --junitxml=../sitl-results/junit.xml -o log_cli=true -o log_cli_level=WARNING
+      - name: Collect PX4 logs
+        if: always()
+        working-directory: .
+        run: |
+          nproc > sitl-results/host.txt
+          free -m >> sitl-results/host.txt
+          docker compose -f sim/sitl/generated/compose.yaml ps -a > sitl-results/containers.txt
+          docker compose -f sim/sitl/generated/compose.yaml logs --no-color --timestamps \
+            > sitl-results/px4.log
+      - name: Report results as annotations (readable without signing in)
+        if: always()
+        working-directory: .
+        run: python3 sim/sitl/annotate.py sitl-results
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: sitl-scale-${{ matrix.count }}
+          path: sitl-results/
+          retention-days: 14
+      - name: Stop the PX4 fleet
+        if: always()
+        working-directory: .
+        run: docker compose -f sim/sitl/generated/compose.yaml down

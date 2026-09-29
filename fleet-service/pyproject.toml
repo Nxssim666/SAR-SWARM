@@ -35,6 +35,7 @@ dev = [
     "pyyaml>=6",
     "ruff>=0.12",
     "schemathesis>=4.0",
+    "types-pyyaml>=6.0.12.20260906",
     "types-shapely>=2.1.0.20260728",
 ]
 
@@ -82,7 +83,10 @@ follow_untyped_imports = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["../sim"]
-markers = ["sitl: needs the PX4 SITL fleet of sim/sitl/compose.yaml; runs with SARGCS_SITL=1"]
+markers = [
+    "sitl: needs the PX4 SITL fleet of sim/sitl/compose.yaml; runs with SARGCS_SITL=1",
+    "sitl_scale: needs a generated PX4 SIH fleet (sim/sitl/fleet.py); runs with SARGCS_SCALE_FLEET",
+]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 addopts = ["-ra", "--strict-markers", "--strict-config"]

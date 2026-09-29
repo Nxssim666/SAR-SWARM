@@ -30,3 +30,5 @@ fleet-service/data-*/
 .env
 .env.*
 !.env.example
+# Generated PX4 fleets (sim/sitl/fleet.py)
+sim/sitl/generated/
