@@ -22,7 +22,7 @@ import xml.etree.ElementTree as ET
 from collections import defaultdict
 from pathlib import Path
 
-MAX_MESSAGE = 6000
+MAX_MESSAGE = 3800  # GitHub cuts annotation messages at about 4 KB
 PX4_TAIL_LINES = 40
 MAX_PX4_TAILS = 6  # GitHub keeps 10 notices per step; leave room for the others
 _UNITS = {

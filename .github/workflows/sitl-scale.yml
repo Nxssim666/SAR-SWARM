@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        count: [25, 50]
+        count: [25, 35, 50]
     defaults:
       run:
         working-directory: fleet-service

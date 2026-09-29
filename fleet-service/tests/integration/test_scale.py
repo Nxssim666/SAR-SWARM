@@ -52,6 +52,7 @@ pytestmark = [
 GCS = "udpin://0.0.0.0:14550"
 BOOT_TIMEOUT_S = 300.0  # N containers start on a small host, EKF2 converges, home is set
 SETTLE_TIMEOUT_S = 90.0
+PING_EVERY_S = 10.0
 
 
 def _fleet() -> list[dict[str, Any]]:
@@ -125,9 +126,13 @@ async def _watch(app: FastAPI, token: str, seconds: float) -> dict[str, list[tup
         assert (await ws.receive_json(timeout=10))["type"] == "welcome"
         await ws.send_json({"type": "subscribe", "topics": ["fleet.telemetry"], "telemetry_hz": 10})
         deadline = time.monotonic() + seconds
+        next_ping = time.monotonic() + PING_EVERY_S
         while (left := deadline - time.monotonic()) > 0:
+            if time.monotonic() >= next_ping:  # the station closes idle sockets
+                await ws.send_json({"type": "ping"})
+                next_ping += PING_EVERY_S
             try:
-                message = await ws.receive_json(timeout=min(left, 5.0))
+                message = await ws.receive_json(timeout=min(left, 2.0))
             except TimeoutError:
                 continue
             if message.get("topic") != "fleet.telemetry":
@@ -230,20 +235,24 @@ async def test_a_bulk_arm_and_disarm_of_the_whole_fleet_is_verified(station: Sta
 
     timings: dict[str, float] = {}
     pending = aircraft_ids
+    reasons: list[dict[str, int]] = []
     for attempt in range(1, 6):  # PX4's preflight checks may still be settling on a busy host
         started = time.monotonic()
-        states = await station.settled(await station.command("arm", pending), SETTLE_TIMEOUT_S)
+        outcome = await station.command("arm", pending)
+        states = await station.settled(outcome, SETTLE_TIMEOUT_S)
         timings.setdefault("arm_s", round(time.monotonic() - started, 2))
         pending = [a for a, state in states.items() if state != "verified"]
         timings["arm_attempts"] = attempt
         if not pending:
             break
+        reasons.append(await station.reasons(outcome))
         await asyncio.sleep(5.0)
-    assert pending == [], f"not armed after retries: {len(pending)} aircraft"
+    _write_report({"bulk": timings | {"aircraft": len(aircraft_ids), "arm_failures": reasons}})
+    assert pending == [], f"{len(pending)} aircraft not armed after retries; per attempt: {reasons}"
 
     started = time.monotonic()
     states = await station.settled(await station.command("disarm", aircraft_ids), SETTLE_TIMEOUT_S)
     timings["disarm_s"] = round(time.monotonic() - started, 2)
-    _write_report({"bulk": timings | {"aircraft": len(aircraft_ids)}})
+    _write_report({"bulk": timings | {"aircraft": len(aircraft_ids), "arm_failures": reasons}})
 
     assert set(states.values()) == {"verified"}, states

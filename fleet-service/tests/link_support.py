@@ -130,6 +130,15 @@ class Station:
 
         return await until(probe, timeout_s, f"{outcome['kind']} to settle")
 
+    async def reasons(self, outcome: dict[str, Any]) -> dict[str, int]:
+        """How many aircraft ended in each (state, reason) of a command, for failure messages."""
+        response = await self.client.get(f"/api/v1/commands/{outcome['id']}", headers=self.headers)
+        found: dict[str, int] = {}
+        for target in response.json()["targets"]:
+            key = f"{target['state']}: {target['reason'] or '-'}"
+            found[key] = found.get(key, 0) + 1
+        return found
+
     async def active_alerts(self, aircraft_id: str) -> set[str]:
         response = await self.client.get(
             "/api/v1/alerts", params={"state": "active"}, headers=self.headers
