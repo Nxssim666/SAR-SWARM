@@ -160,7 +160,7 @@ separate and simulates the swarm_sar companions.
 | M0 Architecture, ADRs, scaffold | Done |
 | M1a Data model, persistence, auth/RBAC, REST, OpenAPI | Done |
 | M1b Live core: registry, mock driver, commands, leases, WS | Done |
-| M2a PX4 SITL + MAVLink driver (1–5) | Built; local checks green; SITL CI run pending (needs a GitHub remote) |
+| M2a PX4 SITL + MAVLink driver (1–5) | Done (`sitl` 6/6 and `ci` green on GitHub) |
 | M2b SIH 25/50, NATS, ROS 2 bridge, mock video | — |
 | M3 Console MVP | — |
 | M4 Mission planning, patterns, deconfliction, alerts | — |

@@ -18,7 +18,7 @@ the development host and is checked in CI.
 | M0 Architecture, ADRs, scaffold | **Done** (2026-09-28) |
 | M1a Data model, persistence, auth/RBAC, REST, OpenAPI | **Done** (2026-09-28) |
 | M1b Live fleet core: registry, mock driver, commands, leases, WebSocket | **Done** (2026-09-28) |
-| M2a PX4 SITL harness + MAVSDK driver (1–5 aircraft) | **Built** (2026-09-28); local checks green, **SITL CI run pending** |
+| M2a PX4 SITL harness + MAVLink driver (1–5 aircraft) | **Done** (2026-09-28); `sitl` and `ci` green on GitHub |
 | M2b Scale and swarm: SIH 25/50, NATS, ROS 2 bridge, mock video | — |
 | M3 Console MVP | — |
 | M4 Mission planning, patterns, bulk tasking, deconfliction, alerts | — |
@@ -30,8 +30,9 @@ is several weeks of work and a review checkpoint in the middle lowers risk.
 
 ## Decisions needed from the user
 
-1. ~~Before M2a: where PX4 SITL runs.~~ **Decided: CI only** (GitHub Actions; ADR 0023).
-   Needed now: the GitHub repository to push to, with the GitHub connector authorized.
+1. ~~Before M2a: where PX4 SITL runs.~~ **Decided: CI only** (GitHub Actions; ADR 0023),
+   on <https://github.com/Nxssim666/SAR-SWARM>. CI results are read from the public checks
+   API (annotations); job logs and artifacts need a signed-in account.
 2. **Before M4:** the region(s) to prepare offline basemaps for, and whether a DEM is available
    for contour search.
 3. **Any time:** confirm or override the stack (ADRs 0004–0017) and assumptions A1–A11 (ADR 0002).
@@ -246,7 +247,7 @@ radio links):
 
 ---
 
-## M2a: PX4 SITL harness and MAVLink driver (1–5 aircraft)
+## M2a: PX4 SITL harness and MAVLink driver (1–5 aircraft) ✅
 
 **Goal:** the fleet service tracks and commands real PX4 SITL vehicles.
 
@@ -296,16 +297,34 @@ MAVSDK v4** (in-process, no `mavsdk_server`). See ADR 0022 and ADR 0023.
     - relinking an aircraft, and releasing the port.
   - Link emulator tests.
   - The system-id API rule.
-- **CI only** (`tests/integration/test_sitl.py`) *(unverified: not run yet)*:
-  1. five aircraft tracked on one port by system id;
-  2. hexacopter full tasking;
-  3. bulk hold of three hexacopters;
+- **CI, against PX4 v1.18.0-rc1 SIH** (`tests/integration/test_sitl.py`): **6/6 passing**.
+  Times are from the first runs, in which each test passed.
+  1. five aircraft tracked on one port by system id (3 s);
+  2. hexacopter full tasking: arm, takeoff, goto, hold, return, landing, all verified (84 s);
+  3. confirmed bulk takeoff and hold of three hexacopters (11 s);
   4. fixed-wing takeoff and return;
-  5. link loss through the emulator, with alerts and PX4's own return;
-  6. GNSS failure injection with the `gps_lost` alert.
+  5. link loss through the emulator: stale then lost alerts; PX4 held 5 s, returned and
+     landed on its own; link live again (53 s);
+  6. GNSS failure injection: no fix, position `null`, `gps_lost` alert (42 s).
 
-**Acceptance:** the `sitl` workflow is green on GitHub. **Pending:** the repository has no
-remote yet.
+**Acceptance: passed.** On 2026-09-28, commit `4989a3e` ran green on GitHub in both workflows:
+`sitl` (6/6) and `ci`:
+
+- onboard, on Python 3.12 and 3.14;
+- fleet-service, on Python 3.12 and 3.14;
+- console;
+- container images.
+
+The `ci` workflow ran for the first time here; before, it had only been checked locally.
+
+**Found by the first CI runs, and fixed**
+
+- The link emulator leaked a socket when a new vehicle's first datagrams came in a burst.
+  It now opens one uplink per vehicle and keeps a backlog meanwhile (regression test).
+- The v1.18.0-rc1 SIH airplane cannot finish a runway takeoff. Four variants were measured
+  in parallel, and the airplane now uses a launch-style takeoff (ADR 0023).
+- Job logs need a signed-in account even on a public repository. The workflow therefore
+  reports failed tests and PX4 console tails as annotations (`sim/sitl/annotate.py`).
 
 **Moved out of M2a**
 
@@ -319,7 +338,12 @@ remote yet.
 
 - Flight behaviour against PX4 is verified in CI only; the development host has no Docker.
 - The loopback vehicles are test doubles and prove nothing about PX4 compatibility.
-- The image is PX4 v1.18.0-rc1 (no prebuilt v1.17.0 image); move to 1.18.0 when released.
+- The image is PX4 v1.18.0-rc1 (no prebuilt v1.17.0 image); move to 1.18.0 when released,
+  and retry the runway takeoff then.
+- SIH fixed-wing flight performance is not realistic in this version (it climbs at about
+  5 m/s airspeed), so no test asserts it.
+- PX4 logs "Ignore command … to N/1" for MAVSDK requests on the shared port that are
+  addressed to other system ids. This is harmless noise.
 
 ---
 
