@@ -744,6 +744,10 @@ See ADR 0027.
   accept and start.
 - The SITL test waited 600 s before checking the start outcome; it now fails at once.
 
+Verified: `sitl` **8/8** against PX4 v1.18.0-rc1 SIH, both locally (Docker, 9 min) and on
+GitHub (run 36703251173, commit `53c40c5`); `swarm` green on GitHub; `scripts/check.py
+--fast` passes (the console E2E, 7/7, with this host's preinstalled Chromium).
+
 **To do in M4**
 
 - [ ] Console: mission editor (waypoints, altitudes with their reference, speed, loiter),
@@ -754,7 +758,6 @@ See ADR 0027.
 - [ ] Onboard avoidance during ground commands: verify in the swarm simulation that the
       companion yields when PX4 leaves offboard (flagged and confirmed meanwhile).
 - [ ] Battery-drain and geofence-breach injection in SITL (moved from M2a).
-- [ ] Measure the mixed-fleet SITL run in CI.
 
 **Stop:** report, then wait.
 
