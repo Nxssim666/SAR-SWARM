@@ -81,8 +81,9 @@ The tests share the one PX4 fleet and run in file order. Restart the fleet (`dow
 
 Generates `compose.yaml` and `fleet.json` for *N* aircraft. It uses the image and
 parameters of `sitl/compose.yaml`, puts homes on a 25 m grid (10 per row), and makes every
-fifth aircraft an airplane. The `sitl-scale` workflow runs 25, 35 and 50 on GitHub's
-standard runner (4 vCPU); the measurements are in `PLAN.md` (M2b).
+fifth aircraft an airplane. The `sitl-scale` workflow runs 25 on GitHub's standard runner
+(4 vCPU); the measurements are in `PLAN.md` (M2b). 35 is at that runner's limit and 50 needs
+about 8 or more cores: both are measured on the field hardware (M5/M6).
 
 ```bash
 python sim/sitl/fleet.py --count 25 --out sim/sitl/generated

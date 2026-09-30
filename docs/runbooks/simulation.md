@@ -10,7 +10,7 @@ most faithful.
 | **PX4 SITL** (ADR 0023) | Real PX4 with the SIH simulator | Linux + Docker, or the CI `sitl` workflow | PX4 behaviour: modes, failsafes, fixed-wing, failures |
 | **Swarm link tests** (ADR 0024) | A fake bridge over a real nats-server | `nats-server` (any OS) | The swarm driver, NATS reconnects, mission starts, in `pytest` |
 | **Swarm in CI** (ADR 0026) | The onboard controller in its simulator, on ROS 2, through `sar_gcs_bridge` | Linux + Docker, or the CI `swarm` workflow | The bridge, the real protocol, swarm tasking |
-| **Scale runs** (ADR 0026) | 25, 35 and 50 PX4 SIH instances | The CI `sitl-scale` workflow | Tracking and bulk commands at fleet size |
+| **Scale runs** (ADR 0026) | 25 PX4 SIH instances (35 and 50 on the field hardware, M5/M6) | The CI `sitl-scale` workflow | Tracking and bulk commands at fleet size |
 
 Simulation mode is described in [dev-setup.md](dev-setup.md#simulation-mode-live-aircraft-without-hardware).
 

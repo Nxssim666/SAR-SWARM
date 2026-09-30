@@ -19,7 +19,8 @@ the development host and is checked in CI.
 | M1a Data model, persistence, auth/RBAC, REST, OpenAPI | **Done** (2026-09-28) |
 | M1b Live fleet core: registry, mock driver, commands, leases, WebSocket | **Done** (2026-09-28) |
 | M2a PX4 SITL harness + MAVLink driver (1–5 aircraft) | **Done** (2026-09-28); `sitl` and `ci` green on GitHub |
-| M2b Scale and swarm: SIH 25/50, NATS, ROS 2 bridge, mock video | — |
+| M2b Scale and swarm: SIH 25/50, NATS, ROS 2 bridge, mock video | **Done** (2026-09-30); swarm acceptance green, tracking verified to 25 in CI; **50 SIH deferred to M5/M6 field hardware** (user) |
+| M2c Gazebo tier: camera video, high-fidelity airframes | — |
 | M3 Console MVP | — |
 | M4 Mission planning, patterns, bulk tasking, deconfliction, alerts | — |
 | M5 Video, roles, audit viewer, multi-operator, load tests | — |
@@ -331,8 +332,8 @@ The `ci` workflow ran for the first time here; before, it had only been checked 
 - Mission upload with read-back verification, and geofence upload → M4, with mission
   planning (the MAVSDK mission and geofence plugins).
 - Battery-drain and geofence-breach injection in SITL → M4.
-- Gazebo (tier 1) → M2b, with camera and mock video.
-- Measured tracking latency for 1 and 5 SITL aircraft → the M2b scale report.
+- Gazebo (tier 1) → M2b, with camera and mock video (then → M2c).
+- Measured tracking latency for 1 and 5 SITL aircraft → the M2b scale report (done for 5).
 
 **Known gaps**
 
@@ -349,35 +350,158 @@ The `ci` workflow ran for the first time here; before, it had only been checked 
 
 ## M2b: Scale and swarm (SIH 25/50, NATS, ROS 2 bridge, mock video)
 
-**Scope**
+**Goal:** the station tracks a PX4 fleet at scale, and tasks a `swarm_sar` swarm through a
+ROS 2 bridge.
 
-- SIH headless profile for 25 and 50 vehicles; a scale report (latency, CPU, memory) on a
-  runner or host large enough.
-- Gazebo Harmonic (tier 1) with a hexacopter model (derived from x500), and camera video.
-- NATS in compose, and the NATS `EventBus` implementation. The bus tests run against both
-  implementations.
-- `src/sar_gcs_bridge` (ament_python, a ROS 2 Jazzy container):
-  - Reuses `swarm_sar.ros.codec`.
-  - Maps `DroneState` to telemetry, with the heading conversion pinned by tests.
-  - Maps commands and area missions to `/swarm/v2/*`, with sequencing, republishing and
-    acknowledgement tracking.
-  - Maps "target" to *survivor sighting*.
-- Merging an aircraft's MAVLink and swarm telemetry sources.
-- Mock video: ffmpeg `testsrc2` per vehicle into MediaMTX (MediaMTX is introduced here as sim
-  tooling; the product integration is in M5).
+**Decisions** (the user):
+
+- Gazebo, with camera video, moves to a new stop, **M2c**.
+- nats-server is used locally too, from `.tools/nats/`.
+- **The 50-aircraft measurement is deferred to the field hardware in M5 or M6**
+  (2026-09-30), after the free CI runner proved too small.
+
+See ADR 0024, ADR 0025 and ADR 0026.
+
+**Built** (2026-09-30)
+
+- [x] **Swarm link over NATS** (ADR 0024):
+  - [x] `drivers/swarm_wire.py`, the contract, published as `docs/api/swarm-bridge.json`
+        with a drift test.
+  - [x] `drivers/swarm.py`:
+    - `SwarmLink`: one NATS connection, reconnecting forever.
+    - `SwarmDriver`: acks from the drone's own sequence; no answer is a pipeline timeout.
+    - The drones of one command go out as one swarm message.
+  - [x] Settings: `nats_url`, `swarm_name`, `swarm_grid_resolution_m`.
+- [x] **`src/sar_gcs_bridge`** (ament_python; the onboard code is unchanged):
+  - `wire.py`: the NATS JSON, standard library only.
+  - `core.py`: heading to degrees true; the target estimate becomes a survivor sighting in
+    WGS84; sequencing on the ground clock, validated by the onboard messages;
+    republishing until the drones catch up; a per-drone rate limit.
+  - `node.py`: rclpy in a thread, NATS on asyncio.
+- [x] **`mission_start` for swarm area missions:**
+  - swarm-wide (every swarm aircraft, exactly the tasks), always confirmed;
+  - the mission and its tasks become `active` on the first ack.
+  - New codes: `swarm-mission-partial`, `swarm-mission-tasks`, `mission-not-planned`,
+    `incident-not-active`, `swarm-unknown`.
+- [x] **Aircraft with two links** (ADR 0025):
+  - `LinkedDriver`, with `merge` and `route_command` (pure, row-tested);
+  - `links` per aircraft in the live view;
+  - goto refused while the companion is in control (`companion-in-control`);
+  - RESUME and HOLD read the swarm phase.
+- [x] **Unknown GNSS quality:** `gps_fix` is nullable, raises no `gps_lost` alert, and
+      shows as a confirmation warning.
+- [x] **MAVSDK thread pool** (`mavlink_threads`, 64). A regression test covers it; the first
+      scale run found the problem.
+- [x] **Simulation tooling:**
+  - `sim/sitl/fleet.py`: generated PX4 SIH fleets.
+  - `sim/swarm`: the ROS 2 Jazzy image; `swarm_sim.py`, the onboard closed-loop
+    simulation on the epoch clock; compose with NATS and the bridge.
+  - `sim/video`: MediaMTX with four ffmpeg test streams.
+- [x] **CI:**
+  - `swarm.yml`: the bridge tests and ament linters in the ROS image, the swarm
+    integration, and mock video.
+  - `sitl-scale.yml`: 25 aircraft (35 and 50 were run in M2b; see the results).
+  - `sitl.yml`: the 5-aircraft tracking measurement.
+  - `ci.yml`: a pinned, checksum-verified nats-server, with `SARGCS_REQUIRE_NATS=1`.
+  - All four also run on `exp/**` branches.
+- [x] `deploy/compose.yaml`: NATS (pinned), and `SARGCS_NATS_URL`.
+- [x] **Docs:**
+  - ADR 0024–0026;
+  - the API guide (swarm fields, `links`, `mission_start`, new codes);
+  - `architecture.md`, `sim/README.md`, the runbooks, and the bridge's README.
 
 **Tests**
 
-- Bridge unit tests against the onboard `fake_msgs` fixtures.
-- Bridge integration in the ROS container.
-- 25 and 50 aircraft tracking tests (SIH).
-- NATS reconnect tests.
+- **Local** (`scripts/check.py`, 12/12):
+  - the swarm rules, row by row;
+  - the linked driver;
+  - the swarm link against a real nats-server and a fake bridge: bulk HOLD as one message,
+    refusal as a nack, no reply as a timeout, mission start and rejection, partial
+    missions refused, surviving a NATS restart;
+  - the bridge contract, both ways;
+  - the bridge core (27 tests, on the onboard message fakes);
+  - the swarm simulation on the epoch clock (4 tests).
+- **CI, `swarm` workflow:** **3/3**, through the real bridge and three simulated drones.
 
-**Acceptance:** 50 SIH aircraft tracked with no stale states under a nominal link. A swarm
-of 3 simulated `swarm_sar` drones accepts an area mission and a HOLD from the GCS.
+  | Test | Time |
+  |---|---|
+  | Tracking | 0.7 s |
+  | Area mission, then HOLD and RESUME, all verified | 3.7 s |
+  | NATS restart | 2.6 s |
 
-**Risks:** CI runner size for 50 SIH instances; DDS discovery in containers (use host
-networking or a discovery server).
+  Mock video: four H.264 streams at 640×360.
+- **CI, scale** (GitHub runner, 4 vCPU; details in ADR 0026):
+
+  | Aircraft | Tracking over 60 s | Largest gap | Latency p95 | Fleet service |
+  |---|---|---|---|---|
+  | 5 | no stale state | 0.40 s | 0.10 s | 0.32 core |
+  | 25 (3 runs) | no stale state | 0.60–0.61 s | 0.10 s | 0.72–0.75 core |
+  | 35 (3 runs) | twice no stale state; once 2 of 35 went stale (load 56) | 0.80 s, 2.27 s | 0.10 s | 0.67–0.74 core |
+  | 50 (1 run) | **27 of 50 went stale**: load 92, PX4 at about 2.8 Hz; **deferred to M5/M6** | 4.25 s | 0.13 s | 0.45 core |
+
+  Tracking is verified to **25 aircraft** in CI. 35 is at the limit of the runner, and at
+  50 the runner runs PX4 far slower than real time (about 2.8 Hz). The station's own
+  latency stays near 0.1 s (p95) throughout, and it uses under one core. `sitl-scale` therefore runs 25
+  aircraft; 35 and 50 are measured on the field hardware.
+
+**Acceptance**
+
+- [x] A swarm of 3 simulated `swarm_sar` drones accepts an area mission and a HOLD from the
+      GCS: green on GitHub (`swarm`, commit `3aab5f4`).
+- [ ] 50 SIH aircraft tracked with no stale states: **deferred to M5/M6** (the user), on the
+      field hardware.
+  - The free 4-vCPU runner is already oversubscribed at 25 PX4 instances (load 19) and at
+    35 (load 41).
+  - The first 50-aircraft job made the runner unresponsive until GitHub cancelled it. A
+    later one ran: 27 of 50 went stale at a load of 92 (above).
+  - The fleet service itself used under one core at 35 aircraft.
+  - It needs a host with about 8 or more cores. `sitl-scale` now runs 25 only (above).
+
+**Found in CI, and fixed**
+
+- MAVSDK queued bulk commands on asyncio's 8-thread default pool (regression test).
+- The station closes idle WebSockets after 30 s, so the scale watcher now pings.
+- A 45-minute job limit hid all measurements, so the test step now has its own limit.
+- A race in the NATS-restart test.
+
+**Known gaps**
+
+- 50 PX4 SIH are not measured: deferred to M5/M6 (above).
+- **Bulk commands at 25 or more aircraft** on the runner: between 8 % and 96 % of the
+  answers come after MAVSDK's retries, depending on the run. They are reported as timeouts,
+  and every aircraft still acted, within 28–53 s. This follows the runner's load (PX4
+  slower than real time), so it says nothing reliable about the station. It is measured
+  again on the field hardware (M5). MAVSDK's per-command timeout is not adjustable from
+  Python v4.
+- **The command acknowledgement can be wrong** in one case: two separate commands close
+  together to different drones, with the first one lost on the radio. The onboard protocol
+  has no per-drone acknowledgement, so the station would count it as acknowledged. Effect
+  verification catches it (ADR 0024); a protocol change is to be proposed.
+- **No effect verification for swarm-only aircraft** on RTL and LAND; the result is
+  `unverified`. `DroneState` carries no autopilot mode. Swarm aircraft should also have a
+  MAVLink link (ADR 0003).
+- **No alert** when one of an aircraft's two links is lost while the other is live (M4).
+- **Mock video frames** carry no callsign or timestamp: the image has no fonts. That comes
+  with the latency overlay in M5.
+- **In the swarm simulation**, the drones start airborne at 4 m. PX4 under a companion,
+  depth and radio behaviour, and DDS over Wi-Fi are not covered (M2c, field tests).
+
+**Stop:** report, then wait.
+
+---
+
+## M2c: Gazebo tier (camera video, high-fidelity airframes)
+
+**Scope** (moved out of M2b by the user):
+
+- Gazebo Harmonic with PX4 (`px4io/px4-sitl-gazebo`, pinned):
+  - a hexacopter derived from x500;
+  - a fixed-wing;
+  - camera streams into MediaMTX.
+- If CI without a GPU can't render cameras usably, record that in an ADR and decide with
+  the user where Gazebo runs.
+- Optional: `drone_node` with PX4 over uXRCE-DDS and a Gazebo depth camera, for one swarm
+  drone.
 
 **Stop:** report, then wait.
 
@@ -493,6 +617,9 @@ networking or a discovery server).
   - 25 and 50 aircraft (mock at 10 Hz, plus SIH) with 6 consoles.
   - **Enforce the budgets in `docs/architecture.md`.**
   - Measure the MAVLink driver at 50 SIH aircraft (CPU, memory, thread pool); decide on the pymavlink fallback if over budget.
+  - **The 50-aircraft tracking acceptance deferred from M2b**, on the field hardware (≥ 8 cores),
+    with `sim/sitl/fleet.py --count 50` and `tests/integration/test_scale.py`. Measure 35 as
+    well, and bulk-command answer times, which the CI runner could not measure reliably.
 
 **Tests**
 
@@ -547,7 +674,7 @@ networking or a discovery server).
 | No Linux/Docker on the development host | SITL only in CI | Decided: CI only (ADR 0023). Loopback tests cover the MAVLink path locally |
 | No stock Gazebo hexa model | M2b delay | Derive from x500. SIH has `sihsim_hex` for scale |
 | MAVSDK v4 is new (Sept. 2026) | Driver bugs | Loopback + SITL tests; pymavlink fallback stays open (ADR 0022) |
-| CI runner too small for 50 SIH | Scale test only on a large host | Self-hosted or larger runner. Document where it was run |
+| CI runner too small for 50 SIH | Scale test only on a large host | **Confirmed in M2b**: 4 vCPU saturates at 25+ PX4. Decided: measure 50 on the field hardware in M5/M6 |
 | Browser video decode at many streams | Operator workload | Grid cap of 9, on-demand streams (ADR 0012) |
 | Contour search without a DEM | Reduced pattern fidelity | DEM import. A labelled fallback |
 | Onboard/GCS protocol drift | Swarm tasking breaks | The bridge reuses the onboard codec (ADR 0003). Bridge tests use the onboard fixtures |

@@ -1,6 +1,6 @@
 # 0008. Messaging: event bus interface, NATS for out-of-process adapters
 
-- Status: Accepted
+- Status: Accepted; which bus carries what is refined by [0024](0024-swarm-bridge-and-nats.md) (NATS only at the adapter boundary)
 - Date: 2026-09-28
 
 ## Context

@@ -52,3 +52,6 @@ a safety rule, a protocol or convention, or an assumption made in place of an an
 | [0021](0021-simulation-mode.md) | Simulation mode and the mock driver |
 | [0022](0022-mavlink-driver-mavsdk-v4.md) | MAVLink driver: MAVSDK v4 in-process, shared links, aircraft by system id |
 | [0023](0023-sitl-in-ci.md) | PX4 SITL in CI: pinned SIH image, integration tests, link emulator |
+| [0024](0024-swarm-bridge-and-nats.md) | The swarm bridge over NATS: contract, sequencing, acknowledgement |
+| [0025](0025-aircraft-with-two-links.md) | Aircraft with two links: merged telemetry, routed commands |
+| [0026](0026-scale-runs-and-swarm-simulation.md) | Scale runs on the CI runner, and the simulated swarm for the bridge |

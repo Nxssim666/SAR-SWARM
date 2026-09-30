@@ -1,6 +1,6 @@
 # 0023. PX4 SITL in CI: pinned SIH image, integration tests, link emulator
 
-- Status: Accepted
+- Status: Accepted; scale runs and the swarm workflow in [0026](0026-scale-runs-and-swarm-simulation.md); Gazebo moved to M2c
 - Date: 2026-09-28
 - Refines: [0017](0017-simulation.md), [0015](0015-testing-strategy.md)
 

@@ -1,5 +1,7 @@
-# The fleet service against PX4 SIH fleets of 25 and 50 aircraft (ADR 0026): tracking with
-# no stale states, and a bulk arm and disarm, measured on GitHub's standard runner.
+# The fleet service against a PX4 SIH fleet of 25 aircraft (ADR 0026): tracking with no
+# stale states, and a bulk arm and disarm, measured on GitHub's standard runner (4 vCPU).
+# 35 aircraft sit at this runner's limit (one run passed, one went stale at load 56) and 50
+# do not run in real time: those are measured on the field hardware (M5/M6).
 name: sitl-scale
 
 on:
@@ -22,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        count: [25, 35, 50]
+        count: [25]
     defaults:
       run:
         working-directory: fleet-service
