@@ -174,7 +174,7 @@ test('edit a waypoint route on the map, with altitudes above home', async ({ pag
     `/missions/${id}/waypoints`,
   );
   await op1.dispose();
-  expect(saved.waypoints.map((w) => w.altitude_relative_m)).toEqual([40, 65, 40]);
+  expect(saved.waypoints.map((w) => w.altitude_relative_m)).toEqual([50, 65, 50]); // new points take the mission's 50 m
 });
 
 test('mark a clue on the map, then dismiss it', async ({ page }) => {

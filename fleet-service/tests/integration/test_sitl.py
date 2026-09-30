@@ -7,9 +7,10 @@ share one PX4 fleet and run in file order; each leaves its aircraft landed, exce
 fixed-wing (which keeps circling home) and the link-loss quad (which PX4 returns home).
 
     instance  system id  airframe          used by
-    0-2       1-3        sihsim_hex        tracking, full flight, bulk, GNSS loss
-    3         4          sihsim_airplane   fixed-wing takeoff
-    4         5          sihsim_quadx      link loss (through the link emulator)
+    0-2       1-3        sihsim_hex        tracking, full flight, bulk, GNSS loss, geofence,
+                                           battery drain (last: its battery stays drained)
+    3         4          sihsim_airplane   fixed-wing takeoff, mission acceptance
+    4         5          sihsim_quadx      link loss (through the link emulator), lawnmower
 """
 
 import asyncio
@@ -20,6 +21,7 @@ import pytest
 from linkem import Impairment, LinkEmulator
 from mavsdk.asyncio import ComponentType, Configuration, Mavsdk
 from mavsdk.asyncio.plugins.failure import FailureAsync, FailureType, FailureUnit
+from mavsdk.asyncio.plugins.param import ParamAsync
 
 from link_support import Station, free_udp_port, ready, until
 
@@ -334,3 +336,81 @@ async def test_px4_accepts_an_airplane_lawnmower(station: Station) -> None:
     await station.command("return_to_launch", [plane])
 
     assert started == {plane: "verified"}, await station.reasons(start)
+
+
+async def test_a_geofence_breach_raises_a_critical_alert_and_clears(station: Station) -> None:
+    # M4 (ADR 0031): the station checks live positions against the incident's geofences. An
+    # exclusion zone drawn around a hovering aircraft is a breach; disabling it clears it.
+    hexa = (await hexa_fleet(station, 2))[2]
+    await arm(station, [hexa])
+    await station.command("takeoff", [hexa], altitude_relative_m=15.0)
+    up = await station.wait_for(
+        hexa, lambda t: t["altitude_relative_m"] > 12.0, FLIGHT_TIMEOUT_S, "up"
+    )
+    here = up["position"]
+    incident = await station.client.post(
+        "/api/v1/incidents",
+        json={"name": "SITL fence", "base": here, "operating_radius_m": 5000.0},
+        headers=station.headers,
+    )
+    lat, lon, d = here["latitude"], here["longitude"], 0.0005
+    ring = [[lon - d, lat - d], [lon + d, lat - d], [lon + d, lat + d], [lon - d, lat + d],
+            [lon - d, lat - d]]  # fmt: skip
+    fence = await station.client.post(
+        "/api/v1/geofences",
+        json={"incident_id": incident.json()["id"], "name": "No-fly (power line)",
+              "kind": "exclusion", "geometry": {"type": "Polygon", "coordinates": [ring]}},
+        headers=station.headers,
+    )  # fmt: skip
+    assert fence.status_code == 201, fence.text
+    breached = await until(lambda: _with(station, hexa, "geofence_breach"), 30.0, "the breach")
+    await station.client.patch(
+        f"/api/v1/geofences/{fence.json()['id']}", json={"enabled": False}, headers=station.headers
+    )
+
+    async def cleared() -> bool:
+        return "geofence_breach" not in await station.active_alerts(hexa)
+
+    await until(cleared, 30.0, "the breach to clear")
+    await land_all(station, [hexa])
+
+    assert "geofence_breach" in breached
+
+
+async def test_a_draining_battery_raises_alerts_and_px4_returns_on_its_own(
+    station: Station,
+) -> None:
+    # M4 (moved from M2a): SIH's battery drains to SIM_BAT_MIN_PCT (50 %) and holds. Lowering
+    # it in flight drains it on: the station raises battery_low then battery_critical, and PX4
+    # itself returns at its critical level (COM_LOW_BAT_ACT=3). The station commands nothing.
+    # Last in the file: the aircraft's battery stays drained until PX4 restarts.
+    hexa = (await hexa_fleet(station, 3))[3]
+    await arm(station, [hexa])
+    await station.command("takeoff", [hexa], altitude_relative_m=15.0)
+    await station.wait_for(hexa, lambda t: t["altitude_relative_m"] > 12.0, FLIGHT_TIMEOUT_S, "up")
+
+    injector = Mavsdk(Configuration.create_with_component_type(ComponentType.COMPANION_COMPUTER))
+    try:
+        await injector.add_any_connection("udpin://0.0.0.0:14542")  # instance 2's onboard port
+        system = await until(injector.first_autopilot, 20.0, "instance 2 on 14542")
+        await ParamAsync(system).set_param_float("SIM_BAT_MIN_PCT", 5.0)
+        low = await until(lambda: _with(station, hexa, "battery_low"), 90.0, "battery_low")
+        critical = await until(
+            lambda: _with(station, hexa, "battery_critical"), 90.0, "battery_critical"
+        )
+        returning = await station.wait_for(
+            hexa,
+            lambda t: t["flight_mode"] in ("return", "land") or t["in_air"] is False,
+            90.0,
+            "PX4 to return on its own",
+        )
+        del system
+    finally:
+        injector.destroy()
+    await station.wait_for(
+        hexa, lambda t: t["armed"] is False, 2 * FLIGHT_TIMEOUT_S, "landed and disarmed"
+    )
+
+    assert "battery_low" in low
+    assert "battery_critical" in critical
+    assert returning["flight_mode"] in ("return", "land") or returning["in_air"] is False

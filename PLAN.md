@@ -21,7 +21,7 @@ the development host and is checked in CI.
 | M2a PX4 SITL harness + MAVLink driver (1–5 aircraft) | **Done** (2026-09-28); `sitl` and `ci` green on GitHub |
 | M2b Scale and swarm: SIH 25/50, NATS, ROS 2 bridge, mock video | **Done** (2026-09-30); swarm acceptance green, tracking verified to 25 in CI; **50 SIH deferred to M5/M6 field hardware** (user) |
 | M3 Console MVP | **Done** (2026-09-30); 7/7 E2E, 46–54 fps with 50 aircraft on this PC's GPU |
-| M4 Mission planning, patterns, bulk tasking, deconfliction, alerts | **In progress**: backend built, SITL fixes; console to do |
+| M4 Mission planning, patterns, bulk tasking, deconfliction, alerts | **Done** (2026-09-30); E2E 3/3 (plan, start, complete), SITL battery and geofence |
 | M5 Video, roles, audit viewer, multi-operator, load tests | — |
 | M6 Hardening, degraded comms, packaging, runbooks, acceptance | — |
 
@@ -733,16 +733,50 @@ Verified: `sitl` **8/8** against PX4 v1.18.0-rc1 SIH, both locally (Docker, 9 mi
 GitHub (run 36703251173, commit `53c40c5`); `swarm` green on GitHub; `scripts/check.py
 --fast` passes (the console E2E, 7/7, with this host's preinstalled Chromium).
 
-**To do in M4**
+**Built: console** (2026-09-30; ADR 0032)
 
-- [ ] Console: mission editor (waypoints, altitudes with their reference, speed, loiter),
-      search-area drawing and GeoJSON/GPX/KML import, pattern and split preview with the
-      deconfliction report, plan and start, progress and coverage overlay, POIs and
-      sightings on the map, alert escalation and audible cues.
-- [ ] E2E: plan, assign to a group, monitor progress.
-- [ ] Onboard avoidance during ground commands: verify in the swarm simulation that the
-      companion yields when PX4 leaves offboard (flagged and confirmed meanwhile).
-- [ ] Battery-drain and geofence-breach injection in SITL (moved from M2a).
+- [x] Incident picker (top bar; supervisors open incidents). Side pane tabs: Fleet,
+      Missions, Points; alerts always visible.
+- [x] Map layers: search areas (name and status as text), planned routes (colour and dash
+      per aircraft), the edited waypoint route, datum, coverage overlay, points of interest
+      (a shape per kind). Tools: draw area, add waypoints, pick datum, mark point.
+- [x] Search areas drawn or imported from GeoJSON, KML and GPX (CalTopo/SARTopo exports):
+      holes dropped, tracks closed, rings over 256 vertices simplified, each change shown.
+- [x] Waypoint mission editor: altitude above home in every label, speed, loiter,
+      reorder/remove, errors block saving, a warning over 120 m.
+- [x] Plan form (patterns, spacing or camera footprint, bearing, datum, radius, contour
+      height; the selection or a group), dry-run preview with the deconfliction report,
+      then save.
+- [x] Start, pause, resume to the planned aircraft through the confirmed command flow;
+      live progress per aircraft and coverage.
+- [x] Points of interest: survivor sightings first, confirm/dismiss/resolve, marking.
+- [x] Bulk goto offered (spread by the server); the confirm dialog shows each aircraft's
+      target, layer, start delay and conflicts.
+- [x] Audible cues for new and escalated alerts, reminders while a critical is
+      unacknowledged, mute per browser.
+- [x] Onboard avoidance during ground commands: **documented, not verified in
+      simulation.** Verifying that the companion yields when PX4 leaves offboard needs PX4
+      with a companion in simulation, which needed Gazebo (dropped, ADR 0033). The station
+      flags such aircraft in the plan and the confirmation (ADR 0028); field tests remain.
+- [x] Battery drain and geofence breach against PX4 SITL (moved from M2a): the station
+      raises battery low then critical while PX4 returns on its own, and a geofence breach
+      raises a critical alert that clears when the fence is disabled.
+
+**Tests**
+
+- fleet-service: unchanged suite plus the two new SITL tests (below).
+- Console: **88 Vitest** (new: file import, plan request and waypoint checks, map features,
+  point order, alert cues, the store's missions and points).
+- **E2E, new `e2e/missions.spec.ts`, 3/3** (with this host's preinstalled Chromium):
+  1. import a CalTopo-style area, plan a lawnmower for the group Team North (4 hexa and
+     1 fixed-wing), preview (no conflicts), save, start with the held confirmation, and
+     watch it complete, with coverage of at least 80 % and the area marked searched;
+  2. edit a waypoint route on the map, with a blocking error and its fix;
+  3. mark a clue on the map, then dismiss it.
+- The whole E2E suite, 10 tests: the M3 specs and perf pass as before. The map measured
+  13-21 fps with 50 aircraft on software WebGL (reported, not judged; 46-54 on a GPU in M3).
+- SITL against PX4 v1.18.0-rc1 (Docker in the development container): **10/10 in file
+  order** (11 min), with the new geofence-breach and battery-drain tests.
 
 **Stop:** report, then wait.
 
