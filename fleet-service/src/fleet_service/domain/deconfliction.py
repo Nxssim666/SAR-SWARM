@@ -20,7 +20,9 @@ Deconfliction of planned flights (ADR 0029): pure functions, no I/O.
   horizontal and vertical minima are taken per interval, which can only over-report.
 - **Start delays.** Departures are sequenced ``departure_interval_s`` apart; while
   conflicts remain, the later-starting aircraft of the earliest conflict waits longer, up
-  to ``max_start_delay_s``. What is left is reported, never hidden.
+  to ``max_start_delay_s``. When that aircraft has not left yet at the conflict (the other
+  passes where it waits), the other one waits until it has left instead. What is left is
+  reported, never hidden.
 
 Unknown values stay unknown: a home altitude that is not known makes layers relative to
 each home (reported), and a waypoint over unknown terrain is reported as unchecked.
@@ -358,15 +360,19 @@ def deconflict(
             break
         first = conflicts[0]
         a, b = first.aircraft
-        later = b if delays[b] >= delays[a] else a
-        wanted = delays[later] + max(sep.departure_interval_s, 30.0)
+        # The later-starting one waits longer, unless it is still waiting where it is, in the
+        # other's way: waiting longer cannot help, so the other waits until it has left.
+        delayed, other = (b, a) if delays[b] >= delays[a] else (a, b)
+        if first.t_s < delays[delayed]:
+            delayed, other = other, delayed
+        wanted = max(delays[delayed], delays[other]) + max(sep.departure_interval_s, 30.0)
         if wanted > sep.max_start_delay_s:
             report.notes.append(
                 f"Start delays would exceed {sep.max_start_delay_s:.0f} s: "
                 "the remaining conflicts are reported."
             )
             break
-        delays[later] = wanted
+        delays[delayed] = wanted
     flights = [replace(f, start_delay_s=delays[f.aircraft_id]) for f in flights]
     report.start_delays_s = dict(delays)
     report.conflicts = find_conflicts(flights, frame, sep)

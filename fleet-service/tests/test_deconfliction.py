@@ -163,6 +163,40 @@ def test_crossing_routes_on_one_layer_conflict_and_a_start_delay_resolves_it() -
     assert report.start_delays_s["b"] > 0.0
 
 
+def test_a_route_past_a_waiting_aircraft_is_resolved_by_letting_it_leave_first() -> None:
+    # An airplane loiters at 30 m right on a multirotor's way to the area (the multirotor
+    # flies at 40 m). Delaying the airplane only keeps it there longer; the multirotor
+    # must wait until the airplane has left instead.
+    rotor = Flight(
+        "r",
+        "R",
+        False,
+        line(0, 200, 0, 1000, 40.0),
+        10.0,
+        returns_home=False,
+        start_altitude_relative_m=40.0,
+    )
+    plane = Flight(
+        "p",
+        "P",
+        True,
+        line(0, 300, 800, 300, 70.0),
+        18.0,
+        start=(FRAME.lonlat(X0, Y0 + 300)[1], FRAME.lonlat(X0, Y0 + 300)[0]),
+        returns_home=False,
+        start_altitude_relative_m=30.0,
+    )
+    assert find_conflicts(
+        [rotor, replace(plane, start_delay_s=SEP.departure_interval_s)], FRAME, SEP
+    )
+
+    adjusted, report = deconflict([rotor, plane], FRAME, SEP, layered=False)
+
+    assert report.conflicts == []
+    assert fine_violations(adjusted, SEP) == []
+    assert report.start_delays_s["r"] > report.start_delays_s["p"]
+
+
 def test_the_same_crossing_on_different_layers_does_not_conflict() -> None:
     a = Flight("a", "A", False, line(-1000, 0, 1000, 0, 60.0), 10.0, returns_home=False)
     b = Flight("b", "B", False, line(0, -1000, 0, 1000, 75.0), 10.0, returns_home=False)

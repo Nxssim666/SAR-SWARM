@@ -128,7 +128,7 @@ New CLI commands: `purge` and `backup`. There are no new database migrations aft
 ## Verification
 
 - **Local results in the cloud container**, recorded in PLAN:
-  - fleet-service: 676 passed at `a5215a4`, and the later CLI tests pass (`test_cli.py`, 9);
+  - fleet-service: 702 passed, 26 skipped (NATS and SITL) with the planner fix;
   - console: 105 Vitest tests;
   - E2E: 14/14 with the mock relay, and the new satellite spec also passes;
   - acceptance: 7/7.
@@ -185,7 +185,19 @@ New CLI commands: `purge` and `backup`. There are no new database migrations aft
 - **E2E in a container** needs `executablePath: '/opt/pw-browsers/chromium'` through a
   temporary Playwright config. On the Windows dev host the normal `npm run e2e` applies.
 
-## Addendum: `sitl` on `7a9d0fc`
+## Addendum: CI after the handoff commit
 
-This run was still going when this file was written. Check the `sitl` workflow run for
-`7a9d0fc` on GitHub. If it failed like the `61bcd3f` run did, see "Known gaps" above.
+- **`sitl` on `56fa871`: green (10/10).** It passed on the same flight code as the failed
+  `61bcd3f` run, which supports the intermittent reading; see "Known gaps".
+- **`ci` on `56fa871` failed once in the E2E test `missions.spec.ts`**, which expects
+  "No conflicts". The planner's preview reported a conflict between HX-04 and FW-05, and
+  gave up after delaying FW-05 to 580 s.
+  - **Root cause, in `domain/deconfliction.py`:** the sequencing loop always delayed the
+    later-starting aircraft of the earliest conflict. Here that was FW-05, still loitering
+    where HX-04's transit passes. Delaying an aircraft that is waiting in the other's way
+    only keeps it there, so the loop could never succeed.
+  - **Why it was intermittent:** whether the transit passes the airplane's snapshot position
+    depends on the airplane's orbit phase when the plan is made.
+  - **The fix (next commit):** when the later aircraft has not left yet at the conflict
+    time, the other aircraft waits until it has left.
+  - **Test:** a regression test in `tests/test_deconfliction.py` failed before the fix.
