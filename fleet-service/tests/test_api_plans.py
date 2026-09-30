@@ -5,11 +5,14 @@ Simulation mode gives the aircraft positions and homes, as live telemetry would.
 """
 
 import asyncio
+import json
+import math
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import httpx
+import numpy as np
 import pytest
 from fastapi import FastAPI
 from sqlalchemy import select
@@ -319,3 +322,92 @@ async def test_areas_are_planned_in_their_own_incident_only(
 
     assert response.status_code == 200, response.text
     assert "centre" in " ".join(response.json()["tasks"][0]["notes"])
+
+
+class TestContourOnASlope:
+    """Contour searches split along the contours (bands of height), not the area's axis."""
+
+    @pytest.fixture
+    def settings(self, data_dir: Path) -> Settings:
+        # A plane rising 10 m per 100 m eastwards around the base: contours run north-south.
+        terrain = data_dir / "slope"
+        terrain.mkdir()
+        rows, cols, step = 200, 300, 0.0003
+        lon_m = 111_320 * math.cos(math.radians(BASE["latitude"])) * step
+        heights = np.tile(np.arange(cols, dtype=np.float32) * lon_m * 0.1 + 400.0, (rows, 1))
+        np.save(terrain / "slope.npy", heights)
+        (terrain / "slope.json").write_text(
+            json.dumps(
+                {
+                    "region": "slope",
+                    "rows": rows,
+                    "cols": cols,
+                    "lat0": BASE["latitude"] + rows * step / 2,
+                    "lon0": BASE["longitude"] - cols * step / 2,
+                    "lat_step": step,
+                    "lon_step": step,
+                }
+            )
+        )
+        return Settings(
+            station_name="test-station", data_dir=data_dir, simulation=True, terrain_dir=terrain
+        )
+
+    async def test_each_aircraft_gets_a_band_of_heights_with_whole_contours(
+        self,
+        client: httpx.AsyncClient,
+        auth: dict[Role, dict[str, str]],
+        setup: dict[str, Any],
+    ) -> None:
+        # A wide, shallow area (1.1 km east-west, 450 m north-south): its long axis runs
+        # across the contours, which is exactly how contours must not be split.
+        wide = await search_area(
+            client,
+            auth[Role.OPERATOR],
+            setup["incident"]["id"],
+            name="Slope",
+            geometry={
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [BASE["longitude"] - 0.0075, BASE["latitude"] - 0.002],
+                        [BASE["longitude"] + 0.0075, BASE["latitude"] - 0.002],
+                        [BASE["longitude"] + 0.0075, BASE["latitude"] + 0.002],
+                        [BASE["longitude"] - 0.0075, BASE["latitude"] + 0.002],
+                        [BASE["longitude"] - 0.0075, BASE["latitude"] - 0.002],
+                    ]
+                ],
+            },
+        )
+        contour = await create(
+            client,
+            "missions",
+            auth[Role.OPERATOR],
+            {
+                "incident_id": setup["incident"]["id"],
+                "name": "Contours",
+                "kind": "area_search",
+                "search_area_id": wide["id"],
+                "default_altitude_relative_m": 40.0,
+            },
+        )
+
+        response = await post_plan(
+            client,
+            auth[Role.OPERATOR],
+            contour["id"],
+            {
+                "pattern": "contour",
+                "spacing_m": 60.0,
+                "height_agl_m": 50.0,
+                "aircraft_ids": setup["aircraft"][:2],
+            },
+            dry_run=True,
+        )
+
+        assert response.status_code == 200, response.text
+        for task in response.json()["tasks"]:
+            assert task["fallback"] is False
+            lons = [w["longitude"] for w in task["waypoints"]]
+            # A band of heights on this slope is a band of longitudes.
+            assert max(lons) - min(lons) < 0.0075 + 1e-6

@@ -15,8 +15,10 @@ transaction, and runs it in a worker thread. It
    a ground-planned mission), endurance shortfalls, fallbacks, infeasible turns.
 """
 
+import math
 from dataclasses import dataclass, field, replace
 
+import numpy as np
 from shapely import LineString, Polygon, unary_union
 
 from fleet_service.domain.deconfliction import Flight, Report, Separation, deconflict
@@ -225,6 +227,10 @@ def plan_mission(
             lane_bearing = long_axis_bearing(area)
             if inp.pattern is PatternKind.CREEPING_LINE:
                 lane_bearing = (lane_bearing + 90.0) % 360.0
+            elif inp.pattern is PatternKind.CONTOUR and terrain is not None:
+                # Strips along the contours: each aircraft searches a band of heights, and
+                # its contour lines run the strip's full length.
+                lane_bearing = contour_bearing(area, frame, terrain) or lane_bearing
         shares = [
             Share(a.aircraft_id, speeds[a.aircraft_id] * _endurance(a, defaults), xy(a))
             for a in inp.aircraft
@@ -336,6 +342,25 @@ def plan_mission(
         coverage=coverage,
         duration_s=max((t.start_delay_s + t.duration_s for t in tasks), default=0.0),
     )
+
+
+def contour_bearing(area: Polygon, frame: LocalFrame, terrain: TerrainSet) -> float | None:
+    """The bearing along which the terrain's contours run over ``area`` (0-180°), from the
+    mean slope; None where the terrain is unknown or flat."""
+    min_x, min_y, max_x, max_y = area.bounds
+    xs = np.linspace(min_x, max_x, 12)
+    ys = np.linspace(min_y, max_y, 12)
+    gx, gy = np.meshgrid(xs, ys)
+    lon, lat = frame.lonlat_arrays(gx, gy)
+    z = terrain.sample(lat, lon)
+    if np.isnan(z).any():
+        return None
+    dz_dy, dz_dx = np.gradient(z, ys[1] - ys[0], xs[1] - xs[0])
+    east, north = float(np.mean(dz_dx)), float(np.mean(dz_dy))
+    if math.hypot(east, north) < 0.01:  # under 1 % of slope: no direction to follow
+        return None
+    uphill = math.degrees(math.atan2(east, north))  # bearing of the steepest ascent
+    return (uphill + 90.0) % 180.0
 
 
 def _duration(flight: Flight, frame: LocalFrame, speed: float) -> float:
