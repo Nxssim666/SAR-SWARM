@@ -177,3 +177,26 @@ def test_the_browser_opens_only_once_the_service_answers() -> None:
 
     assert opened == [url]
     assert silent is False
+
+
+def test_a_launcher_takes_the_next_free_port_and_says_so(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """Found with the Windows package: port 8000 was taken on the user's PC."""
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen()
+    busy = listener.getsockname()[1]
+    started: dict[str, object] = {}
+    monkeypatch.setattr("uvicorn.run", lambda *a, **k: started.update(k))
+    monkeypatch.setattr(cli, "open_when_ready", lambda url: started.update(url=url))
+    try:
+        code = cli.serve(Settings(data_dir=tmp_path, port=busy, open_browser=True))
+    finally:
+        listener.close()
+
+    port = started["port"]
+    assert code == 0
+    assert isinstance(port, int)
+    assert busy < port <= busy + cli.FALLBACK_PORTS
+    assert f"using port {port} instead" in capsys.readouterr().err

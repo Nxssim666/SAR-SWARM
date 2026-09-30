@@ -140,7 +140,23 @@ def serve(settings: Settings) -> int:
     """Run uvicorn with the application factory, once the port is known to be free."""
     import uvicorn
 
-    problem = port_problem(settings.host, settings.port)
+    port = settings.port
+    problem = port_problem(settings.host, port)
+    if problem is not None and settings.open_browser:
+        # Started from a launcher (the Windows package): take the next free port and say so,
+        # rather than fail on a busy one. A server started any other way keeps its port.
+        port = next(
+            (p for p in range(port + 1, port + 1 + FALLBACK_PORTS)
+             if port_problem(settings.host, p) is None),
+            port,
+        )  # fmt: skip
+        if port != settings.port:
+            print(
+                f"Port {settings.port} is busy ({problem}); using port {port} instead: "
+                f"http://127.0.0.1:{port}/",
+                file=sys.stderr,
+            )
+            problem = None
     if problem is not None:
         print(
             f"Cannot start: port {settings.port} on {settings.host} is not free ({problem}).\n"
@@ -150,17 +166,20 @@ def serve(settings: Settings) -> int:
         )
         return 1
     if settings.open_browser:
-        url = f"http://127.0.0.1:{settings.port}/"
+        url = f"http://127.0.0.1:{port}/"
         threading.Thread(target=open_when_ready, args=(url,), daemon=True).start()
     uvicorn.run(
         "fleet_service.main:create_app",
         factory=True,
         host=settings.host,
-        port=settings.port,
+        port=port,
         log_config=None,  # create_app configures logging
         proxy_headers=True,
     )
     return 0
+
+
+FALLBACK_PORTS = 20  # a launcher tries the next ports when its own is busy
 
 
 def port_problem(host: str, port: int) -> str | None:

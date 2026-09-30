@@ -185,6 +185,22 @@ jobs:
           Write-Host $output
           if ($code -ne 1) { throw "expected exit code 1, got $code" }
           if ($output -notmatch 'port 8003') { throw 'no clear message about the port' }
+          Write-Host 'a server started by hand refuses a busy port'
+          # From a launcher (SARGCS_OPEN_BROWSER), it takes the next free port and says so.
+          $listener.Start()
+          $env:SARGCS_OPEN_BROWSER = 'true'
+          $env:SARGCS_DATA_DIR = "$PWD\smoke-port-launcher"
+          $service = Start-Process -FilePath $env:SAR_EXE -PassThru -NoNewWindow `
+            -RedirectStandardOutput smoke-port.out -RedirectStandardError smoke-port.err
+          try {
+            $deadline = (Get-Date).AddSeconds(90); $up = $false
+            while ((Get-Date) -lt $deadline -and -not $up) {
+              try { $up = (Invoke-RestMethod 'http://127.0.0.1:8004/api/v1/health').status -eq 'ok' } catch { }
+              Start-Sleep -Milliseconds 500
+            }
+          } finally { Stop-Process -Id $service.Id -ErrorAction SilentlyContinue; $listener.Stop() }
+          if (-not $up) { Get-Content smoke-port.err -Tail 20; throw 'the launcher did not move to port 8004' }
+          if ((Get-Content smoke-port.err -Raw) -notmatch 'using port 8004 instead') { throw 'no message about the new port' }
           Write-Host 'port-in-use smoke test passed'
           exit 0  # the step would otherwise end with the exe's (expected) exit code 1
       - uses: actions/upload-artifact@v5

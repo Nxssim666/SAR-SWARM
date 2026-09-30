@@ -31,10 +31,12 @@ Windows may ask to allow network access for sar-gcs.exe: allow it on private net
 
 Troubleshooting
 ---------------
-- "Cannot start: port 8000 ... is not free": another program uses the port, often another
-  SAR-GCS window or a fleet-service started from the source code. Close it, or run
-  "set SARGCS_PORT=8080" in a command prompt, then start the .bat from that prompt and
-  open http://127.0.0.1:8080/.
+- "Port 8000 is busy ...; using port 8001 instead": another program uses port 8000 (often
+  another SAR-GCS window, or a fleet-service started from the source code). The launchers
+  take the next free port and open the browser there; nothing else to do. To find the
+  other program: "netstat -ano | findstr :8000", then "tasklist /FI "PID eq <number>"".
+- "Cannot start: port ... is not free": the same, when sar-gcs.exe is started by hand
+  (without a launcher). Close the other program, or "set SARGCS_PORT=8080" first.
 - The browser shows {"title":"Not Found"...} at http://127.0.0.1:8000/: that is not this
   package's console (an older version, or another server on the port). Close other
   servers and start again.
