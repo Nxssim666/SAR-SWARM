@@ -26,6 +26,7 @@ interface Health {
 interface Ticket {
   whep_url: string;
   hls_url: string;
+  ticket: string; // sent to the relay with every request (M6, ADR 0036)
 }
 
 const LAYOUTS = [1, 4, 9] as const;
@@ -150,9 +151,16 @@ function VideoTile({
           method: 'POST',
           token,
         });
-        const started = await play(ticket.whep_url, ticket.hls_url, element, stream.codec, (m) => {
-          setError(m);
-        });
+        const started = await play(
+          ticket.whep_url,
+          ticket.hls_url,
+          element,
+          stream.codec,
+          (m) => {
+            setError(m);
+          },
+          ticket.ticket,
+        );
         if (life.cancelled) {
           started.stop();
           return;

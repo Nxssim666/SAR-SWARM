@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import type { PlannedTask, SearchAreaOut } from '../api/types';
+import type { GeofenceOut, PlannedTask, SearchAreaOut } from '../api/types';
 import { poi, T0 } from '../test/fixtures';
 import {
   areaFeatures,
+  fenceFeatures,
   POI_STYLE,
   poiFeatures,
   ringFeature,
@@ -126,5 +127,41 @@ describe('planning features', () => {
         [8.55, 47.4],
       ]).features,
     ).toHaveLength(1);
+  });
+});
+
+describe('geofences on the map', () => {
+  const fence = (name: string, kind: GeofenceOut['kind'], enabled: boolean): GeofenceOut => ({
+    id: name,
+    incident_id: 'i1',
+    name,
+    kind,
+    geometry: {
+      type: 'Polygon',
+      coordinates: [
+        [
+          [8.5, 47.3],
+          [8.6, 47.3],
+          [8.6, 47.4],
+          [8.5, 47.3],
+        ],
+      ],
+    },
+    max_altitude_relative_m: null,
+    enabled,
+    created_at: T0,
+    updated_at: T0,
+  });
+
+  it('marks exclusion zones and says when a fence is off', () => {
+    const features = fenceFeatures([
+      fence('Power line', 'exclusion', true),
+      fence('Search box', 'inclusion', false),
+    ]).features;
+
+    expect(features.map((f) => f.properties)).toEqual([
+      { id: 'Power line', kind: 'exclusion', enabled: true, label: '⛔ Power line' },
+      { id: 'Search box', kind: 'inclusion', enabled: false, label: 'Search box (off)' },
+    ]);
   });
 });

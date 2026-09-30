@@ -9,6 +9,7 @@ import { useCurrentIncident } from '../incident/queries';
 import { useThrottledLive } from '../live/useThrottled';
 import { can, useSession } from '../session/session';
 import { AreasSection } from './AreasSection';
+import { GeofencesSection } from './GeofencesSection';
 import { MissionDetail } from './MissionDetail';
 import { percent } from './format';
 import { planningKeys, useMissions } from './queries';
@@ -55,6 +56,7 @@ export function MissionsPanel() {
   return (
     <>
       <AreasSection incidentId={incident.id} />
+      <GeofencesSection incidentId={incident.id} />
       <section className="panel" aria-label="Missions">
         <h2>Missions</h2>
         {missions.data?.items.length === 0 && <p className="muted">No mission yet.</p>}

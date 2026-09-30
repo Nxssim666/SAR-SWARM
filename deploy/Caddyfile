@@ -2,20 +2,37 @@
 # Internet; trust its root certificate on operator devices once (docs/runbooks/).
 # SARGCS_SITE_ADDRESS: the ground station's LAN hostname or IP, e.g. gcs.local or 10.0.0.2.
 
+{
+	# The container's root filesystem is read-only (ADR 0036); devices trust the CA instead
+	# (docs/runbooks/certificates.md).
+	skip_install_trust
+}
+
 {$SARGCS_SITE_ADDRESS:localhost} {
 	tls internal
 	encode zstd gzip
+
+	# Service-to-service routes (the relay's auth hook, ADR 0036) never leave the station.
+	handle /api/v1/internal/* {
+		respond 404
+	}
 
 	handle /api/* {
 		reverse_proxy fleet-service:8000
 	}
 
 	# Video (ADR 0012): WHEP signalling and LL-HLS from the relay; media goes over UDP 8189.
+	# The relay answers with absolute paths (LL-HLS first redirects to
+	# /<path>/index.m3u8?cookieCheck=1): put them back under the prefix.
 	handle_path /video/webrtc/* {
-		reverse_proxy mediamtx:8889
+		reverse_proxy mediamtx:8889 {
+			header_down Location ^/ /video/webrtc/
+		}
 	}
 	handle_path /video/hls/* {
-		reverse_proxy mediamtx:8888
+		reverse_proxy mediamtx:8888 {
+			header_down Location ^/ /video/hls/
+		}
 	}
 
 	handle {
@@ -27,6 +44,7 @@
 	header {
 		Content-Security-Policy "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; frame-ancestors 'none'"
 		X-Content-Type-Options nosniff
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
 		Referrer-Policy no-referrer
 		-Server
 	}

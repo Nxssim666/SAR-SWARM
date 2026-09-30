@@ -3,7 +3,7 @@ name: ci
 
 on:
   push:
-    branches: [main, "exp/**"]
+    branches: [main, "exp/**", "claude/**"]
   pull_request:
 
 permissions:
@@ -159,10 +159,14 @@ jobs:
           retention-days: 14
 
   images:
-    name: container images build
+    name: container images, field stack smoke test
     runs-on: ubuntu-24.04
     needs: [fleet-service, fleet-console]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - run: docker compose -f deploy/compose.yaml config --quiet
       - run: docker compose -f deploy/compose.yaml build
+      # The stack as in the field: gateway and TLS, relay access control, read-only
+      # roots, audit and backup (M6).
+      - run: deploy/smoke.sh

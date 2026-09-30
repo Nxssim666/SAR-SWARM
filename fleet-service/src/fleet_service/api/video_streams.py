@@ -6,12 +6,16 @@ M5: each stream's health as the relay reports it (``/video-health``: not under
 ``/video-streams/``, where it would read as a stream id), and
 ``POST /video-streams/{id}/view``, which a console calls before playing a stream: it
 answers where to play it (WHEP, and LL-HLS as the fallback) and audits the viewing.
+
+M6: the answer carries a viewing ticket, and the relay asks ``/internal/video-auth`` about
+every request (ADR 0036), so only signed-in consoles play.
 """
 
+import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, status
-from pydantic import AfterValidator, AwareDatetime, StringConstraints
+from fastapi import APIRouter, Depends, Request, Response, status
+from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy import select
 
 from fleet_service.api.common import (
@@ -34,10 +38,11 @@ from fleet_service.api.pages import Page
 from fleet_service.auth.permissions import Permission
 from fleet_service.db.models import Aircraft, VideoStream
 from fleet_service.domain.enums import VideoCodec
-from fleet_service.errors import Conflict, problem_responses
+from fleet_service.errors import Conflict, Forbidden, problem_responses
 from fleet_service.ids import new_id
 from fleet_service.services import audit
 from fleet_service.services.video import StreamState
+from fleet_service.services.video_access import RelayRequest, decide
 
 router = APIRouter(
     prefix="/video-streams",
@@ -47,6 +52,9 @@ router = APIRouter(
 
 # Streams' health at the relay, beside the collection rather than inside it.
 health_router = APIRouter(tags=["video streams"], responses=problem_responses(401, 403))
+# Service-to-service (the relay's auth hook), outside the public API and its contract.
+internal_router = APIRouter()
+log = logging.getLogger(__name__)
 
 REDACTED = "***"
 
@@ -237,6 +245,11 @@ class ViewTicket(OutputModel):
     name: str
     whep_url: str
     hls_url: str
+    ticket: str = Field(
+        description="Send as `Authorization: Bearer <ticket>` with every WHEP and HLS request; "
+        "the relay asks the fleet service (M6, ADR 0036)."
+    )
+    expires_at: AwareDatetime = Field(description="Ask again after this.")
 
 
 @router.post("/{stream_id}/view", **requires(Permission.FLEET_VIEW))
@@ -262,12 +275,60 @@ async def view_video_stream(
     )
     await db.commit()
     base = context.settings.video_base_path.rstrip("/")
+    ticket, expires = context.runtime().video_tickets.issue(
+        stream.relay_path, principal.user_id, context.clock.now()
+    )
     return ViewTicket(
         stream_id=stream.id,
         name=stream.name,
         whep_url=f"{base}/webrtc/{stream.relay_path}/whep",
         hls_url=f"{base}/hls/{stream.relay_path}/index.m3u8",
+        ticket=ticket,
+        expires_at=expires,
     )
+
+
+class RelayAuthRequest(BaseModel):
+    """MediaMTX's HTTP auth request (its schema, not ours: unknown fields are ignored so a
+    relay upgrade that adds one does not lock every viewer out)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    action: str
+    path: str = ""
+    protocol: str = ""
+    user: str = ""
+    password: str = ""
+    token: str = ""
+    query: str = ""
+    ip: str = ""
+
+
+@internal_router.post("/internal/video-auth", status_code=204, include_in_schema=False)
+async def relay_auth(body: RelayAuthRequest, context: Context) -> Response:
+    """Asked by the relay about every read and publish (M6, ADR 0036); 204 allows.
+
+    Unauthenticated by design: the relay calls it on the internal network, and the gateway
+    never forwards ``/api/v1/internal/*``. It reveals nothing but yes or no.
+    """
+    runtime = context.runtime()
+    allowed, why = decide(
+        RelayRequest(**body.model_dump()),
+        runtime.video_tickets,
+        runtime.video_publisher,
+        context.clock.now(),
+    )
+    if not allowed:
+        log.warning(
+            "relay refused %s of %s over %s from %s: %s",
+            body.action,
+            body.path,
+            body.protocol,
+            body.ip,
+            why,
+        )
+        raise Forbidden(f"The relay may not serve this: {why}.", slug="video-access-denied")
+    return Response(status_code=204)
 
 
 @router.get("/{stream_id}", **requires(Permission.FLEET_VIEW))

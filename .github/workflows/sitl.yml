@@ -4,7 +4,7 @@ name: sitl
 
 on:
   push:
-    branches: [main, "exp/**"]
+    branches: [main, "exp/**", "claude/**"]
   pull_request:
   workflow_dispatch:
 

@@ -14473,6 +14473,17 @@
           "hls_url": {
             "type": "string",
             "title": "Hls Url"
+          },
+          "ticket": {
+            "type": "string",
+            "title": "Ticket",
+            "description": "Send as `Authorization: Bearer <ticket>` with every WHEP and HLS request; the relay asks the fleet service (M6, ADR 0036)."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At",
+            "description": "Ask again after this."
           }
         },
         "type": "object",
@@ -14480,7 +14491,9 @@
           "stream_id",
           "name",
           "whep_url",
-          "hls_url"
+          "hls_url",
+          "ticket",
+          "expires_at"
         ],
         "title": "ViewTicket",
         "description": "Where a console plays a stream: WHEP (WebRTC) first, LL-HLS if WebRTC fails."

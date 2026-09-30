@@ -66,7 +66,16 @@ function gathered(pc: RTCPeerConnection, ms: number): Promise<void> {
   });
 }
 
-export async function playWhep(url: string, video: HTMLVideoElement): Promise<Playing> {
+/** Headers of a relay request: the viewing ticket, when the station checks them (ADR 0036). */
+function authorization(ticket: string | undefined): Record<string, string> {
+  return ticket ? { Authorization: `Bearer ${ticket}` } : {};
+}
+
+export async function playWhep(
+  url: string,
+  video: HTMLVideoElement,
+  ticket?: string,
+): Promise<Playing> {
   const pc = new RTCPeerConnection({ iceServers: [] }); // LAN only, no STUN/TURN (ADR 0012)
   pc.addTransceiver('video', { direction: 'recvonly' });
   pc.addTransceiver('audio', { direction: 'recvonly' });
@@ -84,7 +93,7 @@ export async function playWhep(url: string, video: HTMLVideoElement): Promise<Pl
     await gathered(pc, 1500);
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/sdp' },
+      headers: { 'Content-Type': 'application/sdp', ...authorization(ticket) },
       body: pc.localDescription?.sdp ?? '',
     });
     if (!response.ok) throw new Error(`WHEP answered HTTP ${String(response.status)}`);
@@ -134,9 +143,18 @@ export function playHls(
   url: string,
   video: HTMLVideoElement,
   onError: (message: string) => void = () => undefined,
+  ticket?: string,
 ): Playing {
   if (Hls.isSupported()) {
-    const hls = new Hls({ lowLatencyMode: true, liveSyncDurationCount: 1 });
+    const hls = new Hls({
+      lowLatencyMode: true,
+      liveSyncDurationCount: 1,
+      xhrSetup: (xhr) => {
+        for (const [name, value] of Object.entries(authorization(ticket))) {
+          xhr.setRequestHeader(name, value);
+        }
+      },
+    });
     hls.on(Hls.Events.ERROR, (_event, data) => {
       if (data.fatal) onError(`LL-HLS failed (${data.details})`);
     });
@@ -150,7 +168,8 @@ export function playHls(
       latencyMs: () => Promise.resolve(hls.latency > 0 ? hls.latency * 1000 : null),
     };
   }
-  video.src = url; // Safari plays HLS natively
+  // Safari plays HLS natively, and cannot add headers: the ticket goes in the query.
+  video.src = ticket ? `${url}?ticket=${encodeURIComponent(ticket)}` : url;
   return {
     transport: 'll-hls',
     stop: () => {
@@ -168,11 +187,12 @@ export async function play(
   video: HTMLVideoElement,
   codec: Codec,
   onError: (message: string) => void = () => undefined,
+  ticket?: string,
 ): Promise<Playing> {
   if (!canDecode(codec)) throw new CodecUnsupported(codec);
   try {
-    return await playWhep(whepUrl, video);
+    return await playWhep(whepUrl, video, ticket);
   } catch {
-    return playHls(hlsUrl, video, onError);
+    return playHls(hlsUrl, video, onError, ticket);
   }
 }

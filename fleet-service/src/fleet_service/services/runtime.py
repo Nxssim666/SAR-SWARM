@@ -62,6 +62,7 @@ from fleet_service.services.station_health import (
     recording_allowed,
 )
 from fleet_service.services.video import RelayConfig, StreamInfo, VideoMonitor, mediamtx_fetch
+from fleet_service.services.video_access import Publisher, Tickets
 
 log = logging.getLogger(__name__)
 
@@ -176,6 +177,14 @@ class Runtime:
                 config=RelayConfig(settings.mediamtx_api_url),
             )
             if settings.mediamtx_api_url
+            else None
+        )
+        self.video_tickets = Tickets(timedelta(seconds=settings.video_ticket_ttl_s))
+        self.video_publisher = (
+            Publisher(
+                settings.video_publish_user, settings.video_publish_password.get_secret_value()
+            )
+            if settings.video_publish_user and settings.video_publish_password
             else None
         )
         # Free space on the data disk; tests replace it.

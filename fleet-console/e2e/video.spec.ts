@@ -71,3 +71,24 @@ test('streams play over WebRTC in a 2x2 grid, and viewing is audited', async ({ 
   await sup.dispose();
   expect(views.items.filter((e) => e.actor_username === 'op1').length).toBeGreaterThanOrEqual(4);
 });
+
+test('LL-HLS plays through the console origin, the relay redirect included', async ({ page }) => {
+  // The relay's first LL-HLS answer redirects to an absolute path; the proxy (like the
+  // gateway) must keep it under /video/hls, or the fallback would load the console page.
+  const op = await Station.as('op1');
+  const streams = await op.get<{ items: { id: string; codec: string }[] }>(
+    '/video-streams?limit=200',
+  );
+  const h264 = streams.items.find((s) => s.codec === 'h264');
+  expect(h264, 'an H.264 mock stream').toBeDefined();
+  const response = await op.post(`/video-streams/${h264?.id ?? ''}/view`);
+  const view = (await response.json()) as { hls_url: string; ticket: string };
+  await op.dispose();
+
+  const playlist = await page.request.get(view.hls_url, {
+    headers: { Authorization: `Bearer ${view.ticket}` },
+  });
+
+  expect(playlist.status()).toBe(200);
+  expect(await playlist.text()).toMatch(/^#EXTM3U/);
+});

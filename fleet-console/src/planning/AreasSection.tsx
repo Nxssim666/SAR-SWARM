@@ -21,7 +21,7 @@ export function AreasSection({ incidentId }: { incidentId: string }) {
   const session = useSession((s) => s.session);
   const areas = useSearchAreas(incidentId);
   const activeAreaId = usePlanning((s) => s.activeAreaId);
-  const drawnRing = usePlanning((s) => s.drawnRing);
+  const drawnRing = usePlanning((s) => (s.drawingFor === 'area' ? s.drawnRing : null));
   const tool = useSelection((s) => s.tool);
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
@@ -44,6 +44,7 @@ export function AreasSection({ incidentId }: { incidentId: string }) {
   };
 
   const takeCandidate = (candidate: ImportedArea) => {
+    usePlanning.getState().setDrawingFor('area');
     usePlanning.getState().setDrawnRing(candidate.ring);
     setName(candidate.name);
     setNotes(candidate.notes);
@@ -127,6 +128,7 @@ export function AreasSection({ incidentId }: { incidentId: string }) {
             title="Click the corners on the map; click the first corner again to close it."
             onClick={() => {
               discard();
+              usePlanning.getState().setDrawingFor('area');
               useSelection.getState().setTool(tool === 'area' ? 'pan' : 'area');
             }}
           >

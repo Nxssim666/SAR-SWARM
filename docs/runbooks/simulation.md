@@ -14,6 +14,22 @@ most faithful.
 
 Simulation mode is described in [dev-setup.md](dev-setup.md#simulation-mode-live-aircraft-without-hardware).
 
+## The acceptance run (M6)
+
+The brief's final scenario, scripted: a station of its own with 50 simulated aircraft; an
+operator tracks 25; a mixed group of 8 passes preflight, launches, and flies a planned area
+search; link loss, low battery and GNSS loss are injected; video is viewed; every aircraft
+returns and lands; the audit chain verifies and the incident is exported and closed.
+
+```bash
+docker compose -f sim/video/compose.yaml up -d        # optional: the mock video relay
+cd fleet-service
+python -m uv run python scripts/acceptance.py --video --report acceptance.json
+```
+
+Each of the 7 steps prints PASS or FAIL with what it saw; it exits 1 if any failed. Without
+`--video`, the video step fails as *skipped*. It takes about 5 minutes in real time.
+
 ## MAVLink loopback tests
 
 These are part of the normal test run (`tests/test_mavlink_loopback.py`). They start

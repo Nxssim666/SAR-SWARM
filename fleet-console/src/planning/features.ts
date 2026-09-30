@@ -2,6 +2,7 @@
 // Like the aircraft (ADR 0027), nothing is told by colour alone: areas carry their name and
 // status as text, routes a dash pattern per aircraft, points of interest a shape per kind.
 import type {
+  GeofenceOut,
   PlannedTask,
   PoiKind,
   PoiStatus,
@@ -33,6 +34,23 @@ export function areaFeatures(areas: readonly SearchAreaOut[], activeId: string |
         label: `${a.name} (${AREA_STATUS_LABEL[a.status]})`,
         status: a.status,
         active: a.id === activeId,
+      },
+    })),
+  };
+}
+
+/** Geofences (M6): exclusion zones filled red, inclusion zones outlined green, disabled grey. */
+export function fenceFeatures(fences: readonly GeofenceOut[]): Collection {
+  return {
+    type: 'FeatureCollection',
+    features: fences.map((f) => ({
+      type: 'Feature',
+      geometry: f.geometry,
+      properties: {
+        id: f.id,
+        kind: f.kind,
+        enabled: f.enabled,
+        label: `${f.kind === 'exclusion' ? '⛔ ' : ''}${f.name}${f.enabled ? '' : ' (off)'}`,
       },
     })),
   };

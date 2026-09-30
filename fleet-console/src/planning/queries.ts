@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { api, ProblemError } from '../api/client';
 import type {
+  GeofencePage,
   MissionOut,
   MissionPage,
   MissionProgressOut,
@@ -16,6 +17,7 @@ import { useSession } from '../session/session';
 
 export const planningKeys = {
   areas: (incidentId: string) => ['areas', incidentId] as const,
+  fences: (incidentId: string) => ['fences', incidentId] as const,
   missions: (incidentId: string) => ['missions', incidentId] as const,
   waypoints: (missionId: string) => ['waypoints', missionId] as const,
   plan: (missionId: string) => ['plan', missionId] as const,
@@ -24,6 +26,19 @@ export const planningKeys = {
 
 function useToken(): string | null {
   return useSession((s) => s.session?.token ?? null);
+}
+
+export function useGeofences(incidentId: string | null) {
+  const token = useToken();
+  return useQuery({
+    queryKey: planningKeys.fences(incidentId ?? ''),
+    enabled: !!incidentId && !!token,
+    queryFn: ({ signal }) =>
+      api<GeofencePage>(`/geofences?incident_id=${incidentId ?? ''}&limit=200`, {
+        token,
+        signal,
+      }),
+  });
 }
 
 export function useSearchAreas(incidentId: string | null) {

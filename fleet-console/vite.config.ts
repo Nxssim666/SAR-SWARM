@@ -1,4 +1,5 @@
 import react from '@vitejs/plugin-react';
+import type { ProxyOptions } from 'vite';
 import { defineConfig } from 'vitest/config';
 
 // The dev server proxies the API so the browser talks to one origin, as it does behind Caddy.
@@ -6,16 +7,24 @@ const fleetService = process.env.FLEET_SERVICE_URL ?? 'http://127.0.0.1:8000';
 // The video relay (MediaMTX, ADR 0012): WHEP on 8889, LL-HLS on 8888, reached under /video as
 // through the gateway.
 const relay = process.env.VIDEO_RELAY_HOST ?? '127.0.0.1';
-const proxy = {
+// The relay answers with absolute paths (its first LL-HLS answer redirects to
+// `/<path>/index.m3u8?cookieCheck=1`): put them back under the prefix, as the gateway does.
+function underPrefix(prefix: string, port: number): ProxyOptions {
+  return {
+    target: `http://${relay}:${String(port)}`,
+    rewrite: (path: string) => path.slice(prefix.length),
+    configure: (server) => {
+      server.on('proxyRes', (response) => {
+        const location = response.headers.location;
+        if (location?.startsWith('/')) response.headers.location = prefix + location;
+      });
+    },
+  };
+}
+const proxy: Record<string, string | ProxyOptions> = {
   '/api': { target: fleetService, ws: true },
-  '/video/webrtc': {
-    target: `http://${relay}:8889`,
-    rewrite: (path: string) => path.replace(/^\/video\/webrtc/, ''),
-  },
-  '/video/hls': {
-    target: `http://${relay}:8888`,
-    rewrite: (path: string) => path.replace(/^\/video\/hls/, ''),
-  },
+  '/video/webrtc': underPrefix('/video/webrtc', 8889),
+  '/video/hls': underPrefix('/video/hls', 8888),
 };
 
 export default defineConfig({

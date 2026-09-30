@@ -928,6 +928,67 @@ payload is 163 and 328 KB/s per console.
   - Safely return and land every aircraft.
   - The audit chain verifies, and the incident export completes.
 
+**Built** (2026-09-30; ADR 0035, 0036, 0037)
+
+- [x] **Degraded communications** (ADR 0035):
+  - Link hysteresis: a link degrades at once and turns live again only after data has held
+    for 2 s, so a flapping radio stays stale.
+  - Restart resync: commands a restart interrupted close as *no answer* or *effect not
+    seen* ("interrupted") and are never re-sent. Leases, alerts and missions reload, and
+    consoles and NATS reconnect (M3, M2b).
+  - A regression test proves that a timed-out command is not delivered when the link returns.
+- [x] **Preflight checks** (ADR 0035): arm and takeoff read `NAV_DLL_ACT`, `COM_DL_LOSS_T`,
+  `GF_ACTION`, `COM_LOW_BAT_ACT`, `BAT_CRIT_THR`, `BAT_EMERGEN_THR`, `RTL_RETURN_ALT` and
+  `MIS_TKO_LAND_REQ` (MAVSDK param plugin, or the simulator).
+  - Blocking findings, including an unreadable safety parameter, reject the aircraft
+    unless a supervisor overrides, confirmed and audited.
+  - Warnings appear in the confirmation.
+  - The console has a *Check failsafes* section. The simulator's link-loss failsafe follows
+    its parameters.
+- [x] **Station safeguards**:
+  - Audit chain heads are exported every 5 min, and verification checks them (truncation
+    is now detectable).
+  - The disk guard raises `disk_low` and pauses telemetry history when space is critical.
+  - `fleet-service backup` works while running.
+  - The API docs page is served from vendored Swagger UI (no CDN, no inline script).
+- [x] **Incident export**: a zip with a SHA-256 manifest, audited. It holds the incident,
+  areas, geofences, missions, POIs, alerts, commands, the audit events of the incident's
+  span with the chain's verification, and the telemetry of the aircraft involved. Console:
+  **Export** and **Close…** in the top bar.
+- [x] **Relay access control** (ADR 0036): per-stream viewing tickets. MediaMTX asks the
+  fleet service about every read and publish, and pushes need the publisher credentials.
+  The gateway blocks `/api/v1/internal/*`.
+- [x] **Container hardening** (ADR 0036): read-only roots, non-root users, no capabilities
+  (except 80/443 for the gateway), `no-new-privileges`, resource limits and rotated logs.
+  `deploy/smoke.sh` checks the stack in CI (job `images`).
+- [x] **Security review** (`docs/security-review.md`): the areas checked, what was fixed,
+  the residual risks, and dependency audits (npm and pip-audit: 0 known vulnerabilities).
+- [x] **Offline bundle** (`deploy/bundle.sh`, `deploy/install.sh`): image tarballs, config,
+  region data, runbooks and `SHA256SUMS`. Install verifies them, backs up, starts the stack
+  and installs the basemap and terrain.
+- [x] **Runbooks** (`docs/runbooks/`): field deployment, certificate trust, basemap and
+  region data, incident start and end, an operator quick-reference card, recovery, and
+  backup, upgrade and rollback.
+- [x] **Scripted acceptance** (`scripts/acceptance.py`): the scenario above, in 7 steps.
+- [x] **Windows package** (ADR 0037, `.github/workflows/package.yml`): the executable and
+  the console with launchers, a README and the complete source, in one zip. It is built
+  and smoke-tested on Windows in CI.
+- [x] Console gaps closed on the way:
+  - geofences are shown on the map and drawn and switched by supervisors (they were
+    enforced by the server but invisible);
+  - the aircraft registry (**Admin → Aircraft**);
+  - closing an incident.
+
+**Found while building, and fixed**
+
+- `video_down` alerts never cleared (the kind was missing from the condition kinds).
+- The service imported httpx, which only the dev group installed: the production image
+  would have failed at startup. `test_dependencies.py` now checks every import against the
+  runtime dependency closure.
+- LL-HLS behind the gateway: the relay's first answer redirects to an absolute path, which
+  loaded the console page instead. The gateway and the dev proxy now rewrite `Location`,
+  and an E2E test covers it.
+
 **Stop:** final report.
 
 ---

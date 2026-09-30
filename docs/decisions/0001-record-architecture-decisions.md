@@ -64,3 +64,5 @@ a safety rule, a protocol or convention, or an assumption made in place of an an
 | [0033](0033-no-gazebo-tier.md) | No Gazebo simulation tier |
 | [0034](0034-video-multi-operator-audit-retention.md) | Video, multi-operator control, audit viewer and retention |
 | [0035](0035-preflight-checks-and-degraded-links.md) | Preflight failsafe checks and degraded links |
+| [0036](0036-relay-access-and-container-hardening.md) | Relay access control and container hardening |
+| [0037](0037-windows-package.md) | The Windows single-machine package |

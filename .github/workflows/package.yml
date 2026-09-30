@@ -1,0 +1,165 @@
+# The Windows package (M6): the fleet service and the built console in one folder
+# (PyInstaller), smoke-tested on Windows, zipped with launchers, a README and the complete
+# source. The zip is an artifact of every run, and a release asset for tags v*.
+name: package
+
+on:
+  push:
+    branches: [main, "claude/**"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # release assets on tags
+
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows package (exe + source zip)
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: fleet-console/package-lock.json
+      - name: Build the console
+        working-directory: fleet-console
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+      - name: Package the console with the service
+        shell: pwsh
+        run: Copy-Item -Recurse fleet-console/dist fleet-service/src/fleet_service/static/console
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Install the fleet service
+        working-directory: fleet-service
+        run: uv sync --locked --no-dev
+      - name: Build the executable
+        working-directory: fleet-service
+        run: >-
+          uv run --no-dev --with "pyinstaller>=6.11,<7" pyinstaller --noconfirm
+          --distpath ../dist --workpath ../build ../packaging/windows/sar_gcs.spec
+
+      # The package works on Windows: simulation end to end, and a real MAVLink hub (MAVSDK's
+      # native library), before anyone downloads it.
+      - name: Smoke test (simulation)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = (Resolve-Path dist\SAR-GCS\sar-gcs.exe).Path
+          $env:SARGCS_SIMULATION = 'true'
+          $env:SARGCS_DATA_DIR = "$PWD\smoke-sim"
+          $env:SARGCS_LOG_JSON = 'false'
+          $password = 'package-smoke-password'
+          $password | & $exe create-admin --username chief --password-stdin
+          if ($LASTEXITCODE -ne 0) { throw 'create-admin failed' }
+          $service = Start-Process -FilePath $exe -PassThru -NoNewWindow `
+            -RedirectStandardOutput smoke-sim.out -RedirectStandardError smoke-sim.err
+          $base = 'http://127.0.0.1:8000'
+          function Wait-Until($what, $seconds, [scriptblock]$check) {
+            $deadline = (Get-Date).AddSeconds($seconds)
+            while ((Get-Date) -lt $deadline) {
+              try { if (& $check) { return } } catch { }
+              Start-Sleep -Milliseconds 500
+            }
+            Get-Content smoke-sim.err -Tail 40
+            throw "timed out waiting for $what"
+          }
+          Wait-Until 'health' 90 { (Invoke-RestMethod "$base/api/v1/health").status -eq 'ok' }
+          $page = Invoke-WebRequest "$base/" -UseBasicParsing
+          if ($page.Content -notmatch '<div id="root">') { throw 'the console is not served' }
+          $docs = Invoke-WebRequest "$base/api/v1/docs" -UseBasicParsing
+          if ($docs.StatusCode -ne 200) { throw 'no API docs page' }
+          $login = Invoke-RestMethod -Method Post "$base/api/v1/auth/login" -ContentType 'application/json' `
+            -Body (@{ username = 'chief'; password = $password } | ConvertTo-Json)
+          $h = @{ Authorization = "Bearer $($login.token)" }
+          $aircraft = Invoke-RestMethod -Method Post "$base/api/v1/aircraft" -Headers $h -ContentType 'application/json' `
+            -Body (@{ callsign = 'WIN-1'; airframe = 'multirotor_hexa' } | ConvertTo-Json)
+          $id = $aircraft.id
+          Wait-Until 'a live link' 30 {
+            ((Invoke-RestMethod "$base/api/v1/fleet/state" -Headers $h).aircraft | Where-Object { $_.aircraft_id -eq $id }).link -eq 'live'
+          }
+          Invoke-RestMethod -Method Post "$base/api/v1/aircraft/$id/control" -Headers $h | Out-Null
+          $preflight = Invoke-RestMethod -Method Post "$base/api/v1/aircraft/$id/preflight" -Headers $h
+          if (-not $preflight.ready) { throw 'preflight not ready' }
+          $body = @{ command_id = [guid]::NewGuid().ToString(); kind = 'arm'; aircraft_ids = @($id) }
+          try {
+            Invoke-RestMethod -Method Post "$base/api/v1/commands" -Headers $h -ContentType 'application/json' -Body ($body | ConvertTo-Json)
+            throw 'arm was not asked to confirm'
+          } catch {
+            $problem = $_.ErrorDetails.Message | ConvertFrom-Json
+            if ($problem.status -ne 428) { throw "arm: $($_.ErrorDetails.Message)" }
+            $body.confirmation_token = $problem.confirmation_token
+          }
+          $armed = Invoke-RestMethod -Method Post "$base/api/v1/commands" -Headers $h -ContentType 'application/json' -Body ($body | ConvertTo-Json)
+          if ($armed.targets[0].state -notin @('acked', 'verified')) { throw "arm: $($armed.targets[0].state)" }
+          Stop-Process -Id $service.Id
+          Start-Sleep -Seconds 2
+          & $exe audit-verify
+          if ($LASTEXITCODE -ne 0) { throw 'audit chain' }
+          Write-Host 'simulation smoke test passed'
+
+      - name: Smoke test (MAVLink hub)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = (Resolve-Path dist\SAR-GCS\sar-gcs.exe).Path
+          $env:SARGCS_DATA_DIR = "$PWD\smoke-mavlink"
+          $env:SARGCS_LOG_JSON = 'false'
+          $env:SARGCS_PORT = '8001'
+          'package-smoke-password' | & $exe create-admin --username chief --password-stdin
+          $service = Start-Process -FilePath $exe -PassThru -NoNewWindow `
+            -RedirectStandardOutput smoke-mav.out -RedirectStandardError smoke-mav.err
+          $base = 'http://127.0.0.1:8001'
+          $deadline = (Get-Date).AddSeconds(90)
+          while ((Get-Date) -lt $deadline) {
+            try { if ((Invoke-RestMethod "$base/api/v1/health").status -eq 'ok') { break } } catch { }
+            Start-Sleep -Milliseconds 500
+          }
+          $login = Invoke-RestMethod -Method Post "$base/api/v1/auth/login" -ContentType 'application/json' `
+            -Body (@{ username = 'chief'; password = 'package-smoke-password' } | ConvertTo-Json)
+          $h = @{ Authorization = "Bearer $($login.token)" }
+          Invoke-RestMethod -Method Post "$base/api/v1/aircraft" -Headers $h -ContentType 'application/json' `
+            -Body (@{ callsign = 'WIN-MAV'; airframe = 'fixed_wing'; mavlink_connection = 'udpin://0.0.0.0:14551'; mavlink_system_id = 7 } | ConvertTo-Json) | Out-Null
+          Start-Sleep -Seconds 8
+          if ($service.HasExited) { Get-Content smoke-mav.err -Tail 40; throw 'the service died opening MAVLink' }
+          $log = (Get-Content smoke-mav.err, smoke-mav.out -ErrorAction SilentlyContinue) -join "`n"
+          if ($log -notmatch 'MAVLink connection udpin://0.0.0.0:14551 open') { Write-Host $log; throw 'the MAVLink hub did not open' }
+          Stop-Process -Id $service.Id
+          Write-Host 'MAVLink smoke test passed: MAVSDK native library loaded, hub open'
+
+      - name: Assemble the zip
+        id: zip
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $short = git rev-parse --short HEAD
+          $name = "SAR-GCS-windows-$short"
+          New-Item -ItemType Directory $name | Out-Null
+          Copy-Item -Recurse dist\SAR-GCS "$name\SAR-GCS"
+          Copy-Item packaging\windows\start-simulation.bat, packaging\windows\start-station.bat, packaging\windows\README-WINDOWS.txt $name
+          git archive --format=zip -o source.zip HEAD
+          Expand-Archive source.zip "$name\source"
+          "commit $(git rev-parse HEAD)`r`nbuilt $((Get-Date).ToUniversalTime().ToString('o'))" | Out-File -Encoding ascii "$name\VERSION.txt"
+          Compress-Archive -Path $name -DestinationPath "$name.zip"
+          "name=$name" >> $env:GITHUB_OUTPUT
+          Get-Item "$name.zip" | Select-Object Name, Length
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ${{ steps.zip.outputs.name }}
+          path: ${{ steps.zip.outputs.name }}.zip
+          retention-days: 30
+      - name: Release asset (tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.zip.outputs.name }}.zip

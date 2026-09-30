@@ -185,11 +185,13 @@ async def test_viewing_answers_where_to_play_and_is_audited(
         "/api/v1/audit", params={"action": "video.view"}, headers=auth[Role.SUPERVISOR]
     )
 
-    assert ticket.json() == {
+    assert ticket.json() | {"ticket": "…", "expires_at": "…"} == {
         "stream_id": stream_id,
         "name": "HX-9 camera",
         "whep_url": "/video/webrtc/aircraft-09/whep",
         "hls_url": "/video/hls/aircraft-09/index.m3u8",
+        "ticket": "…",  # the relay's access (test_video_access)
+        "expires_at": "…",
     }
     assert refused.status_code == 409
     [event] = log.json()["items"]

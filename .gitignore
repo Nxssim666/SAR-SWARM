@@ -36,6 +36,10 @@ sim/sitl/generated/
 # scripts/fetch_region.py) and terrain grids (scripts/fetch_region.py)
 fleet-console/public/basemap/
 fleet-service/terrain/
+deploy/basemap/
 # Playwright output
 fleet-console/test-results/
 fleet-console/playwright-report/
+
+# The built console packaged into the service (Windows package, M6)
+fleet-service/src/fleet_service/static/console/

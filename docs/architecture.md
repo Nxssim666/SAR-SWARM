@@ -5,8 +5,8 @@ Ground control system for a civilian search-and-rescue drone fleet: up to 50 PX4
 with different roles, one field ground station, and no cloud. This page is the living overview.
 The reasons behind it are in [`decisions/`](decisions/0001-record-architecture-decisions.md).
 
-Status: **M5**. The fleet service is built through its live core, its MAVLink link and its
-swarm link:
+Status: **M6, every milestone built**. The fleet service is built through its live core, its
+MAVLink link and its swarm link:
 
 - persistent domain, auth/RBAC and a hash-chained audit trail;
 - the in-process bus, the fleet registry, and the mock driver in simulation mode;
@@ -25,8 +25,19 @@ with held confirmation, control leases and alerts (ADR 0027), and incidents, sea
 mission planning and tasking, and points of interest (ADR 0032). M5 added video through
 MediaMTX (health, `video_down` alerts, WebRTC grid with an LL-HLS fallback), user
 administration, operator presence and handover, the audit viewer with verify and export,
-data retention and the load suite (ADR 0034). There is no Gazebo tier (ADR 0033). Measured figures are in
-[`../PLAN.md`](../PLAN.md).
+data retention and the load suite (ADR 0034).
+
+M6 hardened the station:
+- preflight checks of each aircraft's own failsafes, link hysteresis, and restart resync
+  that never re-sends (ADR 0035);
+- relay access control with viewing tickets, and hardened containers checked by a stack
+  smoke test in CI (ADR 0036);
+- audit heads exported outside the database, a disk guard, backups and the incident
+  export bundle;
+- runbooks (`runbooks/`), a security review (`security-review.md`), an offline install
+  bundle, the scripted acceptance run, and a Windows single-machine package (ADR 0037).
+
+There is no Gazebo tier (ADR 0033). Measured figures are in [`../PLAN.md`](../PLAN.md).
 
 ## System context
 

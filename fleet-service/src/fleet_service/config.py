@@ -9,7 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
@@ -198,6 +198,18 @@ class Settings(BaseSettings):
         description="Where consoles reach the relay: <base>/webrtc/<path>/whep, <base>/hls/...",
     )
     video_poll_interval_s: float = Field(default=2.0, ge=0.5, le=60.0)
+    video_ticket_ttl_s: float = Field(
+        default=4 * 3600.0,
+        ge=60.0,
+        le=24 * 3600.0,
+        description="How long a viewing ticket plays (M6, ADR 0036); consoles ask again after.",
+    )
+    video_publish_user: str | None = Field(
+        default=None,
+        max_length=64,
+        description="Credentials cameras use to push into the relay; unset: pushing refused.",
+    )
+    video_publish_password: SecretStr | None = None
 
     # --- data retention (M5; 0 keeps forever; the audit trail is never purged) ---
     telemetry_retention_days: int = Field(default=30, ge=0, le=36_500)
@@ -224,6 +236,14 @@ class Settings(BaseSettings):
         "<data_dir>/audit-heads.jsonl); ideally other media, e.g. a USB stick.",
     )
     audit_head_interval_s: float = Field(default=300.0, ge=10.0, le=86_400.0)
+
+    # --- serving the console itself (M6: the single-machine Windows package) ---
+    console_dir: Path | None = Field(
+        default=None,
+        description="A built console (fleet-console/dist) to serve at /, for a station without "
+        "the gateway; default: the one packaged with the service, if any. The field stack "
+        "serves it from the gateway instead.",
+    )
 
     # --- telemetry history and WebSocket ---
     telemetry_record_interval_s: float = Field(default=1.0, ge=0.1, le=60.0)

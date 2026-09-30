@@ -17,7 +17,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from fleet_service import API_VERSION, __version__
@@ -46,13 +46,22 @@ from fleet_service.config import Settings, get_settings
 from fleet_service.context import AppContext
 from fleet_service.db import migrate
 from fleet_service.db.engine import Database
-from fleet_service.errors import PROBLEM_JSON, install_error_handlers
+from fleet_service.errors import PROBLEM_JSON, NotFound, install_error_handlers
 from fleet_service.ids import new_id
 from fleet_service.log import configure_logging
 from fleet_service.services.runtime import Runtime
 
 API_PREFIX = f"/api/{API_VERSION}"
 SWAGGER_UI = Path(__file__).parent / "static" / "swagger-ui"  # vendored: no CDN (M6)
+PACKAGED_CONSOLE = Path(__file__).parent / "static" / "console"  # the Windows package's (M6)
+# What the gateway adds in the field stack (deploy/Caddyfile), for the console served here.
+CONSOLE_HEADERS = {
+    "Content-Security-Policy": "default-src 'self'; connect-src 'self'; img-src 'self' data: "
+    "blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; "
+    "frame-ancestors 'none'",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+}
 _REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 log = logging.getLogger(__name__)
@@ -145,6 +154,7 @@ def create_app(
         pois.router,
         video_streams.router,
         video_streams.health_router,
+        video_streams.internal_router,
         live.router,
         commands.router,
         control.router,
@@ -174,7 +184,28 @@ def create_app(
         return app.openapi_schema
 
     app.openapi = openapi  # type: ignore[method-assign]
+    console = settings.console_dir or (PACKAGED_CONSOLE if PACKAGED_CONSOLE.is_dir() else None)
+    if console is not None:
+        _serve_console(app, console)
     return app
+
+
+def _serve_console(app: FastAPI, directory: Path) -> None:
+    """Serve a built console at / (single-page app: unknown paths get index.html), for a
+    station without the gateway. Mounted last, so the API always wins."""
+    index = directory / "index.html"
+    if not index.is_file():
+        raise RuntimeError(f"{directory} is not a built console (no index.html)")
+    root = directory.resolve()
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def console_file(path: str) -> Response:
+        if path.startswith("api/"):
+            raise NotFound(f"No route {path}.")
+        candidate = (root / path).resolve()
+        if path and candidate.is_file() and candidate.is_relative_to(root):
+            return FileResponse(candidate, headers=CONSOLE_HEADERS)
+        return FileResponse(index, headers=CONSOLE_HEADERS | {"Cache-Control": "no-cache"})
 
 
 def _docs_page(title: str, openapi_url: str) -> str:

@@ -3430,6 +3430,17 @@ export interface components {
             whep_url: string;
             /** Hls Url */
             hls_url: string;
+            /**
+             * Ticket
+             * @description Send as `Authorization: Bearer <ticket>` with every WHEP and HLS request; the relay asks the fleet service (M6, ADR 0036).
+             */
+            ticket: string;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description Ask again after this.
+             */
+            expires_at: string;
         };
         /**
          * WaypointIn

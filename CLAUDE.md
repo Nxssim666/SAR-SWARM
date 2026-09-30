@@ -130,7 +130,9 @@ status are in `PLAN.md`, the design is in `docs/architecture.md`, and the reason
 ```
 fleet-service/   Python ≥3.12, FastAPI, uv (pyproject.toml, uv.lock); code in src/fleet_service/
 fleet-console/   React 19 + TS 6 + Vite 8; code in src/, Playwright scenarios in e2e/
-deploy/          compose.yaml, Caddyfile (gateway: TLS, static console, /api proxy)
+deploy/          compose.yaml, Caddyfile (gateway: TLS, static console, /api proxy),
+                 smoke.sh (CI stack test), bundle.sh + install.sh (offline bundle)
+packaging/       windows/: PyInstaller spec, launchers, README (package.yml builds the zip)
 src/             ROS 2 colcon workspace: swarm_sar, swarm_sar_interfaces (onboard; unchanged)
 docs/            architecture.md, decisions/ (ADRs), runbooks/, api/ (openapi.json, asyncapi.json, README)
 scripts/check.py every lint/type/test/build, cross-platform
@@ -162,7 +164,8 @@ python -m uv --directory fleet-service run fleet-service export-openapi   # afte
 python -m uv --directory fleet-service run fleet-service export-asyncapi  # after WebSocket message changes
 python -m uv --directory fleet-service run fleet-service export-bridge-schema  # after swarm_wire changes
 python -m uv --directory fleet-service run fleet-service db revision --database ops -m "..."  # after model changes
-python -m uv --directory fleet-service run fleet-service audit-verify
+python -m uv --directory fleet-service run fleet-service audit-verify   # chain + exported heads
+python -m uv --directory fleet-service run fleet-service backup --output DIR
 
 # fleet-console (from fleet-console/)
 npm ci
@@ -187,7 +190,12 @@ python -m uv run --env-file simulation.env fleet-service create-admin --username
 python -m uv run --env-file simulation.env fleet-service          # data in data-sim/
 python -m uv run python scripts/m1b_acceptance.py --password <pw>  # live end-to-end run
 python -m uv run python scripts/load_smoke.py --password <pw> --aircraft 50 --clients 3 --seconds 60
+python -m uv run python scripts/load_suite.py --aircraft 50 --consoles 6 --seconds 60   # budgets
+python -m uv run python scripts/acceptance.py [--video]   # M6 acceptance: 50 aircraft, 7 steps
 ```
+
+Field operations are in `docs/runbooks/` (deployment, certificates, basemap, incident,
+operator card, recovery, upgrade) and `docs/security-review.md`.
 
 **PX4 SITL** (ADR 0023) runs in CI (`sitl` workflow), or on a Linux host with Docker:
 

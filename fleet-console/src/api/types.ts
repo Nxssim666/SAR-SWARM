@@ -53,6 +53,9 @@ export type PoiPage = Schemas['PoiPage'];
 export type PoiKind = Schemas['PoiKind'];
 export type PoiStatus = Schemas['PoiStatus'];
 export type PreflightReportView = Schemas['PreflightReportView'];
+export type GeofenceOut = Schemas['GeofenceOut'];
+export type GeofencePage = Schemas['GeofencePage'];
+export type GeofenceCreate = Schemas['GeofenceCreate'];
 
 /** Commands the console sends (the discriminated request bodies of POST /commands). */
 export type CommandRequest =

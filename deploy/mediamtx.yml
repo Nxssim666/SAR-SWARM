@@ -4,6 +4,17 @@
 # /video/hls/<path>/index.m3u8. Aircraft and cameras may also push (RTSP 8554, SRT 8890).
 logLevel: info
 
+# Access control (M6, ADR 0036): the relay asks the fleet service about every read and
+# publish. Reads need the viewing ticket a console got from POST /video-streams/{id}/view
+# (sent as a Bearer token); pushes need the publisher credentials configured in the fleet
+# service (SARGCS_VIDEO_PUBLISH_USER/PASSWORD). The API stays for the fleet service only.
+authMethod: http
+authHTTPAddress: http://fleet-service:8000/api/v1/internal/video-auth
+authHTTPExclude:
+  - action: api
+  - action: metrics
+  - action: pprof
+
 api: yes
 apiAddress: :9997  # reached by the fleet service only (not published)
 

@@ -3,7 +3,7 @@
 // coverage of the mission being watched. Panels write it; the map draws it outside React.
 import { create } from 'zustand';
 
-import type { PlannedTask, SearchAreaOut, WaypointIn } from '../api/types';
+import type { GeofenceOut, PlannedTask, SearchAreaOut, WaypointIn } from '../api/types';
 
 export type LonLat = [number, number];
 
@@ -16,8 +16,12 @@ interface PlanningState {
   areas: SearchAreaOut[];
   /** The area the mission panel works on (highlighted). */
   activeAreaId: string | null;
-  /** A polygon just drawn on the map, waiting to be saved as a search area. */
+  /** The incident's geofences (M6): drawn so operators see where aircraft may not go. */
+  fences: GeofenceOut[];
+  /** A polygon just drawn on the map, waiting to be saved as a search area or a geofence. */
   drawnRing: LonLat[] | null;
+  /** What the polygon being drawn becomes. */
+  drawingFor: 'area' | 'fence';
   /** The waypoint mission being edited (altitudes above home, ADR 0014). */
   waypoints: WaypointIn[];
   /** Default altitude above home for waypoints added by clicking the map. */
@@ -33,6 +37,8 @@ interface PlanningState {
   setAreas: (areas: SearchAreaOut[]) => void;
   setActiveArea: (id: string | null) => void;
   setDrawnRing: (ring: LonLat[] | null) => void;
+  setFences: (fences: GeofenceOut[]) => void;
+  setDrawingFor: (target: 'area' | 'fence') => void;
   setWaypoints: (waypoints: WaypointIn[]) => void;
   addWaypoint: (latitude: number, longitude: number) => void;
   setWaypointAltitude: (altitude: number) => void;
@@ -45,7 +51,9 @@ interface PlanningState {
 export const usePlanning = create<PlanningState>()((set) => ({
   areas: [],
   activeAreaId: null,
+  fences: [],
   drawnRing: null,
+  drawingFor: 'area',
   waypoints: [],
   waypointAltitude: 40,
   datum: null,
@@ -60,6 +68,12 @@ export const usePlanning = create<PlanningState>()((set) => ({
   },
   setDrawnRing: (drawnRing) => {
     set({ drawnRing });
+  },
+  setFences: (fences) => {
+    set({ fences });
+  },
+  setDrawingFor: (drawingFor) => {
+    set({ drawingFor });
   },
   setWaypoints: (waypoints) => {
     set({ waypoints });

@@ -1,20 +1,23 @@
-// Station administration (M5), for supervisors and admins: users and the audit trail.
+// Station administration (M5), for supervisors and admins: users, the aircraft registry
+// (M6) and the audit trail.
 import * as Dialog from '@radix-ui/react-dialog';
 import { useState } from 'react';
 
 import { can, useSession } from '../session/session';
+import { AircraftPanel } from './AircraftPanel';
 import { AuditPanel } from './AuditPanel';
 import { UsersPanel } from './UsersPanel';
 
-type Tab = 'users' | 'audit';
+type Tab = 'users' | 'aircraft' | 'audit';
 
 export function AdminButton() {
   const session = useSession((s) => s.session);
   const [open, setOpen] = useState(false);
   const users = can(session, 'users.view');
+  const fleet = can(session, 'fleet.manage');
   const audit = can(session, 'audit.read');
-  const [tab, setTab] = useState<Tab>(users ? 'users' : 'audit');
-  if (!users && !audit) return null;
+  const [tab, setTab] = useState<Tab>(users ? 'users' : fleet ? 'aircraft' : 'audit');
+  if (!users && !fleet && !audit) return null;
 
   return (
     <>
@@ -58,6 +61,18 @@ export function AdminButton() {
                     Users
                   </button>
                 )}
+                {fleet && (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === 'aircraft'}
+                    onClick={() => {
+                      setTab('aircraft');
+                    }}
+                  >
+                    Aircraft
+                  </button>
+                )}
                 {audit && (
                   <button
                     type="button"
@@ -73,6 +88,7 @@ export function AdminButton() {
               </div>
               <div role="tabpanel">
                 {tab === 'users' && users && <UsersPanel />}
+                {tab === 'aircraft' && fleet && <AircraftPanel />}
                 {tab === 'audit' && audit && <AuditPanel />}
               </div>
             </Dialog.Content>

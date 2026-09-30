@@ -1,4 +1,4 @@
-// The map's planning layers (ADR 0028, ADR 0031): search areas, the area being drawn,
+// The map's planning layers (ADR 0028, ADR 0031): geofences (M6), search areas, the area being drawn,
 // coverage, planned routes, the waypoint route being edited, a datum, and points of
 // interest. Added beneath the aircraft, so aircraft are never hidden; fed from the planning
 // store and the live store's points of interest.
@@ -9,6 +9,7 @@ import { useLive } from '../live/store';
 import {
   areaFeatures,
   EMPTY,
+  fenceFeatures,
   geometryFeature,
   POI_STYLE,
   poiFeatures,
@@ -22,7 +23,16 @@ import {
 import { usePlanning } from '../planning/store';
 import { drawPoiIcon, ICON_PIXEL_RATIO } from './icons';
 
-const SOURCES = ['areas', 'drawn', 'coverage', 'routes', 'waypoints', 'datum', 'pois'] as const;
+const SOURCES = [
+  'fences',
+  'areas',
+  'drawn',
+  'coverage',
+  'routes',
+  'waypoints',
+  'datum',
+  'pois',
+] as const;
 
 /** Add the planning layers below `beforeId` (the aircraft's first layer). */
 export function addPlanningLayers(map: MapLibreMap, labels: boolean, beforeId: string): void {
@@ -38,6 +48,37 @@ export function addPlanningLayers(map: MapLibreMap, labels: boolean, beforeId: s
   const add = (layer: Parameters<MapLibreMap['addLayer']>[0]) => {
     map.addLayer(layer, beforeId);
   };
+  // Geofences (M6): exclusion zones are hatched red, inclusion zones outlined green; a
+  // disabled one is a thin grey outline. Beneath the search areas.
+  add({
+    id: 'fences-fill',
+    type: 'fill',
+    source: 'fences',
+    filter: ['all', ['==', ['get', 'kind'], 'exclusion'], ['get', 'enabled']],
+    paint: { 'fill-color': '#f85149', 'fill-opacity': 0.14 },
+  });
+  add({
+    id: 'fences-line',
+    type: 'line',
+    source: 'fences',
+    paint: {
+      'line-color': [
+        'case',
+        ['!', ['get', 'enabled']],
+        '#8b98a5',
+        ['==', ['get', 'kind'], 'exclusion'],
+        '#f85149',
+        '#56d364',
+      ],
+      'line-width': ['case', ['get', 'enabled'], 2.5, 1],
+      'line-dasharray': [
+        'case',
+        ['==', ['get', 'kind'], 'inclusion'],
+        ['literal', [4, 2]],
+        ['literal', [1, 0]],
+      ],
+    },
+  });
   add({
     id: 'areas-fill',
     type: 'fill',
@@ -134,6 +175,17 @@ export function addPlanningLayers(map: MapLibreMap, labels: boolean, beforeId: s
   });
   if (labels) {
     add({
+      id: 'fences-label',
+      type: 'symbol',
+      source: 'fences',
+      layout: {
+        'text-field': ['get', 'label'],
+        'text-font': ['Noto Sans Medium'],
+        'text-size': 11,
+      },
+      paint: { 'text-color': '#ffa198', 'text-halo-color': '#0d1117', 'text-halo-width': 1.5 },
+    });
+    add({
       id: 'areas-label',
       type: 'symbol',
       source: 'areas',
@@ -185,6 +237,7 @@ export function drawPlanning(map: MapLibreMap): void {
   const set = (id: (typeof SOURCES)[number], data: GeoJSON.FeatureCollection) => {
     void map.getSource<GeoJSONSource>(id)?.setData(data);
   };
+  set('fences', fenceFeatures(p.fences));
   set('areas', areaFeatures(p.areas, p.activeAreaId));
   set('drawn', ringFeature(p.drawnRing));
   set('coverage', geometryFeature(p.coverage));

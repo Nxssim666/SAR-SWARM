@@ -1,6 +1,6 @@
 // Which incident the console works on (top bar). Supervisors can open a new one, based where
 // the map is centred; the fleet service checks the base, radius and permission. Those who
-// read the audit trail can export the incident's bundle (M6).
+// read the audit trail can export the incident's bundle, and supervisors close it (M6).
 import * as Dialog from '@radix-ui/react-dialog';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
@@ -21,6 +21,7 @@ export function IncidentPicker() {
   const setIncident = useIncident((s) => s.setIncident);
   const [creating, setCreating] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [closing, setClosing] = useState(false);
   const token = session?.token ?? null;
   const items = incidents.data?.items ?? [];
 
@@ -79,6 +80,25 @@ export function IncidentPicker() {
         >
           New incident
         </button>
+      )}
+      {incidentId && can(session, 'incidents.manage') && (
+        <button
+          type="button"
+          onClick={() => {
+            setClosing(true);
+          }}
+        >
+          Close…
+        </button>
+      )}
+      {closing && incidentId && (
+        <CloseIncidentDialog
+          incident={items.find((i) => i.id === incidentId) ?? null}
+          onClose={(closed) => {
+            setClosing(false);
+            if (closed) setIncident(null);
+          }}
+        />
       )}
       {creating && (
         <NewIncidentDialog
@@ -192,6 +212,75 @@ function NewIncidentDialog({ onClose }: { onClose: (created: IncidentOut | null)
               </button>
             </div>
           </form>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+function CloseIncidentDialog({
+  incident,
+  onClose,
+}: {
+  incident: IncidentOut | null;
+  onClose: (closed: boolean) => void;
+}) {
+  const token = useSession((s) => s.session?.token ?? null);
+  const queryClient = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const close = async () => {
+    if (!incident) return;
+    setBusy(true);
+    try {
+      await api(`/incidents/${incident.id}`, {
+        method: 'PATCH',
+        body: { status: 'closed' },
+        token,
+      });
+      await queryClient.invalidateQueries({ queryKey: INCIDENTS_KEY });
+      onClose(true);
+    } catch (e) {
+      setError(e instanceof ProblemError ? e.message : 'The incident could not be closed.');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog.Root
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose(false);
+      }}
+    >
+      <Dialog.Portal>
+        <Dialog.Overlay className="dialog-overlay" />
+        <Dialog.Content className="dialog">
+          <Dialog.Title>Close {incident?.name ?? 'the incident'}?</Dialog.Title>
+          <Dialog.Description>
+            A closed incident is read-only: no new search areas, missions or tasking. Aircraft in
+            the air are not commanded. Export the incident first if you need its bundle
+            (docs/runbooks/incident.md).
+          </Dialog.Description>
+          {error && (
+            <p role="alert" className="error">
+              {error}
+            </p>
+          )}
+          <div className="dialog-actions">
+            <button
+              type="button"
+              onClick={() => {
+                onClose(false);
+              }}
+            >
+              Cancel
+            </button>
+            <button type="button" disabled={busy || !incident} onClick={() => void close()}>
+              Close incident
+            </button>
+          </div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
