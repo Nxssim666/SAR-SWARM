@@ -223,7 +223,7 @@ separate and simulates the swarm_sar companions.
 | M3 Console MVP | Done (7/7 E2E; 46–54 fps with 50 aircraft on a GPU) |
 | M4 Mission planning, patterns, deconfliction, alerts | Done (E2E plan to completion; SITL battery, geofence) |
 | M5 Video, roles, audit viewer, multi-operator, load | Done (E2E 14/14 with mock relay; load budgets met) |
-| M6 Hardening, packaging, runbooks, acceptance | — |
+| M6 Hardening, packaging, runbooks, acceptance | Done (acceptance 7/7; ci, sitl, swarm, package green on GitHub; Windows zip is a package artifact) |
 
 ## Working conventions
 

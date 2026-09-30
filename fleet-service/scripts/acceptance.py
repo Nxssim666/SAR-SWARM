@@ -337,7 +337,7 @@ async def scenario(station: Station, run: Run) -> None:
         group = [ids[i] for i in (0, 1, 2, 3, 5, 6)] + [ids[4], ids[9]]
 
         async def search() -> str:
-            lat, lon = ORIGIN[0] + 0.004, ORIGIN[1]  # ~450 m north of the launch grid
+            lat, lon = ORIGIN[0] + 0.006, ORIGIN[1]  # ~670 m north of the launch grid
             incident = await chief.post(
                 "/incidents",
                 {
@@ -348,7 +348,7 @@ async def scenario(station: Station, run: Run) -> None:
                 expect=201,
             )
             context["incident"] = incident["id"]
-            d_lat, d_lon = 0.0018, 0.0027  # ~400 m x 400 m
+            d_lat, d_lon = 0.0036, 0.008  # ~800 m x 1.2 km: a sector for 8 aircraft
             ring = [
                 [lon - d_lon, lat - d_lat],
                 [lon + d_lon, lat - d_lat],
@@ -396,6 +396,39 @@ async def scenario(station: Station, run: Run) -> None:
                 )
 
             await until(airborne, 90, "the group airborne above 20 m")
+            # Off the launch grid first: a bulk goto gives each aircraft its own point and
+            # altitude layer (ADR 0029), so the search plan starts from separated aircraft.
+            await asyncio.sleep(1.0)
+            spread = await op1.command(
+                "goto",
+                group,
+                target={"latitude": lat - d_lat - 0.001, "longitude": lon},
+                spread_m=80.0,
+            )
+            refused = [a for a, s in states(spread).items() if s not in ("acked", "verified")]
+
+            async def holding() -> bool:
+                fleet = await op1.fleet()
+                return all(
+                    (fleet[a]["telemetry"] or {}).get("flight_mode") == "hold" for a in group
+                )
+
+            await asyncio.sleep(3.0)
+            await until(holding, 120, "the group spread out and holding")
+            for i, aircraft_id in enumerate(refused):
+                # The 4D check refused it (a crossing path): send it again on its own, to a
+                # point of its own, once the others have moved (as an operator would).
+                again = await op1.command(
+                    "goto",
+                    [aircraft_id],
+                    target={"latitude": lat - d_lat - 0.002, "longitude": lon - 0.002 * (i + 1)},
+                )
+                if set(states(again).values()) - {"acked", "verified"}:
+                    raise AssertionError(f"goto again: {reasons(again)}")
+            if refused:
+                await asyncio.sleep(3.0)
+                await until(holding, 120, "the refused aircraft at its own point")
+            context["spread_refused"] = len(refused)
             mission = await chief.post(
                 "/missions",
                 {
@@ -403,34 +436,53 @@ async def scenario(station: Station, run: Run) -> None:
                     "name": "Sector A sweep",
                     "kind": "area_search",
                     "search_area_id": area["id"],
-                    "default_altitude_relative_m": 60.0,
+                    "default_altitude_relative_m": 40.0,
                 },
                 expect=201,
             )
             context["mission"] = mission["id"]
-            plan = await chief.post(
-                f"/missions/{mission['id']}/plan",
-                {
+            # The operator plans for the group; if the 4D check finds conflicts, they re-plan
+            # with lanes the other way (ADR 0029). A plan that stays unclear needs a
+            # supervisor's override to start: confirmed, audited, and reported here.
+            plan: dict[str, Any] = {}
+            for bearing in (None, 0.0):
+                request: dict[str, Any] = {
                     "pattern": "parallel_track",
-                    "spacing_m": 40.0,
+                    "spacing_m": 60.0,
                     "group_id": team["id"],
                     "second_pass": False,
-                },
-            )
-            started = await op1.command("mission_start", group, mission_id=mission["id"])
+                }
+                if bearing is not None:
+                    request["bearing_deg"] = bearing
+                plan = await op1.post(f"/missions/{mission['id']}/plan", request)
+                if plan["clear"]:
+                    break
+            issues = [
+                f"{'/'.join(c['callsigns'])} {c['horizontal_m']:.0f} m at {c['t_s']:.0f} s"
+                for c in plan["conflicts"]
+            ] + [f"{c['callsign']} wp{c['waypoint']} {c['kind']}" for c in plan["clearance"]]
+            starter = op1 if plan["clear"] else chief
+            started = await starter.command("mission_start", group, mission_id=mission["id"])
             if set(states(started).values()) - {"acked", "verified"}:
-                raise AssertionError(f"mission start: {states(started)}")
+                raise AssertionError(f"mission start: {reasons(started)}; plan issues: {issues}")
+            context["plan_override"] = issues
 
             async def sweeping() -> Any:
                 progress = await op1.get(f"/missions/{mission['id']}/progress")
                 return progress if (progress.get("coverage") or 0) > 0.05 else None
 
             progress = await until(sweeping, 180, "5 % coverage")
+            started_by = (
+                "started by the operator (plan clear)"
+                if not issues
+                else f"started by a supervisor's audited override of {len(issues)} plan issue(s): "
+                f"{'; '.join(issues)}"
+            )
             return (
-                f"group of 8 (6 hexacopters, 2 airplanes) passed preflight, took off, and flies "
-                f"a planned parallel-track search ({len(plan['tasks'])} routes, "
-                f"{len(plan['conflicts'])} conflicts, clear: {plan['clear']}); coverage so "
-                f"far {100 * progress['coverage']:.0f} %"
+                f"group of 8 (6 hexacopters, 2 airplanes) passed preflight, took off, spread "
+                f"out ({context['spread_refused']} goto refused by the 4D check and re-sent), "
+                f"and flies a planned parallel-track search ({len(plan['tasks'])} routes), "
+                f"{started_by}; coverage so far {100 * progress['coverage']:.0f} %"
             )
 
         searching = await run.step(
@@ -504,6 +556,7 @@ async def scenario(station: Station, run: Run) -> None:
         await run.step("5. view video", video)
 
         async def recover() -> str:
+            await asyncio.sleep(1.0)  # the station's minimum interval between commands
             fleet = await chief.fleet()
             flying = [a for a in ids if (fleet[a]["telemetry"] or {}).get("in_air")]
             mine = [a for a in flying if a in ids[:TRACKED]]

@@ -23,7 +23,7 @@ the development host and is checked in CI.
 | M3 Console MVP | **Done** (2026-09-30); 7/7 E2E, 46–54 fps with 50 aircraft on this PC's GPU |
 | M4 Mission planning, patterns, bulk tasking, deconfliction, alerts | **Done** (2026-09-30); E2E 3/3 (plan, start, complete), SITL battery and geofence |
 | M5 Video, roles, audit viewer, multi-operator, load tests | **Done** (2026-09-30); E2E 14/14 with the mock relay, load budgets met at 25 and 50 (simulated) |
-| M6 Hardening, degraded comms, packaging, runbooks, acceptance | — |
+| M6 Hardening, degraded comms, packaging, runbooks, acceptance | **Done** (2026-09-30); acceptance 7/7 (50 simulated aircraft), ci/sitl/swarm/package green on GitHub, Windows package built and smoke-tested on Windows |
 
 M1 and M2 from the original brief are each split into two stop points (a and b), because each
 is several weeks of work and a review checkpoint in the middle lowers risk.
@@ -988,6 +988,65 @@ payload is 163 and 328 KB/s per console.
 - LL-HLS behind the gateway: the relay's first answer redirects to an absolute path, which
   loaded the console page instead. The gateway and the dev proxy now rewrite `Location`,
   and an E2E test covers it.
+
+**Acceptance run** (`scripts/acceptance.py --video`, this container, 4 cores, mock relay):
+**7/7 steps in 268 s**.
+
+1. 50 simulated aircraft live (40 hexacopters, 10 airplanes).
+2. op1 controls 25 aircraft; a console receives telemetry for all 50 at the requested 2 Hz.
+3. The group of 8 (6 hexacopters, 2 airplanes) passes preflight, takes off and spreads
+   out. One goto was refused by the 4D check and sent again on its own. It then flies a
+   parallel-track search.
+4. Link loss, low battery and GNSS loss: every alert is seen on the console, and each
+   aircraft's own failsafe acts (return then land, land, and landing). The link recovers
+   and its alert clears.
+5. Video: 4 streams live, and a viewing ticket is issued.
+6. The 7 airborne aircraft return, land and disarm; all 50 are on the ground.
+7. The audit chain is intact (186 events, 15 exported heads). The incident export has
+   10 files, each matching its manifest; the incident is closed.
+
+Honest notes:
+- The mixed group's plan was **not clear**. It had 2 conflicts, 12 m and 28 m during
+  transit, even after a re-plan with lanes the other way. A supervisor started it with the
+  audited override, as ADR 0029 intends. The planner does not resolve such transit
+  conflicts by itself.
+- Getting to 7/7 found only issues in the script, not in the station. It had to wait for
+  the arm to show and respect the 0.25 s command interval (the rate limit rejected it),
+  plan a sector large enough for 8 aircraft, and use 40 m rather than 60 m, which put the
+  airplanes' layer above the 120 m ceiling.
+
+**Tests**
+
+- fleet-service: **697 passed** (26 skipped: SITL, swarm, NATS and video relay without their
+  environments).
+- Console: **101 Vitest**.
+- E2E: **15/15** locally with the mock relay (`E2E_VIDEO=1`), including LL-HLS through the
+  proxy.
+- GitHub, at `f20cfd4`, all green:
+  - `ci`: every job, including the E2E and the new field-stack smoke test (images built,
+    gateway TLS, relay access control, read-only roots, audit, backup);
+  - `sitl` (PX4 SIH, preflight against real PX4 parameters);
+  - `swarm`;
+  - `package`: the Windows executable built with PyInstaller, then smoke-tested on
+    `windows-2022`. The simulation test signed in, registered an aircraft, passed its
+    preflight and armed it, and the audit verified. The MAVLink test loaded MAVSDK's native
+    library and opened a hub. It produced the zip `SAR-GCS-windows-<commit>.zip` (70 MB).
+- Locally, 9 of 10 PX4 SITL tests passed; the airplane lawnmower failed once, with 5 PX4
+  instances on 4 cores, and passed alone. The `sitl` workflow passed on GitHub.
+- Dependency audits: npm 0 and pip-audit 0 known vulnerabilities.
+
+**Known gaps**
+
+- **50 PX4 SIH aircraft** are still unmeasured: they need the field hardware (the user's
+  M2b decision). The acceptance run used the simulator.
+- **The planner** leaves transit conflicts for dense mixed groups to a supervisor's override
+  (above).
+- **The Windows package** serves plain HTTP, with no video relay and no NATS (ADR 0037).
+  The field deployment is the Docker stack.
+- **The offline bundle** (`deploy/bundle.sh`, `install.sh`) has not been run end to end:
+  its steps are the ones `smoke.sh` exercises in CI, but not the tarball round trip.
+- **MAVLink is unauthenticated** (no signing) and databases are not encrypted at rest:
+  see the residual risks of `docs/security-review.md`.
 
 **Stop:** final report.
 
