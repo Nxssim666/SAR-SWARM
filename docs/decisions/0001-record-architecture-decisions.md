@@ -55,3 +55,4 @@ a safety rule, a protocol or convention, or an assumption made in place of an an
 | [0024](0024-swarm-bridge-and-nats.md) | The swarm bridge over NATS: contract, sequencing, acknowledgement |
 | [0025](0025-aircraft-with-two-links.md) | Aircraft with two links: merged telemetry, routed commands |
 | [0026](0026-scale-runs-and-swarm-simulation.md) | Scale runs on the CI runner, and the simulated swarm for the bridge |
+| [0027](0027-console-architecture.md) | Console architecture: session, live data, map symbology, confirmation |

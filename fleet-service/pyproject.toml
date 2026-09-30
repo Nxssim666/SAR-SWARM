@@ -72,7 +72,7 @@ select = [
 strict = true
 python_version = "3.12"
 mypy_path = "src,tests,../sim,../src/sar_gcs_bridge"
-files = ["src", "tests", "scripts", "../sim"]
+files = ["src", "tests", "scripts", "../sim", "../fleet-console/e2e"]
 # sim/swarm runs with the onboard package (ROS style, untyped): linted, not type-checked.
 exclude = ['sim[\\/]swarm[\\/]']
 plugins = ["pydantic.mypy"]

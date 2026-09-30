@@ -57,8 +57,8 @@ jobs:
           tar -xzf "$RUNNER_TEMP/$file" -C "$RUNNER_TEMP"
           bin=$RUNNER_TEMP/nats-server-$version-linux-amd64/nats-server
           echo "NATS_SERVER_BIN=$bin" >> "$GITHUB_ENV"
-      - run: uv run ruff check . ../sim
-      - run: uv run ruff format --check . ../sim
+      - run: uv run ruff check . ../sim ../fleet-console/e2e
+      - run: uv run ruff format --check . ../sim ../fleet-console/e2e
       - run: uv run ruff check --config ../src/sar_gcs_bridge/ruff.toml ../src/sar_gcs_bridge
       - run: uv run mypy
       - run: uv run pytest -q
@@ -84,6 +84,68 @@ jobs:
       - run: npm run typecheck
       - run: npm run test
       - run: npm run build
+
+  e2e:
+    name: console e2e (Playwright)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: fleet-console
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked
+        working-directory: fleet-service
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: fleet-console/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: Offline basemap sample (cached)
+        uses: actions/cache@v4
+        with:
+          path: fleet-console/public/basemap
+          key: basemap-${{ hashFiles('fleet-console/scripts/fetch-basemap.mjs') }}
+      - name: Fetch the basemap if not cached
+        run: |
+          if [ ! -f public/basemap/manifest.json ]; then
+            version=v1.31.2
+            sum=3ed7dbf4ec2e6dfe5e25b6f70d1ffc932729f93c86db353bf514dd71010a312f
+            file=go-pmtiles_1.31.2_Linux_x86_64.tar.gz
+            curl -fsSL -o "$RUNNER_TEMP/$file" \
+              "https://github.com/protomaps/go-pmtiles/releases/download/$version/$file"
+            echo "$sum  $RUNNER_TEMP/$file" | sha256sum -c -
+            tar -xzf "$RUNNER_TEMP/$file" -C "$RUNNER_TEMP" pmtiles
+            PMTILES_BIN="$RUNNER_TEMP/pmtiles" node scripts/fetch-basemap.mjs
+          fi
+      - name: E2E tests
+        env:
+          UV: uv
+        run: npx playwright test
+      - name: Results as annotations (readable without signing in)
+        if: always()
+        working-directory: .
+        run: |
+          mkdir -p e2e-results
+          cp fleet-console/test-results/junit.xml e2e-results/ 2>/dev/null || true
+          python3 sim/sitl/annotate.py e2e-results
+          if [ -f fleet-console/test-results/perf.json ]; then
+            echo "::notice title=Map performance (CI, software WebGL)::$(tr -d '\n' < fleet-console/test-results/perf.json)"
+          fi
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: e2e-results
+          path: |
+            fleet-console/test-results/
+            fleet-console/playwright-report/
+          retention-days: 14
 
   images:
     name: container images build

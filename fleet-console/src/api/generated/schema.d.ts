@@ -1459,6 +1459,9 @@ export interface components {
         /**
          * GotoCommand
          * @description Fly to a position (and altitude above home), then hold there.
+         *
+         *     One aircraft only: a shared target would converge several aircraft on one point, and
+         *     nothing spreads them apart yet (deconfliction is M4).
          */
         GotoCommand: {
             /**
@@ -1467,7 +1470,10 @@ export interface components {
              * @description Client-generated; the idempotency key.
              */
             command_id: string;
-            /** Aircraft Ids */
+            /**
+             * Aircraft Ids
+             * @description Exactly one aircraft.
+             */
             aircraft_ids: string[];
             /**
              * Confirmation Token

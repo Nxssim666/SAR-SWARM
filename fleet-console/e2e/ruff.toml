@@ -1,0 +1,2 @@
+# The E2E backend runs in the fleet service's environment and follows its rules.
+extend = "../../fleet-service/pyproject.toml"

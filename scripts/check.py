@@ -94,10 +94,11 @@ def check_service(results: list[Result]) -> None:
     cwd = ROOT / "fleet-service"
     if not run(results, "service", "sync", [*uv, "sync", "--locked"], cwd):
         return
-    # sim/ (link emulator) shares the service's environment and rules.
-    run(results, "service", "ruff check", [*uv, "run", "ruff", "check", ".", "../sim"], cwd)
+    # sim/ and the console's E2E backend share the service's environment and rules.
+    python_dirs = [".", "../sim", "../fleet-console/e2e"]
+    run(results, "service", "ruff check", [*uv, "run", "ruff", "check", *python_dirs], cwd)
     run(results, "service", "ruff format",
-        [*uv, "run", "ruff", "format", "--check", ".", "../sim"], cwd)
+        [*uv, "run", "ruff", "format", "--check", *python_dirs], cwd)
     # The swarm bridge (ROS package, onboard style) is linted with its own rules.
     run(results, "service", "ruff bridge",
         [*uv, "run", "ruff", "check", "--config", "../src/sar_gcs_bridge/ruff.toml",
@@ -129,6 +130,13 @@ def check_console(results: list[Result]) -> None:
         return
     for script in ("lint", "format:check", "typecheck", "test", "build"):
         run(results, "console", script, ["npm", "run", "-s", script], cwd, env)
+    # Playwright E2E against the fleet service in simulation mode (e2e/backend.py); needs
+    # Playwright's Chromium (npx playwright install chromium).
+    # E2E_GPU=1: measure the map on this machine's GPU (the fps target is for a GPU); CI runners
+    # have none, and report their software-rendering figure instead.
+    uv = " ".join(f'"{part}"' if " " in part else part for part in uv_command())
+    env = dict(env, UV=uv, E2E_GPU=env.get("E2E_GPU", "1"))
+    run(results, "console", "e2e", ["npm", "run", "-s", "e2e"], cwd, env)
 
 
 def main() -> int:

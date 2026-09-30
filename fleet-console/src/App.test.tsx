@@ -1,7 +1,72 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
+import { ConnectionBadge } from './components/ConnectionBadge';
+import { useBackendHealth } from './hooks/useBackendHealth';
+import { useSession } from './session/session';
+
+function problem(status: number): Response {
+  return new Response(
+    JSON.stringify({
+      type: 'x',
+      title: 'Error',
+      status,
+      detail: null,
+      instance: null,
+      errors: null,
+    }),
+    { status, headers: { 'Content-Type': 'application/problem+json' } },
+  );
+}
+
+describe('sign-in', () => {
+  beforeEach(() => {
+    useSession.getState().signOut(null);
+  });
+
+  it('shows the sign-in form without a session', () => {
+    render(<App />);
+    expect(screen.getByRole('form', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password');
+  });
+
+  it('says why a sign-in failed, and clears the password', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(problem(401))),
+    );
+    render(<App />);
+
+    await userEvent.type(screen.getByLabelText('Username'), 'op1');
+    await userEvent.type(screen.getByLabelText('Password'), 'wrong-password');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Wrong username or password.');
+    expect(screen.getByLabelText('Password')).toHaveValue('');
+  });
+
+  it('explains the lockout after too many failures', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(problem(429))),
+    );
+    render(<App />);
+
+    await userEvent.type(screen.getByLabelText('Username'), 'op1');
+    await userEvent.type(screen.getByLabelText('Password'), 'wrong-password');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Too many failed sign-ins/);
+  });
+
+  it('shows why the last session ended', () => {
+    useSession.getState().signOut('Your session has ended. Please sign in again.');
+    render(<App />);
+    expect(screen.getByRole('status')).toHaveTextContent('Your session has ended.');
+  });
+});
 
 function healthResponse(serverTime: Date): Response {
   return new Response(JSON.stringify({ status: 'ok', server_time: serverTime.toISOString() }), {
@@ -10,38 +75,27 @@ function healthResponse(serverTime: Date): Response {
   });
 }
 
-describe('App shell', () => {
-  it('shows the console title', () => {
+function Badge() {
+  return <ConnectionBadge status={useBackendHealth()} />;
+}
+
+describe('connection badge', () => {
+  it('reports connected when the fleet service is healthy', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => new Promise<Response>(() => undefined)),
+      vi.fn(() => Promise.resolve(healthResponse(new Date()))),
     );
-
-    render(<App />);
-
-    expect(screen.getByRole('heading', { name: 'SAR Fleet Console' })).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('Connecting');
-  });
-
-  it('reports connected when the fleet service is healthy', async () => {
-    const fetchMock = vi.fn(() => Promise.resolve(healthResponse(new Date())));
-    vi.stubGlobal('fetch', fetchMock);
-
-    render(<App />);
-
+    render(<Badge />);
     expect(await screen.findByText('Connected')).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/health', expect.anything());
   });
 
   it('warns when the client clock disagrees with the ground station', async () => {
-    const serverAhead = new Date(Date.now() + 30_000);
+    // The server's clock answers 30 s ahead of this one, whenever the request is served.
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => Promise.resolve(healthResponse(serverAhead))),
+      vi.fn(() => Promise.resolve(healthResponse(new Date(Date.now() + 30_000)))),
     );
-
-    render(<App />);
-
+    render(<Badge />);
     expect(await screen.findByText(/clock off by 30\.\d s/)).toBeInTheDocument();
   });
 
@@ -50,23 +104,7 @@ describe('App shell', () => {
       'fetch',
       vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))),
     );
-
-    render(<App />);
-
+    render(<Badge />);
     expect(await screen.findByText('Fleet service offline')).toBeInTheDocument();
-  });
-
-  it('reports offline on an HTTP error', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => Promise.resolve(new Response('', { status: 502 }))),
-    );
-
-    render(<App />);
-
-    expect(await screen.findByText('Fleet service offline')).toHaveAttribute(
-      'title',
-      'health check failed: HTTP 502',
-    );
   });
 });

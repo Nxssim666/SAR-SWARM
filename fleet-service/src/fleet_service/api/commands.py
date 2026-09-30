@@ -100,9 +100,17 @@ class LandCommand(_CommandRequest):
 
 
 class GotoCommand(_CommandRequest):
-    """Fly to a position (and altitude above home), then hold there."""
+    """Fly to a position (and altitude above home), then hold there.
+
+    One aircraft only: a shared target would converge several aircraft on one point, and
+    nothing spreads them apart yet (deconfliction is M4).
+    """
 
     kind: Literal["goto"]
+    aircraft_ids: Annotated[
+        list[EntityId],
+        Field(min_length=1, max_length=1, description="Exactly one aircraft."),
+    ]
     target: GeoPoint
     altitude_relative_m: AltitudeRelative | None = None
 

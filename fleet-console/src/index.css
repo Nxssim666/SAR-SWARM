@@ -1,29 +1,32 @@
-/* Placeholder theme; the console's visual system is designed in M3. */
+/* SAR Fleet Console. One dark theme, matched to the dark basemap. States are never shown by
+   colour alone: every coloured state also has an icon, a word or a shape (ADR 0015). */
 :root {
   --bg: #0f1419;
   --surface: #1a2129;
+  --surface-2: #232c36;
+  --border: #30363d;
   --text: #e6edf3;
   --muted: #8b98a5;
-  --ok: #2ea043;
+  --ok: #3fb950;
   --warning: #d29922;
   --danger: #f85149;
   --pending: #58a6ff;
+  --accent: #58a6ff;
   font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
   color: var(--text);
   background: var(--bg);
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg: #f6f8fa;
-    --surface: #ffffff;
-    --text: #1f2328;
-    --muted: #59636e;
-  }
+  color-scheme: dark;
 }
 
 * {
   box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
@@ -31,33 +34,522 @@ body {
   background: var(--bg);
 }
 
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+tr:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button[aria-pressed='true'] {
+  background: var(--accent);
+  color: #0d1117;
+}
+
+input,
+select {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.error {
+  color: var(--danger);
+  margin: 0.4rem 0;
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-weight: 600;
+}
+
+/* --- layout -------------------------------------------------------------------------- */
+
 .shell {
   display: grid;
-  grid-template-rows: auto 1fr;
-  min-height: 100vh;
+  grid-template-rows: auto auto 1fr auto;
+  height: 100%;
+  overflow: hidden;
 }
 
 .topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 1rem;
-  padding: 0.5rem 1rem;
+  padding: 0.4rem 1rem;
   background: var(--surface);
+  border-bottom: 1px solid var(--border);
 }
 
 .title {
-  margin: 0;
-  font-size: 1.1rem;
+  margin: 0 auto 0 0;
+  font-size: 1.05rem;
+}
+
+.user {
+  color: var(--muted);
 }
 
 .workspace {
-  padding: 1rem;
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  min-height: 0;
 }
 
-.placeholder {
+.map-pane {
+  position: relative;
+  min-height: 0;
+}
+
+.map {
+  position: absolute;
+  inset: 0;
+  background: #1b2229;
+}
+
+.map-overlay-top {
+  position: absolute;
+  top: 0.6rem;
+  left: 0.6rem;
+}
+
+.map-overlay-bottom {
+  position: absolute;
+  bottom: 2.2rem;
+  left: 0.6rem;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  overflow-y: auto;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.panel {
+  padding: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.panel h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+/* --- banners ------------------------------------------------------------------------- */
+
+.banner {
+  padding: 0.4rem 1rem;
+  font-weight: 500;
+}
+
+.banner-offline {
+  background: var(--danger);
+  color: #fff;
+}
+
+.banner-simulation {
+  background: repeating-linear-gradient(45deg, #6e40c9, #6e40c9 12px, #5a32a3 12px, #5a32a3 24px);
+  color: #fff;
+}
+
+.banner-expiry {
+  background: var(--warning);
+  color: #1f2328;
+}
+
+.banner-basemap {
+  background: var(--surface-2);
   color: var(--muted);
 }
+
+/* --- selection tools and coordinates ------------------------------------------------- */
+
+.selection-tools,
+.coord-readout {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  padding: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgb(26 33 41 / 92%);
+}
+
+.coord-readout output {
+  min-width: 16rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.goto-target {
+  color: var(--accent);
+}
+
+/* --- aircraft list ------------------------------------------------------------------- */
+
+.list-filters {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.list-filters input {
+  flex: 1;
+  min-width: 0;
+}
+
+.aircraft-list table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.aircraft-list th,
+.aircraft-list td {
+  padding: 0.25rem 0.35rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.aircraft-list tbody tr {
+  cursor: pointer;
+  border-top: 1px solid var(--border);
+}
+
+.aircraft-list tbody tr:hover {
+  background: var(--surface-2);
+}
+
+.aircraft-list tr.selected {
+  background: rgb(88 166 255 / 18%);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.callsign {
+  font-weight: 600;
+}
+
+.link-live {
+  color: var(--ok);
+}
+
+.link-stale {
+  color: var(--warning);
+}
+
+.link-lost {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.link-offline {
+  color: var(--muted);
+}
+
+/* --- telemetry panel ----------------------------------------------------------------- */
+
+.fields {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.2rem 0.8rem;
+  margin: 0 0 0.5rem;
+}
+
+.fields dt {
+  color: var(--muted);
+}
+
+.fields dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.lease-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+/* --- alerts -------------------------------------------------------------------------- */
+
+.alerts .count {
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.alerts ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.alert {
+  padding: 0.35rem 0.5rem;
+  margin-bottom: 0.3rem;
+  border-left: 4px solid var(--muted);
+  background: var(--surface-2);
+}
+
+.alert button {
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.5rem;
+}
+
+.alert .severity {
+  font-weight: 700;
+}
+
+.alert-critical {
+  border-left-color: var(--danger);
+}
+
+.alert-critical .severity {
+  color: var(--danger);
+}
+
+.alert-warning {
+  border-left-color: var(--warning);
+}
+
+.alert-warning .severity {
+  color: var(--warning);
+}
+
+.alert[data-state='acknowledged'] {
+  opacity: 0.7;
+}
+
+/* --- command bar --------------------------------------------------------------------- */
+
+.command-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.selection-count {
+  min-width: 6.5rem;
+  font-weight: 700;
+}
+
+.command {
+  font-weight: 600;
+}
+
+.command-hold {
+  border-color: var(--pending);
+}
+
+.altitude {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+  margin-left: 0.5rem;
+  color: var(--muted);
+}
+
+.altitude input {
+  width: 4.5rem;
+}
+
+.last-command {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  width: 100%;
+}
+
+.last-command ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.8rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.last-command li[data-state='verified'],
+.last-command li[data-state='acked'] {
+  color: var(--ok);
+}
+
+.last-command li[data-state='nacked'],
+.last-command li[data-state='timeout'],
+.last-command li[data-state='unverified'] {
+  color: var(--danger);
+}
+
+.last-command li[data-state='rejected'] {
+  color: var(--warning);
+}
+
+/* --- dialogs ------------------------------------------------------------------------- */
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 55%);
+}
+
+.dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: min(34rem, 92vw);
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 1rem 1.2rem;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.dialog h2 {
+  margin-top: 0;
+}
+
+.dialog h3 {
+  margin: 0.8rem 0 0.3rem;
+  font-size: 0.95rem;
+}
+
+.summary-list {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.summary-list .warning {
+  color: var(--warning);
+}
+
+.summary-list.rejected {
+  color: var(--muted);
+}
+
+.warning-box {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--warning);
+  border-radius: 6px;
+  color: var(--warning);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.hold-to-confirm {
+  position: relative;
+  overflow: hidden;
+  border-color: var(--danger);
+  font-weight: 700;
+}
+
+.hold-fill {
+  position: absolute;
+  inset: 0;
+  transform: scaleX(0);
+  transform-origin: left;
+  background: rgb(248 81 73 / 45%);
+}
+
+.hold-to-confirm.holding .hold-fill {
+  transform: scaleX(1);
+  transition: transform var(--hold-ms) linear;
+}
+
+.hold-label {
+  position: relative;
+}
+
+.shortcuts th {
+  padding-right: 1rem;
+  text-align: left;
+}
+
+kbd {
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-2);
+}
+
+/* --- login --------------------------------------------------------------------------- */
+
+.login {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+}
+
+.login form {
+  display: grid;
+  gap: 0.8rem;
+  width: min(22rem, 92vw);
+  padding: 1.5rem;
+}
+
+.login h1 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+.login label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.notice {
+  padding: 0.5rem;
+  border: 1px solid var(--warning);
+  border-radius: 6px;
+}
+
+/* --- connection badge (clock skew) --------------------------------------------------- */
 
 .badge {
   padding: 0.2rem 0.6rem;
@@ -68,7 +560,7 @@ body {
 }
 
 .badge-ok {
-  background: var(--ok);
+  background: #2ea043;
 }
 
 .badge-warning {
@@ -83,4 +575,25 @@ body {
 .badge-pending {
   background: var(--pending);
   color: #1f2328;
+}
+
+/* Narrow screens (tablets in portrait): the side panel goes under the map. */
+@media (max-width: 900px) {
+  .workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(300px, 55%) 1fr;
+  }
+
+  .side {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hold-to-confirm.holding .hold-fill {
+    transition: none;
+    transform: scaleX(1);
+    opacity: 0.6;
+  }
 }

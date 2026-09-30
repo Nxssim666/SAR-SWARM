@@ -1,20 +1,19 @@
-import { ConnectionBadge } from './components/ConnectionBadge';
-import { useBackendHealth } from './hooks/useBackendHealth';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useState } from 'react';
+
+import { LoginPage } from './session/LoginPage';
+import { useSession } from './session/session';
+import { Console } from './shell/Console';
 
 export function App() {
-  const status = useBackendHealth();
+  const session = useSession((s) => s.session);
+  const [queries] = useState(
+    () => new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } }),
+  );
 
   return (
-    <div className="shell">
-      <header className="topbar">
-        <h1 className="title">SAR Fleet Console</h1>
-        <ConnectionBadge status={status} />
-      </header>
-      <main className="workspace">
-        <p className="placeholder">
-          Map, aircraft list and tasking arrive in milestone M3 (see PLAN.md).
-        </p>
-      </main>
-    </div>
+    <QueryClientProvider client={queries}>
+      {session ? <Console key={session.token} session={session} /> : <LoginPage />}
+    </QueryClientProvider>
   );
 }

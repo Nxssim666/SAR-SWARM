@@ -32,3 +32,8 @@ fleet-service/data-*/
 !.env.example
 # Generated PX4 fleets (sim/sitl/fleet.py)
 sim/sitl/generated/
+# Offline sample basemap (fleet-console/scripts/fetch-basemap.mjs)
+fleet-console/public/basemap/
+# Playwright output
+fleet-console/test-results/
+fleet-console/playwright-report/

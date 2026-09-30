@@ -1,6 +1,6 @@
 # 0005. Frontend: React, TypeScript, Vite
 
-- Status: Accepted
+- Status: Accepted; refined by [0027](0027-console-architecture.md) (M3 console decisions)
 - Date: 2026-09-28
 
 ## Context

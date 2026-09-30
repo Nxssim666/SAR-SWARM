@@ -96,6 +96,25 @@ status are in `PLAN.md`, the design is in `docs/architecture.md`, and the reason
     onboard environment (`pytest.ini` collects them); `sim/swarm` is excluded from mypy.
   - NATS tests need a `nats-server` (`.tools/nats/` or `NATS_SERVER_BIN`).
     `SARGCS_REQUIRE_NATS=1` makes a missing server fail instead of skip.
+- **Console patterns** (ADR 0005, ADR 0027; `fleet-console/src/`):
+  - Live state comes only from the WebSocket client (`live/socket.ts`) into `live/store.ts`.
+    The map reads it outside React and redraws per animation frame. Components use
+    `useThrottledLive` (4 Hz), never the raw store for telemetry. A render-count test guards it.
+  - The console is never the safety boundary: `commands/availability.ts` only greys out
+    buttons, with the reason; the server decides. Risky and bulk commands show the server's
+    428 summary and need `HoldToConfirm` (a 1 s press; Enter never confirms). Don't add a
+    keyboard shortcut for a risky command.
+  - State is never colour-only: add an icon or a word (link, alerts, outcomes). Unknown
+    values render as "—" with the title "unknown".
+  - API types come from the generated schema (`api/types.ts` names them); WebSocket message
+    kinds are checked against `docs/api/asyncapi.json`.
+  - Components export only components (fast refresh): put helpers and constants in `.ts`
+    modules.
+  - MapLibre's worker is bundled explicitly (`?worker&url` + `setWorkerUrl`): keep it, or the
+    production map never loads.
+  - E2E: `npm run e2e` builds the console and starts `e2e/backend.py`, a seeded simulation
+    station. Map interactions use the `__sargcsProject` test hook, enabled by `localStorage`
+    `sargcs.test=1`. Frame rates are judged on a GPU only (`E2E_GPU=1`).
 - **Tests go in the same change** (ADR 0015):
   - A bug fix starts with a failing test.
   - Each safety rule has a regression test.
@@ -107,7 +126,7 @@ status are in `PLAN.md`, the design is in `docs/architecture.md`, and the reason
 
 ```
 fleet-service/   Python ≥3.12, FastAPI, uv (pyproject.toml, uv.lock); code in src/fleet_service/
-fleet-console/   React 19 + TS 6 + Vite 8; code in src/
+fleet-console/   React 19 + TS 6 + Vite 8; code in src/, Playwright scenarios in e2e/
 deploy/          compose.yaml, Caddyfile (gateway: TLS, static console, /api proxy)
 src/             ROS 2 colcon workspace: swarm_sar, swarm_sar_interfaces (onboard; unchanged)
 docs/            architecture.md, decisions/ (ADRs), runbooks/, api/ (openapi.json, asyncapi.json, README)
@@ -147,6 +166,8 @@ npm ci
 npm run dev            # http://127.0.0.1:5173, proxies /api → :8000 (FLEET_SERVICE_URL)
 npm run lint && npm run format:check && npm run typecheck && npm run test && npm run build
 npm run gen:api        # regenerate src/api/generated/schema.d.ts after export-openapi
+npm run e2e            # Playwright against a seeded simulation station (needs: npx playwright install chromium)
+node scripts/fetch-basemap.mjs   # the offline sample basemap (needs the pmtiles CLI in .tools/pmtiles/)
 
 # onboard swarm_sar (from repo root)
 python -m uv run --no-project --with-requirements requirements-standalone.txt python -m pytest -q
@@ -189,7 +210,7 @@ separate and simulates the swarm_sar companions.
 | M2a PX4 SITL + MAVLink driver (1–5) | Done (`sitl` 6/6 and `ci` green on GitHub) |
 | M2b SIH 25/50, NATS, ROS 2 bridge, mock video | Done (swarm acceptance green; tracking to 25 in CI; 50 SIH deferred to M5/M6) |
 | M2c Gazebo tier, camera video | — |
-| M3 Console MVP | — |
+| M3 Console MVP | Done (7/7 E2E; 46–54 fps with 50 aircraft on a GPU) |
 | M4 Mission planning, patterns, deconfliction, alerts | — |
 | M5 Video, roles, audit viewer, multi-operator, load | — |
 | M6 Hardening, packaging, runbooks, acceptance | — |

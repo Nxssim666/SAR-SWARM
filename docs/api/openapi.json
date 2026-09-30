@@ -8570,10 +8570,10 @@
               "minLength": 1
             },
             "type": "array",
-            "maxItems": 254,
+            "maxItems": 1,
             "minItems": 1,
-            "uniqueItems": true,
-            "title": "Aircraft Ids"
+            "title": "Aircraft Ids",
+            "description": "Exactly one aircraft."
           },
           "confirmation_token": {
             "anyOf": [
@@ -8620,7 +8620,7 @@
           "target"
         ],
         "title": "GotoCommand",
-        "description": "Fly to a position (and altitude above home), then hold there."
+        "description": "Fly to a position (and altitude above home), then hold there.\n\nOne aircraft only: a shared target would converge several aircraft on one point, and\nnothing spreads them apart yet (deconfliction is M4)."
       },
       "GpsFix": {
         "type": "string",

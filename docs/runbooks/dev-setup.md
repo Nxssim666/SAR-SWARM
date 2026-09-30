@@ -12,6 +12,7 @@ Linux with Docker; it runs in CI (see [simulation.md](simulation.md)).
 | uv | ≥ 0.12 | `python -m pip install --user uv` (then use `python -m uv …` or add the user Scripts dir to PATH), or the installer at docs.astral.sh/uv |
 | Node.js | 24 LTS | Windows: `winget install OpenJS.NodeJS.LTS` · Linux: nodesource or fnm |
 | Docker | Engine + Compose v2 | For images and SITL. Windows 10/11: enable WSL2, then install Docker Desktop (admin rights and a reboot) |
+| pmtiles (go-pmtiles) | 1.31.2 | For the console's offline basemap sample: see [the console section](#the-console-against-a-simulated-station) |
 | nats-server | 2.15.0 | For the swarm link tests. Unpack the release for your OS from github.com/nats-io/nats-server (check it against the release's `SHA256SUMS`) to `.tools/nats/`, or set `NATS_SERVER_BIN` |
 
 **No admin rights?** A portable Node can live in the repo's gitignored `.tools/` directory:
@@ -104,6 +105,26 @@ python -m uv run --env-file simulation.env fleet-service
 
 The simulator is not PX4: see ADR 0021 for what it doesn't model. Delete `data-sim/` to
 start over. For MAVLink and PX4 testing, see [simulation.md](simulation.md).
+
+## The console against a simulated station
+
+The quickest way to try the operator console. `fleet-console/e2e/backend.py` starts the fleet
+service in simulation mode with a fresh data directory, and seeds it with one user per role
+(`chief`, `op1`, `op2`, `sup`, `obs`; their test password is `TEST_PASSWORD` in that file),
+20 aircraft and a group:
+
+```bash
+python -m uv --directory fleet-service run python ../fleet-console/e2e/backend.py --port 8000 --aircraft 20
+cd fleet-console && npm run dev        # another terminal; open http://127.0.0.1:5173
+```
+
+- **Offline basemap:** fetch it once with `node scripts/fetch-basemap.mjs` from
+  `fleet-console/`. It needs the pmtiles CLI (go-pmtiles, BSD-3): download the release for
+  your OS from github.com/protomaps/go-pmtiles, check it against the SHA-256 on the release
+  page, and put it in `.tools/pmtiles/` (or set `PMTILES_BIN`).
+- **Without a basemap** the map shows a plain background and says so.
+- **E2E tests:** `npm run e2e` in `fleet-console/`. They need Playwright's Chromium once:
+  `npx playwright install chromium`.
 
 ## Container stack (Linux or Docker Desktop)
 

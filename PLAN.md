@@ -21,7 +21,7 @@ the development host and is checked in CI.
 | M2a PX4 SITL harness + MAVLink driver (1–5 aircraft) | **Done** (2026-09-28); `sitl` and `ci` green on GitHub |
 | M2b Scale and swarm: SIH 25/50, NATS, ROS 2 bridge, mock video | **Done** (2026-09-30); swarm acceptance green, tracking verified to 25 in CI; **50 SIH deferred to M5/M6 field hardware** (user) |
 | M2c Gazebo tier: camera video, high-fidelity airframes | — |
-| M3 Console MVP | — |
+| M3 Console MVP | **Done** (2026-09-30); 7/7 E2E, 46–54 fps with 50 aircraft on this PC's GPU |
 | M4 Mission planning, patterns, bulk tasking, deconfliction, alerts | — |
 | M5 Video, roles, audit viewer, multi-operator, load tests | — |
 | M6 Hardening, degraded comms, packaging, runbooks, acceptance | — |
@@ -507,42 +507,142 @@ See ADR 0024, ADR 0025 and ADR 0026.
 
 ---
 
-## M3: Fleet console MVP
+## M3: Fleet console MVP ✅
 
 **Goal:** an operator can watch and safely command the fleet from the map.
 
-**Scope**
+**Decisions** (the user):
 
-- Login and logout, and session expiry handling.
-- WebSocket client with resync, and an offline banner.
-- Generated API types (openapi-typescript).
-- **Map:** MapLibre, an offline PMTiles sample region with a "no basemap" fallback.
-  - Aircraft symbols by type, rotated by heading, with status shown by color **and** shape.
-  - Trails, the home point, and a scale bar.
-  - Coordinate readout in DD, DDM or MGRS.
-- **Aircraft list:** sortable and filterable (status, battery, link, mode, group), with
-  stale/lost states that are obvious.
-- **Selection:** click, shift/ctrl-click, lasso and box (terra-draw), by status filter, by
-  group, select all, select in drawn area. The selection count is always visible.
-- **Telemetry panel:** a single aircraft, or a multi-selection summary.
-- **Command bar:** HOLD, RESUME, RTL, LAND, arm and takeoff, and goto (click on map).
-  - The **confirmation dialog shows the server's 428 summary**, and risky actions can't be
-    completed with a single key.
-  - Control-lease UI: holder shown, take and release.
-- Keyboard shortcuts with a help overlay.
-- Role-aware UI. The server remains authoritative.
+- One stop, not split.
+- The **Zurich sample basemap**, fetched with go-pmtiles v1.31.2 (checked against GitHub's
+  SHA-256) into `.tools/`.
+- **Playwright's Chromium**, installed locally.
+
+See ADR 0027.
+
+**Built** (2026-09-30), on branch `m3` from `exp/m2b`
+
+- [x] **Session:**
+  - sign-in page with clear failure messages (wrong password, lockout, unreachable);
+  - the token in `sessionStorage`;
+  - an expiry banner;
+  - back to sign-in with the reason on 401, 4401 or `session_ended`.
+- [x] **Live client:**
+  - one WebSocket; auth in the first message, subscription to every topic at 10 Hz, pings;
+  - `seq` gap or 4429 → reconnect and resync from snapshots; other losses → backoff;
+  - the OFFLINE banner disables every command.
+- [x] **State:** a Zustand live store written only by the socket; the map redraws per
+      animation frame; React reads through a hook throttled to 4 Hz.
+- [x] **Map** (MapLibre 6, PMTiles):
+  - offline Protomaps basemap, or a plain background with a notice;
+  - runtime-drawn airframe icons, rotated by heading (no nose when the heading is unknown);
+  - link state by colour **and** shape;
+  - trails (redrawn at 2 Hz), homes, selection halo, goto target;
+  - scale; cursor coordinates in DD, DDM or MGRS.
+- [x] **List:** sortable (lost first; unknown battery first), filterable (callsign, link,
+      group); link as icon + word; unknown as "—".
+- [x] **Selection:** click, shift or ctrl (map and list), box and lasso (terra-draw),
+      filtered, group, all, clear; the count is always shown.
+- [x] **Telemetry panel:** one aircraft in full (links, swarm block, survivor sighting), or a
+      summary of the selection.
+- [x] **Command bar:**
+  - hold, resume, return, land, goto (pick on the map), arm, disarm, takeoff (altitude);
+  - offered or greyed out with the reason;
+  - the server's 428 summary in a dialog: count in the title, warnings, rejected aircraft,
+    override flag;
+  - **held confirmation** (1 s, pointer or Space); focus starts on Cancel; Enter never
+    confirms;
+  - live per-aircraft outcomes.
+- [x] **Control lease:** holder in list and panel; take and release (handover and supervisor
+      assignment are M5).
+- [x] **Alerts:** severity by icon + word + colour; acknowledge.
+- [x] **Keyboard:** `?` help overlay, `H` (hold), `B`, `L`, `G`, `Ctrl+A`, `Esc`. No risky
+      command has a key.
+- [x] **Role-aware:** observers get no command bar or control buttons. The server stays
+      authoritative.
+- [x] **Tooling:**
+  - `scripts/fetch-basemap.mjs`;
+  - `e2e/backend.py` (a seeded simulation station, also used for local demos);
+  - the Playwright configuration.
+- [x] **CI:** a new `e2e` job (Playwright with Chromium, basemap cached, results as
+      annotations), and E2E in `scripts/check.py`.
+- [x] **Docs:** ADR 0027; the console README; `dev-setup.md` (console walkthrough, pmtiles);
+      architecture status.
+
+**Found while building, and fixed**
+
+- **MapLibre's worker was missing from the production build.** MapLibre computes the
+  worker's URL at run time, so Vite's build could not see it. It is now bundled explicitly
+  and passed with `setWorkerUrl`. This also invalidated a first frame-rate reading of 60 fps,
+  taken while the production map was not rendering at all.
+- **The click that closes a lasso reselected one aircraft.** The drawing tool finished,
+  selected ten, and switched back to pan; the same click then landed on an aircraft icon.
+  Clicks within 0.5 s of a finished drawing are now ignored.
+- **MapLibre 6 under Vite's dev server:** handled by the same explicit worker bundle.
+- **The fleet service accepted a goto for several aircraft to one point** (after a bulk
+  confirmation), which would converge them on it; only the console refused it. A goto
+  request now takes exactly one aircraft (422 otherwise), with a regression test. Bulk goto
+  with spread targets comes with deconfliction (M4).
+- **An E2E race:** a test pressed Return before its third control lease had arrived, and the
+  server (correctly) left that aircraft out. The tests now wait for the leases and release
+  them afterwards; the console scenarios pass three times in a row on one station.
 
 **Tests**
 
-- Vitest: stores, selectors, confirmation flow, render-count guard under a 10 Hz update rate.
-- **Playwright E2E** against the fleet service with the mock fleet: login, lasso 10 aircraft,
-  HOLD, confirm, see acknowledgements, verify the audit; a lost link shows the banner and
-  greys out commands.
+- **Vitest: 61 tests.**
+  - the socket client (fake WebSocket and timers) and the store;
+  - availability rules, row by row;
+  - hold-to-confirm and the dialog;
+  - the command flow (428 and confirm, problem details, 401);
+  - list filtering and sorting;
+  - coordinates (DDM and MGRS pinned) and symbology;
+  - shortcuts;
+  - WebSocket message kinds against `docs/api/asyncapi.json`;
+  - a render-count guard: 50 aircraft at 10 Hz keep the list at 4 renders per second.
+- **Playwright: 7 scenarios**, run against the built console and a simulation station with
+  20 aircraft (16 hexacopters flown to 20 m first):
+  1. lasso 10 aircraft and HOLD in **5 actions**; the dialog names 8 aircraft and 2 not
+     sent (fixed-wings on the ground); 8 verified; the audit log has the dispatch;
+  2. ARM names "1 aircraft", Enter cancels and the aircraft stays disarmed; a bulk RETURN
+     names "3 aircraft";
+  3. an injected link fault shows ◐ Stale / ✕ Lost; Arm is disabled with the reason; Land
+     stays available;
+  4. WebSocket dropped and reconnects refused → OFFLINE banner and commands disabled;
+     restored → resynchronized;
+  5. an observer sees no command bar and no control buttons;
+  6. a session ended elsewhere → sign-in page with the reason;
+  7. **50 aircraft at 10 Hz: 46–54 fps** over several runs (longest frame 50–67 ms).
 
-**Acceptance**
+**Acceptance: passed.**
 
-- 50 mock aircraft at 10 Hz: map ≥ 30 fps on the reference laptop (Playwright trace).
-- Usability scenarios in ADR 0015 pass.
+- The frame-rate target holds: **50 mock aircraft at 10 Hz render at 46–54 fps** on this PC's
+  GPU. That is an Intel HD Graphics integrated GPU (Direct3D 11), older than a current field
+  laptop's. The target was ≥ 30 fps.
+- **With software WebGL** (SwiftShader, as on CI runners) the same run gives about 14 fps.
+  CI reports that figure and does not judge it.
+- **ADR 0015's usability scenarios pass:**
+  - lasso and HOLD in 5 actions;
+  - every risky confirmation names the count;
+  - no risky command from one keystroke or one click;
+  - alerts carry icon + word, not colour alone.
+
+**Known gaps**
+
+- **The operator's frame rate is measured on this PC only.** Measure on the field laptop too
+  (M5, with the load tests).
+- **The console bundle is 1.5 MB** (411 KB gzipped), plus a 0.5 MB map worker. It is served
+  locally, but splitting it is left for M6.
+- **Features left for later milestones:**
+  - handover requests, supervisor assignment and force (M5);
+  - an audit viewer (M5);
+  - alert escalation and audible cues (M4);
+  - mission planning and drawing search areas (M4);
+  - goto for several aircraft at once, each to its own spread point (M4);
+  - video (M5).
+- **Basemaps for field regions** wait for your region decision (before M4). The sample
+  covers about 23 × 20 km around the simulator's site.
+- **Aircraft labels hide** when aircraft overlap at low zoom (the icons never do). The list
+  is the complete view.
 
 **Stop:** report, then wait.
 
@@ -573,6 +673,14 @@ See ADR 0024, ADR 0025 and ADR 0026.
     - Sequenced departure and return.
 - Mission upload, start, pause and resume through the drivers. Swarm-area missions go
   through the bridge.
+- **Bulk goto:** several aircraft to one datum, each given its own point (a spread around
+  it) and altitude layer, through the same deconfliction check. Until then a goto takes one
+  aircraft (M3).
+- **Onboard avoidance during ground commands:** on aircraft with a companion (swarm link),
+  goto and takeoff currently go straight to PX4 over MAVLink, where the companion's vision
+  obstacle avoidance probably does not steer (PX4 follows it in offboard mode only).
+  Verify in the swarm simulation, then route goto over the swarm link when it is live, or
+  document the limit to operators.
 - Progress: current waypoint, % of the area covered (flown track × sweep width), and a
   coverage overlay.
 - **Alert engine:**

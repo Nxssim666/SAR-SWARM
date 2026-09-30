@@ -137,6 +137,23 @@ async def test_long_goto_needs_confirmation(
     assert "goto of 1" in response.json()["summary"]["reasons"][0]
 
 
+async def test_goto_takes_one_aircraft_so_two_never_share_a_target(
+    client: httpx.AsyncClient, auth: dict[Role, dict[str, str]], fleet: list[str], sim: Sim
+) -> None:
+    # One target point for several aircraft would converge them on it: nothing spreads them
+    # apart until deconfliction (M4). The console only greys the button out; this is the rule.
+    await airborne(client, auth[Role.OPERATOR], sim, fleet)
+    lat, lon = sim.vehicle(fleet[0]).to_geo(200.0, 200.0)
+
+    response = await send(
+        client, auth[Role.OPERATOR], "goto", fleet, target={"latitude": lat, "longitude": lon}
+    )
+    await sim.fly(5)
+
+    assert response.status_code == 422
+    assert all(sim.vehicle(a).mode is not FlightMode.GOTO for a in fleet)
+
+
 # --- ADR 0011 rules --------------------------------------------------------------------------
 
 

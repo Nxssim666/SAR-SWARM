@@ -5,7 +5,7 @@ Ground control system for a civilian search-and-rescue drone fleet: up to 50 PX4
 with different roles, one field ground station, and no cloud. This page is the living overview.
 The reasons behind it are in [`decisions/`](decisions/0001-record-architecture-decisions.md).
 
-Status: **M2b**. The fleet service is built through its live core, its MAVLink link and its
+Status: **M3**. The fleet service is built through its live core, its MAVLink link and its
 swarm link:
 
 - persistent domain, auth/RBAC and a hash-chained audit trail;
@@ -18,7 +18,8 @@ swarm link:
 - REST and WebSocket APIs ([`api/README.md`](api/README.md)).
 
 PX4 SITL (5 aircraft, and scale runs), the simulated swarm with the bridge, and mock video
-run in CI (ADR 0023, ADR 0026). The console is still a shell. MediaMTX in the product (M5)
+run in CI (ADR 0023, ADR 0026). The operator console is usable: map, list, selection, commands
+with held confirmation, control leases and alerts (ADR 0027). MediaMTX in the product (M5)
 and Gazebo (M2c) are designed but not built yet. Measured figures are in
 [`../PLAN.md`](../PLAN.md).
 
