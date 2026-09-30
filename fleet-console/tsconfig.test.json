@@ -1,0 +1,10 @@
+{
+  // Tests and their helpers: checked by `npm run typecheck`, not by the image build (some
+  // tests read the repository's API contract in docs/api/, outside the image's context).
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo"
+  },
+  "include": ["src"],
+  "exclude": []
+}

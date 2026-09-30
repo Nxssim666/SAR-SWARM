@@ -112,6 +112,9 @@ status are in `PLAN.md`, the design is in `docs/architecture.md`, and the reason
     modules.
   - MapLibre's worker is bundled explicitly (`?worker&url` + `setWorkerUrl`): keep it, or the
     production map never loads.
+  - Tests are type-checked as their own project (`tsconfig.test.json`); `npm run build` checks
+    the app code only, because the image is built from `fleet-console/` alone. App code must
+    not import from outside `fleet-console/`.
   - E2E: `npm run e2e` builds the console and starts `e2e/backend.py`, a seeded simulation
     station. Map interactions use the `__sargcsProject` test hook, enabled by `localStorage`
     `sargcs.test=1`. Frame rates are judged on a GPU only (`E2E_GPU=1`).

@@ -586,10 +586,14 @@ See ADR 0027.
 - **An E2E race:** a test pressed Return before its third control lease had arrived, and the
   server (correctly) left that aircraft out. The tests now wait for the leases and release
   them afterwards; the console scenarios pass three times in a row on one station.
+- **The console image did not build** (CI `images`): its build context is `fleet-console/`,
+  and `tsc -b` also checked a test that reads `docs/api/asyncapi.json`. Tests are now their
+  own TypeScript project (`tsconfig.test.json`, checked by `npm run typecheck`); the build
+  checks the app code only. Reproduced and verified with a copy of the context alone.
 
 **Tests**
 
-- **Vitest: 61 tests.**
+- **Vitest: 60 tests.**
   - the socket client (fake WebSocket and timers) and the store;
   - availability rules, row by row;
   - hold-to-confirm and the dialog;
