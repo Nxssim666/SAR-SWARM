@@ -54,6 +54,12 @@ export function Banners() {
           No basemap on this station: aircraft are shown on a plain background.
         </div>
       )}
+      {basemap === 'unavailable' && (
+        <div className="banner banner-basemap" role="status">
+          Map unavailable: this browser cannot draw it (WebGL is off). The aircraft list and
+          commands still work.
+        </div>
+      )}
     </div>
   );
 }

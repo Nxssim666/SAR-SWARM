@@ -1055,6 +1055,24 @@ Honest notes:
 
 **Stop:** final report.
 
+## After M6: local follow-up (2026-09-30)
+
+The local session took over the cloud session's branch (`claude/dazzling-mayer-crl33a`; see
+`docs/handoff/2026-09-30-cloud-session.md`) and ran every check on the Windows dev host.
+
+- [x] **Contour searches split along the contours.** Carried over from the local M4 work,
+      which the cloud branch lacked: strips were cut along the area's long axis, so on a
+      slope each aircraft got short contour pieces and planning failed. They now follow the
+      terrain's mean contour direction (`contour_bearing`; regression test in
+      `test_api_plans.py`).
+- [x] **`mypy` on Windows:** `scripts/load_suite.py` called the POSIX-only `os.sysconf`.
+- [x] **The map says when it cannot start.** Without WebGL, the map stayed blank with no
+      word; a banner now says "Map unavailable" and that the list and commands still work.
+- [x] **The multi-operator E2E test ran out of CPU on the dev host** (a 4-thread laptop
+      without a usable GPU): three software-rendered maps starved the third console's sign-in.
+      `operators.spec.ts` needs no map, so it runs without WebGL: fast on small hosts, and it
+      checks the console works without a map.
+
 ---
 
 ## Risk register

@@ -7,10 +7,18 @@ import { signIn, Station } from './support';
 
 const AIRCRAFT = 'HX-07'; // not used by the other specs
 
+// Up to three consoles at once, and none of these scenarios needs the map: without WebGL they
+// stay light on a small host (three software-rendered maps starved a 4-thread laptop), and
+// they show the list, control and audit work when a browser cannot draw the map.
+test.use({ launchOptions: { args: ['--disable-webgl', '--disable-3d-apis'] } });
+
+// This file runs in its own worker (the launch options), after the specs that add aircraft.
+let fleetSize = 0;
+
 async function operator(browser: Browser, username: string): Promise<Page> {
   const context = await browser.newContext();
   const page = await context.newPage();
-  await signIn(page, username);
+  await signIn(page, username, fleetSize);
   return page;
 }
 
@@ -23,7 +31,9 @@ function row(page: Page) {
 test.beforeAll(async () => {
   // Start free: release HX-07 if a previous run left it controlled.
   const sup = await Station.as('sup');
-  const target = (await sup.fleet()).find((a) => a.callsign === AIRCRAFT);
+  const fleet = await sup.fleet();
+  fleetSize = fleet.length;
+  const target = fleet.find((a) => a.callsign === AIRCRAFT);
   if (!target) throw new Error(`no ${AIRCRAFT}`);
   await sup.http.put(`/api/v1/aircraft/${target.aircraft_id}/control`, {
     headers: { Authorization: `Bearer ${sup.token}` },
@@ -37,6 +47,7 @@ test('two operators hand an aircraft over; a supervisor reassigns it with a reas
 }) => {
   const one = await operator(browser, 'op1');
   const two = await operator(browser, 'op2');
+  await expect(one.getByText('Map unavailable')).toBeVisible();
 
   // Presence: each sees the other online.
   await one.getByLabel('Who is online').click();

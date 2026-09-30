@@ -6,7 +6,8 @@ import { create } from 'zustand';
 import type { ImageryInfo } from './basemap';
 import type { CoordFormat } from './coords';
 
-export type BasemapStatus = 'loading' | 'loaded' | 'none';
+/** `unavailable`: the map itself could not start (no WebGL in this browser). */
+export type BasemapStatus = 'loading' | 'loaded' | 'none' | 'unavailable';
 
 /** [west, south, east, north] in degrees. */
 export type Bounds = [number, number, number, number];

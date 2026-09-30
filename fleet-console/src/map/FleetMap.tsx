@@ -178,18 +178,26 @@ export function FleetMap() {
       useMapState.getState().setBasemap(basemap.available ? 'loaded' : 'none');
       useMapState.getState().setImagery(basemap.imagery);
       const imageryCredit = [...new Set(basemap.imagery.map((i) => i.attribution))].join(', ');
-      const m = new maplibregl.Map({
-        container: element,
-        style: basemap.style,
-        center: START_CENTER,
-        zoom: START_ZOOM,
-        attributionControl: {
-          compact: false,
-          ...(imageryCredit ? { customAttribution: imageryCredit } : {}),
-        },
-        dragRotate: false,
-        pitchWithRotate: false,
-      });
+      let m: MapLibreMap;
+      try {
+        m = new maplibregl.Map({
+          container: element,
+          style: basemap.style,
+          center: START_CENTER,
+          zoom: START_ZOOM,
+          attributionControl: {
+            compact: false,
+            ...(imageryCredit ? { customAttribution: imageryCredit } : {}),
+          },
+          dragRotate: false,
+          pitchWithRotate: false,
+        });
+      } catch (error) {
+        // No WebGL (blocked GPU, no software fallback): say so; the list and commands still work.
+        console.error('the map could not start', error);
+        useMapState.getState().setBasemap('unavailable');
+        return;
+      }
       map = m;
       m.getCanvas().style.background = BACKGROUND;
       m.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');

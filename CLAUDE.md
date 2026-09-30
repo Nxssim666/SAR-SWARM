@@ -117,7 +117,9 @@ status are in `PLAN.md`, the design is in `docs/architecture.md`, and the reason
     not import from outside `fleet-console/`.
   - E2E: `npm run e2e` builds the console and starts `e2e/backend.py`, a seeded simulation
     station. Map interactions use the `__sargcsProject` test hook, enabled by `localStorage`
-    `sargcs.test=1`. Frame rates are judged on a GPU only (`E2E_GPU=1`).
+    `sargcs.test=1`. Frame rates are judged on a GPU only (`E2E_GPU=1`). Specs with several
+    consoles that don't need the map run without WebGL (`operators.spec.ts`): several
+    software-rendered maps starve a small host.
 - **Tests go in the same change** (ADR 0015):
   - A bug fix starts with a failing test.
   - Each safety rule has a regression test.
