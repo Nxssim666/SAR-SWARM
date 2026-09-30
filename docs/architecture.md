@@ -19,8 +19,8 @@ swarm link:
 
 PX4 SITL (5 aircraft, and scale runs), the simulated swarm with the bridge, and mock video
 run in CI (ADR 0023, ADR 0026). The operator console is usable: map, list, selection, commands
-with held confirmation, control leases and alerts (ADR 0027). MediaMTX in the product (M5)
-and Gazebo (M2c) are designed but not built yet. Measured figures are in
+with held confirmation, control leases and alerts (ADR 0027). MediaMTX in the product (M5) is
+designed but not built yet; there is no Gazebo tier (ADR 0033). Measured figures are in
 [`../PLAN.md`](../PLAN.md).
 
 ## System context
@@ -169,7 +169,7 @@ sequenceDiagram
 | `fleet-service/` | Backend (Python, FastAPI). See its `README.md`. |
 | `fleet-console/` | Operator console (React, TypeScript). See its `README.md`. |
 | `deploy/` | Compose file and gateway config for the ground station |
-| `sim/` | PX4 SITL (SIH) fleets for CI and scale runs, link emulator, swarm simulation, mock video; Gazebo in M2c |
+| `sim/` | PX4 SITL (SIH) fleets for CI and scale runs, link emulator, swarm simulation, mock video (no Gazebo, ADR 0033) |
 | `src/` | ROS 2 colcon workspace: the onboard `swarm_sar` packages (unchanged) and `sar_gcs_bridge` (M2b) |
 | `docs/` | This page, ADRs, API specs (M1), runbooks |
 | `scripts/check.py` | Runs every lint, type check, test and build |

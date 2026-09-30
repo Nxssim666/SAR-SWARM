@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { aircraft, alert, command } from '../test/fixtures';
+import { aircraft, alert, command, missionProgress, poi } from '../test/fixtures';
 import { openAlerts, useLive } from './store';
 
 const T = '2026-09-30T00:00:00Z';
@@ -92,5 +92,37 @@ describe('live store', () => {
     };
 
     expect(openAlerts(alerts).map((a) => a.id)).toEqual(['c', 'w', 'i']);
+  });
+
+  it('replaces missions and POIs on a snapshot and updates them from events', () => {
+    const { apply } = useLive.getState();
+    apply({
+      type: 'snapshot',
+      topic: 'missions',
+      seq: 2,
+      ts: T,
+      data: { missions: [missionProgress('m1'), missionProgress('m2')] },
+    });
+    apply({
+      type: 'event',
+      topic: 'missions',
+      seq: 3,
+      ts: T,
+      data: missionProgress('m2', { status: 'completed', coverage: 0.97 }),
+    });
+    apply({ type: 'snapshot', topic: 'pois', seq: 4, ts: T, data: { pois: [poi('p1')] } });
+    apply({
+      type: 'event',
+      topic: 'pois',
+      seq: 5,
+      ts: T,
+      data: poi('p2', { kind: 'survivor_sighting', aircraft_id: 'a1' }),
+    });
+
+    const state = useLive.getState();
+    expect(Object.keys(state.missions)).toEqual(['m1', 'm2']);
+    expect(state.missions.m2?.status).toBe('completed');
+    expect(Object.keys(state.pois)).toEqual(['p1', 'p2']);
+    expect(state.pois.p2?.kind).toBe('survivor_sighting');
   });
 });

@@ -25,6 +25,33 @@ export type Airframe = Schemas['Airframe'];
 export type FlightMode = Schemas['FlightMode'];
 export type GeoPoint = Schemas['GeoPoint'];
 export type Problem = Schemas['Problem'];
+export type IncidentOut = Schemas['IncidentOut'];
+export type IncidentPage = Schemas['IncidentPage'];
+export type IncidentCreate = Schemas['IncidentCreate'];
+export type SearchAreaOut = Schemas['SearchAreaOut'];
+export type SearchAreaPage = Schemas['SearchAreaPage'];
+export type SearchAreaCreate = Schemas['SearchAreaCreate'];
+export type PolygonGeoJSON = Schemas['PolygonGeoJSON'];
+export type MissionOut = Schemas['MissionOut'];
+export type MissionPage = Schemas['MissionPage'];
+export type MissionCreate = Schemas['MissionCreate'];
+export type MissionKind = Schemas['MissionKind'];
+export type MissionStatus = Schemas['MissionStatus'];
+export type WaypointIn = Schemas['WaypointIn'];
+export type WaypointsOut = Schemas['WaypointsOut'];
+export type PatternKind = Schemas['PatternKind'];
+export type PlanRequest = Schemas['PlanRequest'];
+export type PlanOut = Schemas['PlanOut'];
+export type PlannedTask = Schemas['PlannedTask'];
+export type MissionProgressOut = Schemas['MissionProgressOut'];
+/** Mission progress on the `missions` WebSocket topic: the REST view without the geometry. */
+export type MissionProgressView = Omit<MissionProgressOut, 'coverage_geometry'>;
+export type TaskProgressView = Schemas['TaskProgressView'];
+export type PoiView = Schemas['PoiView'];
+export type PoiCreate = Schemas['PoiCreate'];
+export type PoiPage = Schemas['PoiPage'];
+export type PoiKind = Schemas['PoiKind'];
+export type PoiStatus = Schemas['PoiStatus'];
 
 /** Commands the console sends (the discriminated request bodies of POST /commands). */
 export type CommandRequest =
@@ -35,4 +62,6 @@ export type CommandRequest =
   | Schemas['ArmCommand']
   | Schemas['DisarmCommand']
   | Schemas['TakeoffCommand']
-  | Schemas['GotoCommand'];
+  | Schemas['GotoCommand']
+  | Schemas['MissionStartCommand']
+  | Schemas['MissionPauseCommand'];

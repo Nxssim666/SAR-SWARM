@@ -1,5 +1,13 @@
 // Builders of API objects for tests (typed by the generated schema, so they stay valid).
-import type { AircraftLive, AlertView, CommandView, LeaseView, TelemetryView } from '../api/types';
+import type {
+  AircraftLive,
+  AlertView,
+  CommandView,
+  LeaseView,
+  MissionProgressView,
+  PoiView,
+  TelemetryView,
+} from '../api/types';
 
 export const T0 = '2026-09-30T00:00:00Z';
 
@@ -78,5 +86,50 @@ export function command(id: string, state: CommandView['state']): CommandView {
     confirmed_at: null,
     completed_at: null,
     targets: [],
+  };
+}
+
+export function missionProgress(
+  id: string,
+  overrides: Partial<MissionProgressView> = {},
+): MissionProgressView {
+  return {
+    mission_id: id,
+    incident_id: 'i1',
+    name: `Mission ${id}`,
+    kind: 'area_search',
+    status: 'active',
+    coverage: 0.25,
+    tasks: [
+      {
+        task_id: `${id}-t1`,
+        aircraft_id: 'a1',
+        callsign: 'A1',
+        status: 'active',
+        item: 3,
+        items: 12,
+      },
+    ],
+    updated_at: T0,
+    ...overrides,
+  };
+}
+
+export function poi(id: string, overrides: Partial<PoiView> = {}): PoiView {
+  return {
+    id,
+    incident_id: 'i1',
+    kind: 'poi',
+    status: 'new',
+    latitude: 47.399,
+    longitude: 8.546,
+    uncertainty_m: null,
+    aircraft_id: null,
+    reported_at: null,
+    notes: null,
+    created_by: 'u1',
+    created_at: T0,
+    updated_at: T0,
+    ...overrides,
   };
 }

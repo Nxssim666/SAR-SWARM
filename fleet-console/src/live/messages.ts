@@ -5,12 +5,21 @@ import type {
   AlertView,
   CommandView,
   LeaseView,
+  MissionProgressView,
   Permission,
+  PoiView,
   Role,
   UserRef,
 } from '../api/types';
 
-export const TOPICS = ['fleet.telemetry', 'alerts', 'commands', 'control'] as const;
+export const TOPICS = [
+  'fleet.telemetry',
+  'alerts',
+  'commands',
+  'control',
+  'missions',
+  'pois',
+] as const;
 export type Topic = (typeof TOPICS)[number];
 
 interface Base {
@@ -38,6 +47,8 @@ export type SnapshotMessage = Base & { type: 'snapshot' } & (
     | { topic: 'alerts'; data: { alerts: AlertView[] } }
     | { topic: 'commands'; data: { commands: CommandView[] } }
     | { topic: 'control'; data: { leases: LeaseView[] } }
+    | { topic: 'missions'; data: { missions: MissionProgressView[] } }
+    | { topic: 'pois'; data: { pois: PoiView[] } }
   );
 
 export type EventMessage = Base & { type: 'event' } & (
@@ -45,6 +56,8 @@ export type EventMessage = Base & { type: 'event' } & (
     | { topic: 'alerts'; data: AlertView }
     | { topic: 'commands'; data: CommandView }
     | { topic: 'control'; data: ControlChange }
+    | { topic: 'missions'; data: MissionProgressView }
+    | { topic: 'pois'; data: PoiView }
   );
 
 export interface PongMessage extends Base {

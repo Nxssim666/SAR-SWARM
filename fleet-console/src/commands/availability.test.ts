@@ -52,7 +52,12 @@ describe('command availability (a guide only: the server decides)', () => {
       { selected: [aircraft('a1', { link: 'stale' })] },
       null,
     ],
-    ['goto one at a time', 'goto', { selected: [aircraft('a1'), aircraft('a2')] }, /one aircraft/],
+    [
+      'goto for several: spread by the server',
+      'goto',
+      { selected: [aircraft('a1'), aircraft('a2')] },
+      null,
+    ],
   ])('%s', (_, kind, overrides, expected) => {
     const got = reason(kind, ctx(overrides));
     if (expected === null) expect(got).toBeNull();

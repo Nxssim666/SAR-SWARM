@@ -1,8 +1,10 @@
-// The console once signed in: banners, map, list, selection, details, alerts, commands.
+// The console once signed in: banners, map, the side pane (fleet, missions, points of
+// interest), alerts, commands.
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
 
 import { AlertsStrip } from '../alerts/AlertsStrip';
+import { useAlertCues } from '../alerts/useAlertCues';
 import { api } from '../api/client';
 import type { GroupPage } from '../api/types';
 import { CommandBar } from '../commands/CommandBar';
@@ -11,11 +13,14 @@ import { AircraftList } from '../fleet/AircraftList';
 import type { ListFilter } from '../fleet/listing';
 import { TelemetryPanel } from '../fleet/TelemetryPanel';
 import { useBackendHealth } from '../hooks/useBackendHealth';
+import { IncidentPicker } from '../incident/IncidentPicker';
 import { LiveSocket } from '../live/socket';
 import { useLive } from '../live/store';
 import { CoordinateReadout } from '../map/CoordinateReadout';
 import { FleetMap } from '../map/FleetMap';
 import { SelectionTools } from '../selection/SelectionTools';
+import { MissionsPanel } from '../planning/MissionsPanel';
+import { PoisPanel } from '../pois/PoisPanel';
 import { useSelection } from '../selection/store';
 import { logout, type Session, useSession } from '../session/session';
 import { Banners } from './Banners';
@@ -53,8 +58,16 @@ function useLiveConnection(session: Session): void {
   }, [session.token]);
 }
 
+type SideTab = 'fleet' | 'missions' | 'pois';
+const SIDE_TABS: { id: SideTab; label: string }[] = [
+  { id: 'fleet', label: 'Fleet' },
+  { id: 'missions', label: 'Missions' },
+  { id: 'pois', label: 'Points' },
+];
+
 export function Console({ session }: { session: Session }) {
   useLiveConnection(session);
+  useAlertCues();
   const health = useBackendHealth();
   const [help, setHelp] = useState(false);
   const toggleHelp = useCallback(() => {
@@ -68,11 +81,18 @@ export function Console({ session }: { session: Session }) {
     queryFn: ({ signal }) => api<GroupPage>('/groups?limit=200', { token: session.token, signal }),
   });
   const role = useLive((s) => s.welcome?.role);
+  const [tab, setTab] = useState<SideTab>('fleet');
+  const sightings = useLive(
+    (s) =>
+      Object.values(s.pois).filter((p) => p.kind === 'survivor_sighting' && p.status === 'new')
+        .length,
+  );
 
   return (
     <div className="shell">
       <header className="topbar">
         <h1 className="title">SAR Fleet Console</h1>
+        <IncidentPicker />
         <ConnectionBadge status={health} />
         <span className="user">
           {session.user.display_name}
@@ -97,13 +117,41 @@ export function Console({ session }: { session: Session }) {
           </div>
         </div>
         <aside className="side">
-          <AircraftList
-            groups={groups.data?.items ?? []}
-            filter={filter}
-            onFilter={setFilter}
-            onVisible={setFilteredIds}
-          />
-          <TelemetryPanel />
+          <div className="tabs" role="tablist" aria-label="Side pane">
+            {SIDE_TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.id}
+                onClick={() => {
+                  setTab(t.id);
+                }}
+              >
+                {t.label}
+                {t.id === 'pois' && sightings > 0 && (
+                  <span className="badge" title="New survivor sightings">
+                    ◆ {sightings}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          <div role="tabpanel" className="tab-panel">
+            {tab === 'fleet' && (
+              <>
+                <AircraftList
+                  groups={groups.data?.items ?? []}
+                  filter={filter}
+                  onFilter={setFilter}
+                  onVisible={setFilteredIds}
+                />
+                <TelemetryPanel />
+              </>
+            )}
+            {tab === 'missions' && <MissionsPanel />}
+            {tab === 'pois' && <PoisPanel />}
+          </div>
           <AlertsStrip />
         </aside>
       </main>

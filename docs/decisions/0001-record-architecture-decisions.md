@@ -60,3 +60,5 @@ a safety rule, a protocol or convention, or an assumption made in place of an an
 | [0029](0029-area-split-deconfliction-bulk-goto.md) | Area split, deconfliction and bulk goto |
 | [0030](0030-offline-region-data.md) | Offline region data: basemaps, terrain and imagery |
 | [0031](0031-m4-alerts-and-points-of-interest.md) | M4 alerts, points of interest and survivor sightings |
+| [0032](0032-console-planning-and-tasking.md) | Console: incidents, planning, tasking and points of interest |
+| [0033](0033-no-gazebo-tier.md) | No Gazebo simulation tier |

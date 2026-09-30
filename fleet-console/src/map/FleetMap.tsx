@@ -10,15 +10,23 @@ import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&ur
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
 import { Protocol } from 'pmtiles';
 import { useEffect, useRef } from 'react';
-import { TerraDraw, TerraDrawFreehandMode, TerraDrawRectangleMode } from 'terra-draw';
+import {
+  TerraDraw,
+  TerraDrawFreehandMode,
+  TerraDrawPolygonMode,
+  TerraDrawRectangleMode,
+} from 'terra-draw';
 import { TerraDrawMapLibreGLAdapter } from 'terra-draw-maplibre-gl-adapter';
 
+import { useIncident } from '../incident/store';
 import { useLive } from '../live/store';
+import { usePlanning } from '../planning/store';
 import { idsInside, type LonLat } from '../selection/geometry';
 import { modeFor, useSelection } from '../selection/store';
 import { BACKGROUND, loadBasemap } from './basemap';
 import { drawIcon, ICON_PIXEL_RATIO } from './icons';
 import { useMapState } from './mapState';
+import { addPlanningLayers, drawPlanning } from './planningLayers';
 import { aircraftProps, iconId, LINK_COLOR } from './symbology';
 import { Trails } from './trails';
 
@@ -249,16 +257,60 @@ export function FleetMap() {
 
       m.on('load', () => {
         addLayers(m, basemap.glyphs);
+        addPlanningLayers(m, basemap.glyphs, 'trails');
         exposeForTests(m);
         schedule();
         cleanups.push(useLive.subscribe(schedule));
         cleanups.push(useSelection.subscribe(schedule));
         cleanups.push(useMapState.subscribe(schedule));
 
+        // Planning layers change at human speed: redraw them only when their state changes.
+        drawPlanning(m);
+        cleanups.push(
+          usePlanning.subscribe(() => {
+            drawPlanning(m);
+          }),
+        );
+        cleanups.push(
+          useIncident.subscribe(() => {
+            drawPlanning(m);
+          }),
+        );
+        cleanups.push(
+          useLive.subscribe((state, prev) => {
+            if (state.pois !== prev.pois) drawPlanning(m);
+          }),
+        );
+        const center = () => {
+          const c = m.getCenter();
+          useMapState.getState().setCenter({ latitude: c.lat, longitude: c.lng });
+        };
+        center();
+        m.on('moveend', center);
+        cleanups.push(
+          useMapState.subscribe((state) => {
+            if (!state.focus) return;
+            const [west, south, east, north] = state.focus;
+            fitted = true; // an operator's request wins over the first fit to the fleet
+            m.fitBounds(
+              [
+                [west, south],
+                [east, north],
+              ],
+              { padding: 60, maxZoom: 17, duration: 300 },
+            );
+            useMapState.getState().showBounds(null);
+          }),
+        );
+
         // Box and lasso selection (terra-draw), and picking a goto target.
         const td = new TerraDraw({
           adapter: new TerraDrawMapLibreGLAdapter({ map: m }),
-          modes: [new TerraDrawRectangleMode(), new TerraDrawFreehandMode()],
+          modes: [
+            new TerraDrawRectangleMode(),
+            new TerraDrawFreehandMode(),
+            new TerraDrawPolygonMode(),
+          ],
         });
         draw = td;
         td.start();
@@ -269,13 +321,22 @@ export function FleetMap() {
           const geometry = feature?.geometry;
           if (geometry?.type === 'Polygon') {
             const ring = (geometry.coordinates[0] ?? []) as LonLat[];
-            useSelection.getState().select(idsInside(positions, ring));
+            if (useSelection.getState().tool === 'area') {
+              usePlanning.getState().setDrawnRing(ring);
+            } else {
+              useSelection.getState().select(idsInside(positions, ring));
+            }
           }
           useSelection.getState().setTool('pan');
         });
         const applyTool = () => {
           const { tool } = useSelection.getState();
-          td.setMode(tool === 'box' ? 'rectangle' : tool === 'lasso' ? 'freehand' : 'static');
+          const modes: Partial<Record<typeof tool, string>> = {
+            box: 'rectangle',
+            lasso: 'freehand',
+            area: 'polygon',
+          };
+          td.setMode(modes[tool] ?? 'static');
           m.getCanvas().style.cursor = tool === 'pan' ? '' : 'crosshair';
         };
         applyTool();
@@ -293,11 +354,28 @@ export function FleetMap() {
         if (id) useSelection.getState().select([id], modeFor(event.originalEvent));
       });
       m.on('click', (event) => {
-        if (useSelection.getState().tool !== 'goto') return;
-        useMapState
-          .getState()
-          .setGotoTarget({ latitude: event.lngLat.lat, longitude: event.lngLat.lng });
-        useSelection.getState().setTool('pan');
+        const { tool, setTool } = useSelection.getState();
+        const point = { latitude: event.lngLat.lat, longitude: event.lngLat.lng };
+        const planning = usePlanning.getState();
+        switch (tool) {
+          case 'goto':
+            useMapState.getState().setGotoTarget(point);
+            setTool('pan');
+            return;
+          case 'waypoint': // stays on: click after click adds the route
+            planning.addWaypoint(point.latitude, point.longitude);
+            return;
+          case 'datum':
+            planning.setDatum(point);
+            setTool('pan');
+            return;
+          case 'poi':
+            planning.setPoiDraft(point);
+            setTool('pan');
+            return;
+          default:
+            return;
+        }
       });
       m.on('mouseenter', 'aircraft', () => {
         if (useSelection.getState().tool === 'pan') m.getCanvas().style.cursor = 'pointer';

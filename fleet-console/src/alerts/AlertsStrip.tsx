@@ -1,5 +1,6 @@
 // Open alerts, most severe first. Severity shows as icon + word + colour (ADR 0015: alerts
-// distinguishable by more than colour). The full alert engine and audible cues are M4.
+// distinguishable by more than colour). New and escalated alerts also sound (useAlertCues,
+// ADR 0031); the operator can mute the sound here, never the alerts.
 import { useState } from 'react';
 
 import { api, ProblemError } from '../api/client';
@@ -7,12 +8,15 @@ import { openAlerts } from '../live/store';
 import { useThrottledLive } from '../live/useThrottled';
 import { can, useSession } from '../session/session';
 import { SEVERITY } from './severity';
+import { useSound } from './useAlertCues';
 
 export function AlertsStrip() {
   const alerts = useThrottledLive((s) => s.alerts);
   const aircraft = useThrottledLive((s) => s.aircraft);
   const session = useSession((s) => s.session);
   const [error, setError] = useState<string | null>(null);
+  const muted = useSound((s) => s.muted);
+  const toggleSound = useSound((s) => s.toggle);
   const open = openAlerts(alerts);
 
   const acknowledge = async (id: string) => {
@@ -28,7 +32,16 @@ export function AlertsStrip() {
   return (
     <section className="panel alerts" aria-label="Alerts">
       <h2>
-        Alerts <span className="count">{open.length}</span>
+        Alerts <span className="count">{open.length}</span>{' '}
+        <button
+          type="button"
+          className="link-button"
+          aria-pressed={muted}
+          title={muted ? 'Sound is off: alerts are shown only' : 'Mute alert sounds'}
+          onClick={toggleSound}
+        >
+          {muted ? '🔇 Sound off' : '🔊 Sound on'}
+        </button>
       </h2>
       {open.length === 0 && <p className="muted">No open alerts.</p>}
       <ul>

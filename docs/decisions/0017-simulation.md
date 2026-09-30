@@ -1,6 +1,6 @@
 # 0017. Simulation: mock fleet, PX4 SITL with Gazebo and SIH
 
-- Status: Accepted; refined by [0021](0021-simulation-mode.md) (mock) and [0023](0023-sitl-in-ci.md) (SITL in CI, image) and [0026](0026-scale-runs-and-swarm-simulation.md) (scale runs, swarm simulation); Gazebo moved to M2c
+- Status: Accepted; refined by [0021](0021-simulation-mode.md) (mock) and [0023](0023-sitl-in-ci.md) (SITL in CI, image) and [0026](0026-scale-runs-and-swarm-simulation.md) (scale runs, swarm simulation); Gazebo moved to M2c; the Gazebo tier dropped by [0033](0033-no-gazebo-tier.md)
 - Date: 2026-09-28
 
 ## Context

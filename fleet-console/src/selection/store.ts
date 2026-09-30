@@ -2,7 +2,16 @@
 // size is always shown (ADR 0027).
 import { create } from 'zustand';
 
-export type Tool = 'pan' | 'box' | 'lasso' | 'goto';
+export type Tool =
+  | 'pan'
+  | 'box'
+  | 'lasso'
+  | 'goto'
+  // planning (ADR 0028): draw a search area, add waypoints, pick a datum, mark a point
+  | 'area'
+  | 'waypoint'
+  | 'datum'
+  | 'poi';
 export type SelectMode = 'replace' | 'add' | 'toggle';
 
 interface SelectionState {

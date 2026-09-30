@@ -14,6 +14,8 @@ interface FlowState {
   lastCommandId: string | null;
   error: string | null;
   send: (body: CommandBody) => Promise<void>;
+  /** Send to these aircraft rather than the selection (a mission's planned aircraft). */
+  sendTo: (body: CommandBody, aircraftIds: readonly string[]) => Promise<void>;
   confirmPending: () => Promise<void>;
   cancelPending: () => void;
 }
@@ -48,6 +50,10 @@ export const useCommandFlow = create<FlowState>()((set, get) => {
       const ids = [...useSelection.getState().selected];
       if (ids.length === 0 || get().busy) return;
       await run((token) => submit(newRequest(body, ids), token));
+    },
+    sendTo: async (body, aircraftIds) => {
+      if (aircraftIds.length === 0 || get().busy) return;
+      await run((token) => submit(newRequest(body, [...aircraftIds]), token));
     },
     confirmPending: async () => {
       const pending = get().pending;

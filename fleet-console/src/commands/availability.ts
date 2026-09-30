@@ -1,6 +1,7 @@
 // Which command buttons the console offers, and why not. Only a guide for the operator: the
 // fleet service checks every command again and decides (ADR 0002: the UI is never the safety
-// boundary). Pure, and tested row by row.
+// boundary). Pure, and tested row by row. A goto for several aircraft is offered: the server
+// gives each its own point and layer and always asks for confirmation (ADR 0029).
 import type { AircraftLive, CommandKind, LeaseView, Permission } from '../api/types';
 import type { Connection } from '../live/store';
 
@@ -53,9 +54,6 @@ export function availability(kind: ConsoleCommand, ctx: Context): Availability {
       enabled: false,
       reason: 'No selected aircraft has a live link: only hold, return and land can be tried.',
     };
-  }
-  if (kind === 'goto' && ctx.selected.length !== 1) {
-    return { enabled: false, reason: 'Goto takes one aircraft at a time.' };
   }
   return { enabled: true };
 }

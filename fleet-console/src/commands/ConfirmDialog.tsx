@@ -1,10 +1,14 @@
 // The confirmation of a risky or bulk command (ADR 0011): it shows the server's own summary,
 // names the aircraft count, lists warnings and the aircraft that will be rejected, and flags
-// an override. Focus starts on Cancel; confirming takes a held press (HoldToConfirm).
+// an override. Per aircraft it shows its own target, layer and start delay (a bulk goto or a
+// mission, ADR 0029), and any conflicts the server found. Focus starts on Cancel; confirming
+// takes a held press (HoldToConfirm).
 import * as Dialog from '@radix-ui/react-dialog';
 import { useRef } from 'react';
 
 import type { ConfirmationProblem } from '../api/types';
+import { formatCoord } from '../map/coords';
+import { useMapState } from '../map/mapState';
 import { HoldToConfirm } from './HoldToConfirm';
 import { KIND_LABEL } from './labels';
 
@@ -17,6 +21,7 @@ interface Props {
 
 export function ConfirmDialog({ problem, busy, onConfirm, onCancel }: Props) {
   const cancel = useRef<HTMLButtonElement>(null);
+  const format = useMapState((s) => s.format);
   const { summary } = problem;
   const count = summary.aircraft.length;
   const kind = KIND_LABEL[summary.kind] ?? summary.kind.toUpperCase();
@@ -54,12 +59,34 @@ export function ConfirmDialog({ problem, busy, onConfirm, onCancel }: Props) {
             {summary.aircraft.map((a) => (
               <li key={a.aircraft_id}>
                 <strong>{a.callsign}</strong>
+                {a.target && (
+                  <span className="muted">
+                    {' '}
+                    → {formatCoord(a.target.latitude, a.target.longitude, format)}
+                  </span>
+                )}
+                {a.altitude_relative_m !== null && a.altitude_relative_m !== undefined && (
+                  <span className="muted"> at {a.altitude_relative_m.toFixed(0)} m above home</span>
+                )}
+                {a.start_delay_s ? (
+                  <span className="muted"> · starts +{a.start_delay_s.toFixed(0)} s</span>
+                ) : null}
                 {a.warnings.length > 0 && (
                   <span className="warning"> ⚠ {a.warnings.join(', ')}</span>
                 )}
               </li>
             ))}
           </ul>
+          {summary.conflicts.length > 0 && (
+            <>
+              <h3>⚠ {summary.conflicts.length} conflict(s)</h3>
+              <ul className="summary-list rejected">
+                {summary.conflicts.map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </ul>
+            </>
+          )}
           {summary.rejected.length > 0 && (
             <>
               <h3>{summary.rejected.length} will not be sent</h3>

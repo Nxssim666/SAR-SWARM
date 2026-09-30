@@ -108,7 +108,7 @@ describe('LiveSocket', () => {
 
     expect(socket.sent[1]).toEqual({
       type: 'subscribe',
-      topics: ['fleet.telemetry', 'alerts', 'commands', 'control'],
+      topics: ['fleet.telemetry', 'alerts', 'commands', 'control', 'missions', 'pois'],
       telemetry_hz: 10,
     });
     expect(states).toEqual(['connecting', 'online']);

@@ -2,7 +2,14 @@
 // the map reads it outside React, and React reads it through throttled selectors.
 import { create } from 'zustand';
 
-import type { AircraftLive, AlertView, CommandView, LeaseView } from '../api/types';
+import type {
+  AircraftLive,
+  AlertView,
+  CommandView,
+  LeaseView,
+  MissionProgressView,
+  PoiView,
+} from '../api/types';
 import type { ServerMessage, WelcomeMessage } from './messages';
 
 export type Connection = 'connecting' | 'online' | 'offline';
@@ -18,6 +25,10 @@ export interface LiveState {
   alerts: Record<string, AlertView>;
   commands: Record<string, CommandView>;
   leases: Record<string, LeaseView>;
+  /** Progress of GCS-planned and swarm missions, by mission id (ADR 0028). */
+  missions: Record<string, MissionProgressView>;
+  /** Points of interest and survivor sightings, by id (ADR 0031). */
+  pois: Record<string, PoiView>;
   /** Bumped on every telemetry change (cheap change detection for the map). */
   telemetryVersion: number;
   setConnection: (connection: Connection, reason?: string | null) => void;
@@ -33,6 +44,8 @@ const empty = {
   alerts: {},
   commands: {},
   leases: {},
+  missions: {},
+  pois: {},
   telemetryVersion: 0,
 };
 
@@ -75,6 +88,12 @@ export const useLive = create<LiveState>()((set) => ({
           case 'control':
             set({ leases: byId(message.data.leases, (l) => l.aircraft_id) });
             return;
+          case 'missions':
+            set({ missions: byId(message.data.missions, (m) => m.mission_id) });
+            return;
+          case 'pois':
+            set({ pois: byId(message.data.pois, (p) => p.id) });
+            return;
         }
         return;
       case 'event':
@@ -104,6 +123,14 @@ export const useLive = create<LiveState>()((set) => ({
             });
             return;
           }
+          case 'missions':
+            set((s) => ({
+              missions: { ...s.missions, [message.data.mission_id]: message.data },
+            }));
+            return;
+          case 'pois':
+            set((s) => ({ pois: { ...s.pois, [message.data.id]: message.data } }));
+            return;
         }
         return;
       case 'pong':

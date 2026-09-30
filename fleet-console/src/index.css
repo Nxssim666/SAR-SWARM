@@ -597,3 +597,214 @@ kbd {
     opacity: 0.6;
   }
 }
+
+/* --- M4: incident, side tabs, planning, points of interest ---------------------------- */
+
+.incident-picker {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.tabs [role='tab'] {
+  flex: 1;
+  border-radius: 6px 6px 0 0;
+}
+
+.tabs [role='tab'][aria-selected='true'] {
+  background: var(--surface);
+  border-color: var(--accent);
+  border-bottom-color: var(--surface);
+  font-weight: 600;
+}
+
+.tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.badge {
+  margin-left: 0.4rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.8rem;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.form label.inline {
+  flex-direction: row;
+  align-items: center;
+  display: inline-flex;
+  margin-right: 0.8rem;
+}
+
+.form fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin: 0.3rem 0;
+}
+
+.row.spread {
+  justify-content: space-between;
+}
+
+.row.spread h2 {
+  margin: 0;
+}
+
+.plain-list,
+.poi-list,
+.issues {
+  margin: 0.3rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plain-list li {
+  padding: 0.2rem 0;
+}
+
+.plain-list .link-button[aria-pressed='true'] {
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.file-button {
+  position: relative;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  cursor: pointer;
+}
+
+.file-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.file-button:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+input.narrow {
+  width: 5.2rem;
+}
+
+.waypoints,
+.plan-tasks {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.waypoints th,
+.waypoints td,
+.plan-tasks th,
+.plan-tasks td {
+  padding: 0.2rem 0.3rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.waypoints td.coord {
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+}
+
+.waypoints td.actions button {
+  padding: 0.1rem 0.4rem;
+}
+
+.waypoints tr[data-issue] {
+  background: rgba(248, 81, 73, 0.12);
+}
+
+.issues li {
+  padding: 0.15rem 0;
+}
+
+.issues li[data-level='error'] {
+  color: var(--danger);
+}
+
+.issues li[data-level='warning'] {
+  color: var(--warning);
+}
+
+.ok-box {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--ok);
+  border-radius: 6px;
+  color: var(--ok);
+}
+
+.plan-report h3 {
+  margin: 0.6rem 0 0.2rem;
+  font-size: 0.9rem;
+}
+
+.route-swatch {
+  display: inline-block;
+  width: 1.1rem;
+  border-top: 3px solid;
+  vertical-align: middle;
+}
+
+.poi-list li {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.poi-list li[data-kind='survivor_sighting'][data-status='new'] {
+  border-left: 4px solid var(--danger);
+  padding-left: 0.4rem;
+}
+
+.poi-list li[data-status='dismissed'],
+.poi-list li[data-status='resolved'] {
+  opacity: 0.6;
+}
+
+.poi-symbol {
+  font-size: 1.1rem;
+}
+
+.new-mission summary {
+  cursor: pointer;
+  margin-top: 0.4rem;
+}

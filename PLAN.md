@@ -20,7 +20,6 @@ the development host and is checked in CI.
 | M1b Live fleet core: registry, mock driver, commands, leases, WebSocket | **Done** (2026-09-28) |
 | M2a PX4 SITL harness + MAVLink driver (1–5 aircraft) | **Done** (2026-09-28); `sitl` and `ci` green on GitHub |
 | M2b Scale and swarm: SIH 25/50, NATS, ROS 2 bridge, mock video | **Done** (2026-09-30); swarm acceptance green, tracking verified to 25 in CI; **50 SIH deferred to M5/M6 field hardware** (user) |
-| M2c Gazebo tier: camera video, high-fidelity airframes | — |
 | M3 Console MVP | **Done** (2026-09-30); 7/7 E2E, 46–54 fps with 50 aircraft on this PC's GPU |
 | M4 Mission planning, patterns, bulk tasking, deconfliction, alerts | **In progress**: backend built, SITL fixes; console to do |
 | M5 Video, roles, audit viewer, multi-operator, load tests | — |
@@ -36,7 +35,9 @@ is several weeks of work and a review checkpoint in the middle lowers risk.
    API (annotations); job logs and artifacts need a signed-in account.
 2. **The field region(s).** Zurich (the simulator's site) and Kramatorsk are prepared, with
    the Copernicus GLO-30 DEM for terrain (ADR 0030); confirm or change them.
-3. **Any time:** confirm or override the stack (ADRs 0004–0017) and assumptions A1–A11 (ADR 0002).
+3. ~~Gazebo tier (M2c).~~ **Decided: dropped** (the user, 2026-09-30; ADR 0033). Flight is
+   tested on PX4 SIH and the mock fleet, video with mock streams.
+4. **Any time:** confirm or override the stack (ADRs 0004–0017) and assumptions A1–A11 (ADR 0002).
 
 ---
 
@@ -332,7 +333,7 @@ The `ci` workflow ran for the first time here; before, it had only been checked 
 - Mission upload with read-back verification, and geofence upload → M4, with mission
   planning (the MAVSDK mission and geofence plugins).
 - Battery-drain and geofence-breach injection in SITL → M4.
-- Gazebo (tier 1) → M2b, with camera and mock video (then → M2c).
+- Gazebo (tier 1) → M2b, then M2c; later dropped by the user (ADR 0033).
 - Measured tracking latency for 1 and 5 SITL aircraft → the M2b scale report (done for 5).
 
 **Known gaps**
@@ -355,7 +356,7 @@ ROS 2 bridge.
 
 **Decisions** (the user):
 
-- Gazebo, with camera video, moves to a new stop, **M2c**.
+- Gazebo, with camera video, moves to a new stop, **M2c** (later dropped: ADR 0033).
 - nats-server is used locally too, from `.tools/nats/`.
 - **The 50-aircraft measurement is deferred to the field hardware in M5 or M6**
   (2026-09-30), after the free CI runner proved too small.
@@ -484,24 +485,8 @@ See ADR 0024, ADR 0025 and ADR 0026.
 - **Mock video frames** carry no callsign or timestamp: the image has no fonts. That comes
   with the latency overlay in M5.
 - **In the swarm simulation**, the drones start airborne at 4 m. PX4 under a companion,
-  depth and radio behaviour, and DDS over Wi-Fi are not covered (M2c, field tests).
-
-**Stop:** report, then wait.
-
----
-
-## M2c: Gazebo tier (camera video, high-fidelity airframes)
-
-**Scope** (moved out of M2b by the user):
-
-- Gazebo Harmonic with PX4 (`px4io/px4-sitl-gazebo`, pinned):
-  - a hexacopter derived from x500;
-  - a fixed-wing;
-  - camera streams into MediaMTX.
-- If CI without a GPU can't render cameras usably, record that in an ADR and decide with
-  the user where Gazebo runs.
-- Optional: `drone_node` with PX4 over uXRCE-DDS and a Gazebo depth camera, for one swarm
-  drone.
+  depth and radio behaviour, and DDS over Wi-Fi are not covered (field tests; no Gazebo,
+  ADR 0033).
 
 **Stop:** report, then wait.
 
@@ -823,7 +808,7 @@ GitHub (run 36703251173, commit `53c40c5`); `swarm` green on GitHub; `scripts/ch
 - **Runbooks:** field deployment, basemap preparation, certificate trust, incident start
   and end, operator quick-reference card, recovery, backup and export.
 - **Full acceptance test** (scripted and documented):
-  - Launch the simulation (50 SIH + 2 Gazebo with video) and connect 50 aircraft.
+  - Launch the simulation (50 SIH + mock video) and connect 50 aircraft.
   - An operator tracks 25 and assigns an area search to a mixed group of 8.
   - Monitor telemetry and alerts under injected link loss, low battery and GPS loss.
   - View video.
@@ -839,7 +824,6 @@ GitHub (run 36703251173, commit `53c40c5`); `swarm` green on GitHub; `scripts/ch
 | Risk | Impact | Mitigation |
 |---|---|---|
 | No Linux/Docker on the development host | SITL only in CI | Decided: CI only (ADR 0023). Loopback tests cover the MAVLink path locally |
-| No stock Gazebo hexa model | M2b delay | Derive from x500. SIH has `sihsim_hex` for scale |
 | MAVSDK v4 is new (Sept. 2026) | Driver bugs | Loopback + SITL tests; pymavlink fallback stays open (ADR 0022) |
 | CI runner too small for 50 SIH | Scale test only on a large host | **Confirmed in M2b**: 4 vCPU saturates at 25+ PX4. Decided: measure 50 on the field hardware in M5/M6 |
 | Browser video decode at many streams | Operator workload | Grid cap of 9, on-demand streams (ADR 0012) |

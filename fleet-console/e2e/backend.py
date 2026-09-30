@@ -1,7 +1,8 @@
 """
 The fleet service for the console's E2E tests and local demos: simulation mode (every
 aircraft simulated, ADR 0021), a fresh data directory, one user per role, N aircraft and a
-group. Run in the fleet service's environment:
+group, and an open incident around the fleet (for mission planning). Run in the fleet
+service's environment:
 
     python -m uv --directory ../fleet-service run python ../fleet-console/e2e/backend.py \
         --port 8123 --aircraft 20
@@ -72,6 +73,15 @@ def seed(base: str, aircraft: int) -> None:
         http.post(
             "/api/v1/groups",
             json={"name": "Team North", "aircraft_ids": ids[: max(1, len(ids) // 4)]},
+            headers=headers,
+        ).raise_for_status()
+        http.post(
+            "/api/v1/incidents",
+            json={
+                "name": "Missing hiker",
+                "base": {"latitude": 47.3977, "longitude": 8.5456},  # the simulated fleet's site
+                "operating_radius_m": 5000.0,
+            },
             headers=headers,
         ).raise_for_status()
 
