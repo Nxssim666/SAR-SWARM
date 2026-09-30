@@ -20,13 +20,20 @@ shell history): they are prompted, or read from stdin with ``--password-stdin``.
 
 import argparse
 import asyncio
+import contextlib
 import getpass
 import hashlib
 import json
+import os
 import shutil
+import socket
 import sys
 import tempfile
-from collections.abc import Sequence
+import threading
+import time
+import urllib.request
+import webbrowser
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from sqlalchemy import select
@@ -130,9 +137,21 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def serve(settings: Settings) -> int:
-    """Run uvicorn with the application factory."""
+    """Run uvicorn with the application factory, once the port is known to be free."""
     import uvicorn
 
+    problem = port_problem(settings.host, settings.port)
+    if problem is not None:
+        print(
+            f"Cannot start: port {settings.port} on {settings.host} is not free ({problem}).\n"
+            "Another program is using it, perhaps another SAR-GCS or fleet-service window. "
+            "Close it, or choose another port with SARGCS_PORT.",
+            file=sys.stderr,
+        )
+        return 1
+    if settings.open_browser:
+        url = f"http://127.0.0.1:{settings.port}/"
+        threading.Thread(target=open_when_ready, args=(url,), daemon=True).start()
     uvicorn.run(
         "fleet_service.main:create_app",
         factory=True,
@@ -142,6 +161,49 @@ def serve(settings: Settings) -> int:
         proxy_headers=True,
     )
     return 0
+
+
+def port_problem(host: str, port: int) -> str | None:
+    """Why the service could not have ``port`` to itself, or None.
+
+    Checked before starting because uvicorn binds with SO_REUSEADDR: on Windows a second
+    server then binds the same port without an error while the first keeps answering, and
+    a browser opened on the port reaches the wrong one (found with the Windows package).
+    """
+    probe = "127.0.0.1" if host in ("0.0.0.0", "::", "") else host  # noqa: S104 - any address
+    with contextlib.suppress(OSError), socket.create_connection((probe, port), timeout=0.5):
+        return "something already answers on it"
+    test = socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        if os.name != "nt":  # Linux: a closing connection (TIME_WAIT) must not count
+            test.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        test.bind((host, port))
+    except OSError as error:
+        return str(error)
+    finally:
+        test.close()
+    return None
+
+
+def open_when_ready(
+    url: str,
+    opener: Callable[[str], object] = webbrowser.open,
+    timeout_s: float = 60.0,
+) -> bool:
+    """Open ``url`` in the browser once the service answers its health check (the Windows
+    launchers); False if it never did."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        health = f"{url}api/v1/health"
+        with (
+            contextlib.suppress(OSError),
+            urllib.request.urlopen(health, timeout=1) as response,  # noqa: S310 - our loopback URL
+        ):
+            if response.status == 200:
+                opener(url)
+                return True
+        time.sleep(0.3)
+    return False
 
 
 def _read_password(from_stdin: bool) -> str:

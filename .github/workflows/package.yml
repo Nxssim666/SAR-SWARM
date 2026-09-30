@@ -49,13 +49,43 @@ jobs:
           uv run --no-dev --with "pyinstaller>=6.11,<7" pyinstaller --noconfirm
           --distpath ../dist --workpath ../build ../packaging/windows/sar_gcs.spec
 
+      - name: Assemble the zip
+        id: zip
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $short = git rev-parse --short HEAD
+          $name = "SAR-GCS-windows-$short"
+          New-Item -ItemType Directory $name | Out-Null
+          Copy-Item -Recurse dist\SAR-GCS "$name\SAR-GCS"
+          Copy-Item packaging\windows\start-simulation.bat, packaging\windows\start-station.bat, packaging\windows\README-WINDOWS.txt $name
+          git archive --format=zip -o source.zip HEAD
+          Expand-Archive source.zip "$name\source"
+          "commit $(git rev-parse HEAD)`r`nbuilt $((Get-Date).ToUniversalTime().ToString('o'))" | Out-File -Encoding ascii "$name\VERSION.txt"
+          Compress-Archive -Path $name -DestinationPath "$name.zip"
+          "name=$name" >> $env:GITHUB_OUTPUT
+          Get-Item "$name.zip" | Select-Object Name, Length
+      # What is tested is the zip as a user gets it: unpacked elsewhere, with the build tree's
+      # console gone, so nothing can be found by accident outside the package (found with the
+      # first package: CI passed while a user's browser reached another server).
+      - name: Unpack the zip elsewhere
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Remove-Item -Recurse -Force fleet-service\src\fleet_service\static\console
+          $target = Join-Path $env:RUNNER_TEMP 'unpacked'
+          Expand-Archive "${{ steps.zip.outputs.name }}.zip" $target
+          $exe = Join-Path $target "${{ steps.zip.outputs.name }}\SAR-GCS\sar-gcs.exe"
+          if (-not (Test-Path $exe)) { throw "no $exe in the zip" }
+          "SAR_EXE=$exe" >> $env:GITHUB_ENV
       # The package works on Windows: simulation end to end, and a real MAVLink hub (MAVSDK's
-      # native library), before anyone downloads it.
+      # native library), before anyone downloads it;
+      # and it refuses a port another server already answers on.
       - name: Smoke test (simulation)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $exe = (Resolve-Path dist\SAR-GCS\sar-gcs.exe).Path
+          $exe = $env:SAR_EXE
           $env:SARGCS_SIMULATION = 'true'
           $env:SARGCS_DATA_DIR = "$PWD\smoke-sim"
           $env:SARGCS_LOG_JSON = 'false'
@@ -77,6 +107,9 @@ jobs:
           Wait-Until 'health' 90 { (Invoke-RestMethod "$base/api/v1/health").status -eq 'ok' }
           $page = Invoke-WebRequest "$base/" -UseBasicParsing
           if ($page.Content -notmatch '<div id="root">') { throw 'the console is not served' }
+          if ((Get-Content smoke-sim.err -Raw) -notmatch 'serving the console from .*unpacked') {
+            Get-Content smoke-sim.err -Tail 20; throw 'the console did not come from the package'
+          }
           $docs = Invoke-WebRequest "$base/api/v1/docs" -UseBasicParsing
           if ($docs.StatusCode -ne 200) { throw 'no API docs page' }
           $login = Invoke-RestMethod -Method Post "$base/api/v1/auth/login" -ContentType 'application/json' `
@@ -112,7 +145,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $exe = (Resolve-Path dist\SAR-GCS\sar-gcs.exe).Path
+          $exe = $env:SAR_EXE
           $env:SARGCS_DATA_DIR = "$PWD\smoke-mavlink"
           $env:SARGCS_LOG_JSON = 'false'
           $env:SARGCS_PORT = '8001'
@@ -137,22 +170,22 @@ jobs:
           Stop-Process -Id $service.Id
           Write-Host 'MAVLink smoke test passed: MAVSDK native library loaded, hub open'
 
-      - name: Assemble the zip
-        id: zip
+      - name: Smoke test (port already in use)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $short = git rev-parse --short HEAD
-          $name = "SAR-GCS-windows-$short"
-          New-Item -ItemType Directory $name | Out-Null
-          Copy-Item -Recurse dist\SAR-GCS "$name\SAR-GCS"
-          Copy-Item packaging\windows\start-simulation.bat, packaging\windows\start-station.bat, packaging\windows\README-WINDOWS.txt $name
-          git archive --format=zip -o source.zip HEAD
-          Expand-Archive source.zip "$name\source"
-          "commit $(git rev-parse HEAD)`r`nbuilt $((Get-Date).ToUniversalTime().ToString('o'))" | Out-File -Encoding ascii "$name\VERSION.txt"
-          Compress-Archive -Path $name -DestinationPath "$name.zip"
-          "name=$name" >> $env:GITHUB_OUTPUT
-          Get-Item "$name.zip" | Select-Object Name, Length
+          $env:SARGCS_DATA_DIR = "$PWD\smoke-port"
+          $env:SARGCS_PORT = '8003'
+          $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 8003)
+          $listener.Start()
+          try {
+            $output = & $env:SAR_EXE 2>&1 | Out-String
+            $code = $LASTEXITCODE
+          } finally { $listener.Stop() }
+          Write-Host $output
+          if ($code -ne 1) { throw "expected exit code 1, got $code" }
+          if ($output -notmatch 'port 8003') { throw 'no clear message about the port' }
+          Write-Host 'port-in-use smoke test passed'
       - uses: actions/upload-artifact@v5
         with:
           name: ${{ steps.zip.outputs.name }}

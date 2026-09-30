@@ -245,6 +245,12 @@ class Settings(BaseSettings):
         "serves it from the gateway instead.",
     )
 
+    open_browser: bool = Field(
+        default=False,
+        description="Open the console in the browser once the service answers (the Windows "
+        "launchers set it).",
+    )
+
     # --- telemetry history and WebSocket ---
     telemetry_record_interval_s: float = Field(default=1.0, ge=0.1, le=60.0)
     ws_idle_timeout_s: float = Field(default=30.0, ge=5.0, le=600.0)

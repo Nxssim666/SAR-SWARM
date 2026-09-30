@@ -9,13 +9,14 @@ cd /d "%~dp0"
 set SARGCS_DATA_DIR=%~dp0data
 set SARGCS_HOST=0.0.0.0
 set SARGCS_LOG_JSON=false
+set SARGCS_OPEN_BROWSER=true
 if not exist "%SARGCS_DATA_DIR%\ops.db" (
   echo First start: create the first administrator account.
   SAR-GCS\sar-gcs.exe create-admin --username chief || goto :error
 )
-start "" http://127.0.0.1:8000/
-SAR-GCS\sar-gcs.exe
+SAR-GCS\sar-gcs.exe || goto :error
 goto :eof
 :error
-echo Failed. See the messages above.
+echo.
+echo The station did not start or stopped with an error. See the messages above.
 pause

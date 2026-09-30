@@ -18,8 +18,9 @@ Quick start (simulation)
 1. Unzip anywhere (for example C:\SAR-GCS). Windows 10/11, 64-bit.
 2. Double-click start-simulation.bat. On the first start it asks for a password for the
    administrator "chief" (at least 10 characters).
-3. The console opens in the browser at http://127.0.0.1:8000/ (use Chrome or Edge).
-   Sign in as "chief".
+3. The console opens in the browser at http://127.0.0.1:8000/ once the station answers
+   (use Chrome or Edge). Sign in as "chief". The window's log says "serving the console
+   from ..." when it started.
 4. Register aircraft: Admin -> Aircraft -> Register an aircraft. In simulation mode each
    registered aircraft is simulated (it spawns at the simulator's origin near Zurich; set
    SARGCS_SIM_ORIGIN_LATITUDE/LONGITUDE to move it) and can be armed, flown and tasked.
@@ -27,6 +28,16 @@ Quick start (simulation)
 
 Windows may ask to allow network access for sar-gcs.exe: allow it on private networks
 (needed for other devices and for MAVLink over UDP).
+
+Troubleshooting
+---------------
+- "Cannot start: port 8000 ... is not free": another program uses the port, often another
+  SAR-GCS window or a fleet-service started from the source code. Close it, or run
+  "set SARGCS_PORT=8080" in a command prompt, then start the .bat from that prompt and
+  open http://127.0.0.1:8080/.
+- The browser shows {"title":"Not Found"...} at http://127.0.0.1:8000/: that is not this
+  package's console (an older version, or another server on the port). Close other
+  servers and start again.
 
 Command line
 ------------

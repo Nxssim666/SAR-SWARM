@@ -1,8 +1,11 @@
 """The ``fleet-service`` command line: create-admin, audit-verify, db upgrade."""
 
+import http.server
 import io
 import json
+import socket
 import sqlite3
+import threading
 from collections.abc import Iterator
 from contextlib import closing
 from pathlib import Path
@@ -10,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from fleet_service import cli
-from fleet_service.config import get_settings
+from fleet_service.config import Settings, get_settings
 
 
 @pytest.fixture
@@ -122,3 +125,55 @@ def test_backup_copies_the_databases_consistently_with_a_manifest(
     monkeypatch.setenv("SARGCS_DATA_DIR", str(output))  # the copy verifies on its own
     get_settings.cache_clear()
     assert cli.main(["audit-verify"]) == 0
+
+
+def test_serve_refuses_a_port_another_program_answers_on(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """Found with the Windows package: a second server bound the same port without an error
+    (SO_REUSEADDR), and the browser reached the other one."""
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen()
+    port = listener.getsockname()[1]
+    monkeypatch.setattr("uvicorn.run", lambda *a, **k: pytest.fail("must not start"))
+    try:
+        code = cli.serve(Settings(data_dir=tmp_path, port=port))
+    finally:
+        listener.close()
+
+    assert code == 1
+    assert f"port {port}" in capsys.readouterr().err
+
+
+def test_a_free_port_has_no_problem() -> None:
+    probe = socket.socket()
+    probe.bind(("127.0.0.1", 0))
+    port = probe.getsockname()[1]
+    probe.close()
+
+    assert cli.port_problem("127.0.0.1", port) is None
+
+
+def test_the_browser_opens_only_once_the_service_answers() -> None:
+    class Health(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_response(200 if self.path == "/api/v1/health" else 404)
+            self.end_headers()
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Health)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    opened: list[str] = []
+    url = f"http://127.0.0.1:{server.server_address[1]}/"
+    try:
+        assert cli.open_when_ready(url, opened.append, timeout_s=5) is True
+    finally:
+        server.shutdown()
+        server.server_close()
+    silent = cli.open_when_ready("http://127.0.0.1:9/", opened.append, timeout_s=0.5)
+
+    assert opened == [url]
+    assert silent is False

@@ -187,6 +187,9 @@ def create_app(
     console = settings.console_dir or (PACKAGED_CONSOLE if PACKAGED_CONSOLE.is_dir() else None)
     if console is not None:
         _serve_console(app, console)
+        log.info("serving the console from %s", console)
+    else:
+        log.info("no console to serve here (API only; the gateway serves it in the field)")
     return app
 
 
