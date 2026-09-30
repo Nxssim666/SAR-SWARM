@@ -201,3 +201,9 @@ New CLI commands: `purge` and `backup`. There are no new database migrations aft
   - **The fix (next commit):** when the later aircraft has not left yet at the conflict
     time, the other aircraft waits until it has left.
   - **Test:** a regression test in `tests/test_deconfliction.py` failed before the fix.
+- **Final state at `bc14403`, the planner fix:** `ci`, `sitl`, `swarm` and `package` are all
+  green on GitHub.
+  - Locally: fleet-service 702 passed; E2E 14 passed, with the 2 video specs skipped because
+    no relay ran.
+  - The Windows zip with the satellite imagery is the artifact `SAR-GCS-windows-bc14403` of
+    that `package` run.
