@@ -17,12 +17,66 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The regions of fleet-console/scripts/regions.json (ADR 0030): the offline basemap, the
+  # Sentinel-2 image of the satellite view, and terrain. Fetched on Linux (rasterio), cached
+  # by the scripts and the region list, handed to the Windows build.
+  region:
+    name: Region data (basemap, satellite imagery, terrain)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: |
+            fleet-console/public/basemap
+            fleet-service/terrain
+          key: region-${{ hashFiles('fleet-console/scripts/fetch-basemap.mjs', 'fleet-console/scripts/regions.json', 'scripts/fetch_region.py') }}
+      - uses: actions/setup-node@v5
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          node-version: 24
+      - uses: astral-sh/setup-uv@v7
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          python-version: "3.12"
+      - name: Fetch every region
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          version=v1.31.2
+          sum=3ed7dbf4ec2e6dfe5e25b6f70d1ffc932729f93c86db353bf514dd71010a312f
+          file=go-pmtiles_1.31.2_Linux_x86_64.tar.gz
+          curl -fsSL -o "$RUNNER_TEMP/$file" \
+            "https://github.com/protomaps/go-pmtiles/releases/download/$version/$file"
+          echo "$sum  $RUNNER_TEMP/$file" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$file" -C "$RUNNER_TEMP" pmtiles
+          PMTILES_BIN="$RUNNER_TEMP/pmtiles" node fleet-console/scripts/fetch-basemap.mjs
+          uv run scripts/fetch_region.py
+      - name: What the package gets
+        run: |
+          python3 -c "import json; i=json.load(open('fleet-console/public/basemap/index.json')); [print(r['id'], 'basemap' if r.get('file') else '-', 'imagery ' + r['imagery']['date'] if r.get('imagery') else 'no imagery') for r in i['regions']]"
+          du -sh fleet-console/public/basemap fleet-service/terrain
+          test -n "$(ls fleet-console/public/basemap/imagery/*.jpg)"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: region-data
+          path: |
+            fleet-console/public/basemap
+            fleet-service/terrain
+          retention-days: 7
+
   windows:
     name: Windows package (exe + source zip)
+    needs: region
     runs-on: windows-2022
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          name: region-data
+          path: .
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -59,6 +113,10 @@ jobs:
           New-Item -ItemType Directory $name | Out-Null
           Copy-Item -Recurse dist\SAR-GCS "$name\SAR-GCS"
           Copy-Item packaging\windows\start-simulation.bat, packaging\windows\start-station.bat, packaging\windows\README-WINDOWS.txt $name
+          Copy-Item -Recurse fleet-service\terrain "$name\terrain"
+          if (-not (Get-ChildItem "$name\SAR-GCS\_internal\fleet_service\static\console\basemap\imagery\*.jpg")) {
+            throw 'the satellite imagery is not in the package'
+          }
           git archive --format=zip -o source.zip HEAD
           Expand-Archive source.zip "$name\source"
           "commit $(git rev-parse HEAD)`r`nbuilt $((Get-Date).ToUniversalTime().ToString('o'))" | Out-File -Encoding ascii "$name\VERSION.txt"

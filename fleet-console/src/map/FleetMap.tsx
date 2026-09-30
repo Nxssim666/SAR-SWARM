@@ -23,7 +23,7 @@ import { useLive } from '../live/store';
 import { usePlanning } from '../planning/store';
 import { idsInside, type LonLat } from '../selection/geometry';
 import { modeFor, useSelection } from '../selection/store';
-import { BACKGROUND, loadBasemap } from './basemap';
+import { BACKGROUND, IMAGERY_PREFIX, loadBasemap } from './basemap';
 import { drawIcon, ICON_PIXEL_RATIO } from './icons';
 import { useMapState } from './mapState';
 import { addPlanningLayers, drawPlanning } from './planningLayers';
@@ -176,12 +176,17 @@ export function FleetMap() {
         protocolAdded = true;
       }
       useMapState.getState().setBasemap(basemap.available ? 'loaded' : 'none');
+      useMapState.getState().setImagery(basemap.imagery);
+      const imageryCredit = [...new Set(basemap.imagery.map((i) => i.attribution))].join(', ');
       const m = new maplibregl.Map({
         container: element,
         style: basemap.style,
         center: START_CENTER,
         zoom: START_ZOOM,
-        attributionControl: { compact: false },
+        attributionControl: {
+          compact: false,
+          ...(imageryCredit ? { customAttribution: imageryCredit } : {}),
+        },
         dragRotate: false,
         pitchWithRotate: false,
       });
@@ -275,6 +280,21 @@ export function FleetMap() {
         cleanups.push(useLive.subscribe(schedule));
         cleanups.push(useSelection.subscribe(schedule));
         cleanups.push(useMapState.subscribe(schedule));
+
+        // The satellite view: the imagery layers shown or hidden (ADR 0030).
+        const showImagery = (satellite: boolean) => {
+          for (const info of basemap.imagery) {
+            const id = `${IMAGERY_PREFIX}${info.region}`;
+            if (m.getLayer(id))
+              m.setLayoutProperty(id, 'visibility', satellite ? 'visible' : 'none');
+          }
+        };
+        showImagery(useMapState.getState().satellite);
+        cleanups.push(
+          useMapState.subscribe((state, prev) => {
+            if (state.satellite !== prev.satellite) showImagery(state.satellite);
+          }),
+        );
 
         // Planning layers change at human speed: redraw them only when their state changes.
         drawPlanning(m);

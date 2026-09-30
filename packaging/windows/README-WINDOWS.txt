@@ -10,6 +10,7 @@ Contents
   SAR-GCS\sar-gcs.exe      the fleet service; it also serves the console
   start-simulation.bat     start with simulated aircraft (training, evaluation)
   start-station.bat        start for real aircraft over MAVLink
+  terrain\                 terrain heights of the map regions (Zurich, Kramatorsk)
   source\                  the complete source code of this release
   VERSION.txt              the release (git commit) this package was built from
 
@@ -25,6 +26,15 @@ Quick start (simulation)
    registered aircraft is simulated (it spawns at the simulator's origin near Zurich; set
    SARGCS_SIM_ORIGIN_LATITUDE/LONGITUDE to move it) and can be armed, flown and tasked.
 5. Stop with Ctrl+C in the console window. Data stays in data-sim\.
+
+Maps and satellite view
+-----------------------
+The package carries offline map data for two regions, Zurich and Kramatorsk: a street
+map, a Sentinel-2 satellite image (10 m per pixel; its date is in the button's tooltip)
+and terrain heights (in terrain\). Switch between map and satellite with the
+"Satellite" / "Map" button next to the coordinate readout at the bottom of the map; the
+choice is remembered. The simulator starts near Zurich, inside the imagery. Outside these
+regions the map is a plain background (nothing is loaded from the Internet).
 
 Windows may ask to allow network access for sar-gcs.exe: allow it on private networks
 (needed for other devices and for MAVLink over UDP).

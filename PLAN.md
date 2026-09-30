@@ -696,6 +696,11 @@ See ADR 0027.
 - [x] Region data (ADR 0030): `regions.json` (Zurich, Kramatorsk), offline basemaps per
       region, Copernicus GLO-30 terrain and a pinned Sentinel-2 image
       (`scripts/fetch_region.py`); `domain/terrain` (unknown heights stay unknown).
+- [x] Satellite view in the console (follow-up, 2026-09-30): the map reads the regions from
+      `basemap/index.json`, draws each region's Sentinel-2 image under the labels, and a
+      Map/Satellite switch (persisted) shows it (`basemap.test.ts`, `e2e/satellite.spec.ts`).
+      The Windows package fetches every region's basemap, imagery and terrain on a runner
+      (`package.yml`, job `region`) and ships them.
 - [x] `domain/patterns` (ADR 0028): parallel track, creeping line, expanding square, sector,
       contour (DEM; perimeter rings as a labelled fallback), lane spacing from the camera
       footprint, fixed-wing run-ins and turn-feasible lane order.

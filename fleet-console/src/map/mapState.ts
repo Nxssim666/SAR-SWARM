@@ -1,8 +1,9 @@
 // Map state that React components show: the cursor's position, the goto target being
-// chosen, the coordinate format, whether a basemap is loaded, the view's centre, and a
-// request to show an area (components ask; the map moves).
+// chosen, the coordinate format, whether a basemap is loaded, the satellite view, the view's
+// centre, and a request to show an area (components ask; the map moves).
 import { create } from 'zustand';
 
+import type { ImageryInfo } from './basemap';
 import type { CoordFormat } from './coords';
 
 export type BasemapStatus = 'loading' | 'loaded' | 'none';
@@ -15,6 +16,10 @@ interface MapState {
   gotoTarget: { latitude: number; longitude: number } | null;
   format: CoordFormat;
   basemap: BasemapStatus;
+  /** Regions with satellite imagery on this station (empty: no satellite view). */
+  imagery: ImageryInfo[];
+  /** Show the satellite imagery instead of the map's fills and roads. */
+  satellite: boolean;
   center: { latitude: number; longitude: number } | null;
   /** An area the map should show; the map clears it once it has moved. */
   focus: Bounds | null;
@@ -22,11 +27,23 @@ interface MapState {
   setGotoTarget: (target: MapState['gotoTarget']) => void;
   setFormat: (format: CoordFormat) => void;
   setBasemap: (status: BasemapStatus) => void;
+  setImagery: (imagery: ImageryInfo[]) => void;
+  setSatellite: (satellite: boolean) => void;
   setCenter: (center: MapState['center']) => void;
   showBounds: (bounds: Bounds | null) => void;
 }
 
 const FORMAT_KEY = 'sargcs.coordFormat';
+const SATELLITE_KEY = 'sargcs.satellite';
+
+/** The operator's last choice; the satellite view by default (shown where there is imagery). */
+function storedSatellite(): boolean {
+  try {
+    return localStorage.getItem(SATELLITE_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
 
 function storedFormat(): CoordFormat {
   try {
@@ -42,6 +59,8 @@ export const useMapState = create<MapState>()((set) => ({
   gotoTarget: null,
   format: storedFormat(),
   basemap: 'loading',
+  imagery: [],
+  satellite: storedSatellite(),
   center: null,
   focus: null,
   setCursor: (cursor) => {
@@ -60,6 +79,17 @@ export const useMapState = create<MapState>()((set) => ({
   },
   setBasemap: (basemap) => {
     set({ basemap });
+  },
+  setImagery: (imagery) => {
+    set({ imagery });
+  },
+  setSatellite: (satellite) => {
+    try {
+      localStorage.setItem(SATELLITE_KEY, satellite ? '1' : '0'); // a display preference
+    } catch {
+      // storage unavailable: the choice lasts until reload
+    }
+    set({ satellite });
   },
   setCenter: (center) => {
     set({ center });

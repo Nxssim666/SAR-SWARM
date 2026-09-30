@@ -6,6 +6,7 @@ setlocal
 cd /d "%~dp0"
 set SARGCS_SIMULATION=true
 set SARGCS_DATA_DIR=%~dp0data-sim
+set SARGCS_TERRAIN_DIR=%~dp0terrain
 set SARGCS_LOG_JSON=false
 set SARGCS_OPEN_BROWSER=true
 if not exist "%SARGCS_DATA_DIR%\ops.db" (
