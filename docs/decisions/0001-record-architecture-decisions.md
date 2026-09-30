@@ -56,3 +56,7 @@ a safety rule, a protocol or convention, or an assumption made in place of an an
 | [0025](0025-aircraft-with-two-links.md) | Aircraft with two links: merged telemetry, routed commands |
 | [0026](0026-scale-runs-and-swarm-simulation.md) | Scale runs on the CI runner, and the simulated swarm for the bridge |
 | [0027](0027-console-architecture.md) | Console architecture: session, live data, map symbology, confirmation |
+| [0028](0028-mission-planning-and-gcs-missions.md) | Mission planning and GCS-planned missions |
+| [0029](0029-area-split-deconfliction-bulk-goto.md) | Area split, deconfliction and bulk goto |
+| [0030](0030-offline-region-data.md) | Offline region data: basemaps, terrain and imagery |
+| [0031](0031-m4-alerts-and-points-of-interest.md) | M4 alerts, points of interest and survivor sightings |

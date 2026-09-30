@@ -47,6 +47,8 @@ Parameters set for the tests:
 - `COM_DISARM_PRFLT=-1`: no auto-disarm before takeoff.
 - Airplane only: `RWTO_TKOFF=0`, `FW_LAUN_DETCN_ON=0` (launch-style takeoff). The rc1 SIH
   airplane cannot finish a runway takeoff; see ADR 0023.
+- Airplane only: `MIS_TKO_LAND_REQ=0`. The airframe requires a landing pattern in every
+  mission (2), and the station's routes end with a return instead; see ADR 0028.
 
 Change them in `compose.yaml` with `PX4_PARAM_<NAME>` variables.
 

@@ -63,6 +63,10 @@ GPS_TIMEOUT_S = 5.0
 SCAN_PERIOD_S = 1.0
 RECONNECT_PERIOD_S = 5.0
 GOTO_SETTLE_S = 3.0  # a reposition may take this long to show up as HOLD
+# PX4 checks a new mission after acknowledging the upload and refuses Mission mode until it
+# has; a start is retried this long (well within the pipeline's mission timeout).
+MISSION_START_RETRY_S = 5.0
+MISSION_START_RETRY_PERIOD_S = 0.25
 ARRIVE_RADIUS_M = {
     Airframe.MULTIROTOR_HEXA: 3.0,
     Airframe.MULTIROTOR_QUAD: 3.0,
@@ -96,6 +100,8 @@ _FIXES = {
 # Results that mean "no answer from the aircraft": the pipeline reports a timeout.
 _NO_ANSWER = {ActionResult.NO_SYSTEM, ActionResult.CONNECTION_ERROR, ActionResult.TIMEOUT}
 _MISSION_NO_ANSWER = {MissionResult.NO_SYSTEM, MissionResult.TIMEOUT}
+# How MAVSDK reports PX4's "Mission currently not available" (MAV_RESULT_TEMPORARILY_REJECTED).
+_MISSION_NOT_YET = {MissionResult.DENIED, MissionResult.BUSY}
 
 
 def flight_mode(px4_mode: str) -> FlightMode:
@@ -484,11 +490,27 @@ class MavlinkDriver:
         mismatch = readback_mismatch(items, list(copy.mission_items))
         if mismatch is not None:
             return CommandResult.nack(f"Mission read-back mismatch: {mismatch}; not started.")
-        result = await self._mission_result(mission.start_mission())
+        result = await self._start_checked_mission()
         if result.outcome is Outcome.ACKED:
             self._target = self._paused = None
             self._mission_paused = False
         return result
+
+    async def _start_checked_mission(self) -> CommandResult:
+        """Start, retrying while PX4 is still checking the new mission; then its last answer."""
+        deadline = self._monotonic() + MISSION_START_RETRY_S
+        while True:
+            try:
+                await self._mission.start_mission()
+            except MissionError as error:
+                if error.result in _MISSION_NO_ANSWER:
+                    await asyncio.Future()  # never resolves; the pipeline's timeout applies
+                if error.result not in _MISSION_NOT_YET or self._monotonic() >= deadline:
+                    reason = error.result.name
+                    return CommandResult.nack(f"The aircraft refused the mission ({reason}).")
+                await asyncio.sleep(MISSION_START_RETRY_PERIOD_S)
+                continue
+            return CommandResult.ack()
 
     @staticmethod
     async def _mission_result(call: Any) -> CommandResult:

@@ -8,11 +8,15 @@ from typing import Any
 
 import pytest
 from mavsdk.asyncio.plugins.action import ActionError, ActionResult
+from mavsdk.asyncio.plugins.mission import MissionError, MissionResult
 
 from fleet_service.domain.enums import Airframe, CommandKind, FlightMode, GpsFix
-from fleet_service.drivers.base import DriverCommand, Outcome
+from fleet_service.domain.patterns.route import RoutePoint
+from fleet_service.drivers import mavlink
+from fleet_service.drivers.base import DriverCommand, Outcome, RouteMission
 from fleet_service.drivers.mavlink import (
     GPS_TIMEOUT_S,
+    MISSION_START_RETRY_S,
     POSITION_TIMEOUT_S,
     MavlinkDriver,
     flight_mode,
@@ -69,6 +73,39 @@ class FakeAction:
                 raise ActionError(self.failures[name], f"{name}()")
 
         return call
+
+
+class FakeMission:
+    """Uploads are kept and read back as sent; ``start_mission`` is refused ``refusals`` times.
+
+    Each refusal moves ``monotonic`` on by one second, as a slow aircraft would.
+    """
+
+    def __init__(self, monotonic: "Monotonic", refusals: int, result: MissionResult) -> None:
+        self.monotonic = monotonic
+        self.refusals = refusals
+        self.result = result
+        self.starts = 0
+        self.plan: Any = None
+
+    async def set_return_to_launch_after_mission(self, enable: bool) -> None:
+        del enable
+
+    async def upload_mission(self, plan: Any) -> None:
+        self.plan = plan
+
+    async def download_mission(self) -> Any:
+        return self.plan
+
+    async def start_mission(self) -> None:
+        self.starts += 1
+        if self.starts <= self.refusals:
+            self.monotonic.now += 1.0
+            raise MissionError(self.result, "start_mission()")
+
+    async def subscribe_mission_progress(self) -> AsyncIterator[Any]:
+        await asyncio.Future()
+        yield
 
 
 def mode(name: str) -> Any:
@@ -333,3 +370,47 @@ async def test_a_mode_change_ends_the_goto(rig: Any) -> None:
     await settle()
 
     assert driver.sample().flight_mode is FlightMode.HOLD
+
+
+ROUTE = RouteMission("M1", (RoutePoint(47.399, 8.5456, 20.0), RoutePoint(47.400, 8.5456, 20.0)))
+
+
+@pytest.mark.parametrize(
+    ("refusals", "outcome", "starts"),
+    [
+        (0, Outcome.ACKED, 1),
+        (3, Outcome.ACKED, 4),  # PX4 still checking the new mission: started once it has
+        (100, Outcome.NACKED, int(MISSION_START_RETRY_S)),  # a real refusal, in the end
+    ],
+)
+async def test_a_mission_start_waits_for_the_aircraft_to_check_the_mission(
+    monkeypatch: pytest.MonkeyPatch, refusals: int, outcome: Outcome, starts: int
+) -> None:
+    monkeypatch.setattr(mavlink, "MISSION_START_RETRY_PERIOD_S", 0.0)
+    monotonic = Monotonic()
+    driver = MavlinkDriver("A1", 7, Airframe.MULTIROTOR_HEXA, FakeClock(), monotonic)
+    mission = FakeMission(monotonic, refusals, MissionResult.DENIED)
+    driver.bind(FakeTelemetry(), FakeAction(), mission)
+    try:
+        result = await driver.execute(DriverCommand(CommandKind.MISSION_START, route=ROUTE))
+    finally:
+        await driver.aclose()
+
+    assert result.outcome is outcome
+    assert mission.starts == starts
+    if outcome is Outcome.NACKED:
+        assert result.reason == "The aircraft refused the mission (DENIED)."
+
+
+async def test_other_mission_refusals_are_not_retried() -> None:
+    monotonic = Monotonic()
+    driver = MavlinkDriver("A1", 7, Airframe.MULTIROTOR_HEXA, FakeClock(), monotonic)
+    mission = FakeMission(monotonic, 1, MissionResult.NO_MISSION_AVAILABLE)
+    driver.bind(FakeTelemetry(), FakeAction(), mission)
+    try:
+        result = await driver.execute(DriverCommand(CommandKind.MISSION_START, route=ROUTE))
+    finally:
+        await driver.aclose()
+
+    assert result.outcome is Outcome.NACKED
+    assert mission.starts == 1

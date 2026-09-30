@@ -22,7 +22,7 @@ the development host and is checked in CI.
 | M2b Scale and swarm: SIH 25/50, NATS, ROS 2 bridge, mock video | **Done** (2026-09-30); swarm acceptance green, tracking verified to 25 in CI; **50 SIH deferred to M5/M6 field hardware** (user) |
 | M2c Gazebo tier: camera video, high-fidelity airframes | — |
 | M3 Console MVP | **Done** (2026-09-30); 7/7 E2E, 46–54 fps with 50 aircraft on this PC's GPU |
-| M4 Mission planning, patterns, bulk tasking, deconfliction, alerts | — |
+| M4 Mission planning, patterns, bulk tasking, deconfliction, alerts | **In progress**: backend built, SITL fixes; console to do |
 | M5 Video, roles, audit viewer, multi-operator, load tests | — |
 | M6 Hardening, degraded comms, packaging, runbooks, acceptance | — |
 
@@ -34,8 +34,8 @@ is several weeks of work and a review checkpoint in the middle lowers risk.
 1. ~~Before M2a: where PX4 SITL runs.~~ **Decided: CI only** (GitHub Actions; ADR 0023),
    on <https://github.com/Nxssim666/SAR-SWARM>. CI results are read from the public checks
    API (annotations); job logs and artifacts need a signed-in account.
-2. **Before M4:** the region(s) to prepare offline basemaps for, and whether a DEM is available
-   for contour search.
+2. **The field region(s).** Zurich (the simulator's site) and Kramatorsk are prepared, with
+   the Copernicus GLO-30 DEM for terrain (ADR 0030); confirm or change them.
 3. **Any time:** confirm or override the stack (ADRs 0004–0017) and assumptions A1–A11 (ADR 0002).
 
 ---
@@ -703,6 +703,58 @@ See ADR 0027.
 - Alert rule unit tests.
 - SITL integration: a lawnmower split across 3 mixed aircraft completes.
 - E2E: plan, assign to a group, monitor progress.
+
+**Progress** (2026-09-30): the backend half is built; the console half is not started.
+
+**Built: backend** (commit `dc6d5d8` on `exp/m4`; ADR 0028–0031)
+
+- [x] Region data (ADR 0030): `regions.json` (Zurich, Kramatorsk), offline basemaps per
+      region, Copernicus GLO-30 terrain and a pinned Sentinel-2 image
+      (`scripts/fetch_region.py`); `domain/terrain` (unknown heights stay unknown).
+- [x] `domain/patterns` (ADR 0028): parallel track, creeping line, expanding square, sector,
+      contour (DEM; perimeter rings as a labelled fallback), lane spacing from the camera
+      footprint, fixed-wing run-ins and turn-feasible lane order.
+- [x] `domain/split` and `domain/deconfliction` (ADR 0029): strips weighted by speed ×
+      endurance, altitude layers with a fixed-wing band, terrain clearance, sequenced
+      departures, exact 4D closest-approach check.
+- [x] `POST /missions/{id}/plan` (dry run or save), plan and progress endpoints.
+- [x] GCS mission start: upload, read-back, start (MAVLink driver, mock, loopback vehicle);
+      pause and resume; a 4D re-check at the start; issues need a supervisor's override.
+- [x] Bulk goto: each aircraft its own point and layer, 4D-checked, always confirmed.
+- [x] Progress, coverage, completion; route deviation (ADR 0028).
+- [x] Alerts (ADR 0031): return energy, geofence breach, one of two links lost, collision
+      risk, escalation. Points of interest and survivor sightings. WebSocket topics
+      `missions` and `pois`.
+- [x] Migration 0003; OpenAPI, AsyncAPI and console types regenerated.
+
+**Found in SITL, and fixed** (the first `sitl` run of `dc6d5d8` failed)
+
+- **PX4 refuses Mission mode right after an upload** while it checks the new mission
+  ("Switching to Mission is currently not available"). The driver started at once, so both
+  hexacopters' starts were nacked. It now retries while PX4 answers `DENIED`/`BUSY`, for up
+  to 5 s. Regression tests: the loopback vehicle refuses Mission mode for 0.5 s after an
+  upload, as PX4 does; driver unit tests cover retry, final refusal and no retry for other
+  refusals.
+- **The SIH airplane requires a landing pattern in every mission** (`MIS_TKO_LAND_REQ=2`)
+  and rejected its route. The station does not plan landings (ADR 0028), so the SITL
+  airplane is set to 0, and field airplanes need 0 or 1.
+- **The SIH airplane cannot fly a route** (it barely climbs; ADR 0023), so a mission that
+  includes it never completes. The SITL test is now two: a lawnmower split across three
+  multirotors (2 hexa, 1 quad) that must complete, and an airplane lawnmower that PX4 must
+  accept and start.
+- The SITL test waited 600 s before checking the start outcome; it now fails at once.
+
+**To do in M4**
+
+- [ ] Console: mission editor (waypoints, altitudes with their reference, speed, loiter),
+      search-area drawing and GeoJSON/GPX/KML import, pattern and split preview with the
+      deconfliction report, plan and start, progress and coverage overlay, POIs and
+      sightings on the map, alert escalation and audible cues.
+- [ ] E2E: plan, assign to a group, monitor progress.
+- [ ] Onboard avoidance during ground commands: verify in the swarm simulation that the
+      companion yields when PX4 leaves offboard (flagged and confirmed meanwhile).
+- [ ] Battery-drain and geofence-breach injection in SITL (moved from M2a).
+- [ ] Measure the mixed-fleet SITL run in CI.
 
 **Stop:** report, then wait.
 

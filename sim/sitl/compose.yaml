@@ -59,6 +59,11 @@ services:
       # (it taxis at ~6 m/s and never rotates; measured in CI, ADR 0023).
       PX4_PARAM_RWTO_TKOFF: "0"
       PX4_PARAM_FW_LAUN_DETCN_ON: "0"
+      # The airframe requires a landing pattern in every mission (MIS_TKO_LAND_REQ=2); GCS
+      # routes end with a return, not a landing pattern, so PX4 rejected them ("Landing
+      # waypoint/pattern required"). Field airplanes need 0 or 1 until the GCS plans
+      # landings (ADR 0028).
+      PX4_PARAM_MIS_TKO_LAND_REQ: "0"
   px4-4:
     <<: *px4
     command: ["-d", "-i", "4"]

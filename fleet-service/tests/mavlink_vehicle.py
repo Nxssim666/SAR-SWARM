@@ -93,6 +93,7 @@ class MavlinkVehicle:
         *,
         deny: frozenset[int] = frozenset(),
         silent: bool = False,
+        mission_validation_s: float = 0.0,
     ) -> None:
         self.system_id = system_id
         self.state = VehicleState(latitude, longitude)
@@ -101,6 +102,10 @@ class MavlinkVehicle:
         self.silent = silent  # never acknowledge flight commands
         self.received: list[int] = []  # MAV_CMD ids received, in order
         self.corrupt_download = False  # answer downloads with a shifted latitude (read-back test)
+        # PX4 checks a new mission after the upload's ack, and refuses Mission mode
+        # ("currently not available") until it has: this long, here.
+        self.mission_validation_s = mission_validation_s
+        self._mission_ready_at = 0.0
         self._upload: list[Any] | None = None  # items being uploaded
         self._upload_count = 0
         # A plain socket and pymavlink's codec: mavutil's "udpout" binds the destination
@@ -279,6 +284,7 @@ class MavlinkVehicle:
             else:
                 self.state.mission, self.state.mission_seq = self._upload, 0
                 self.state.hold_left, self._upload = None, None
+                self._mission_ready_at = time.monotonic() + self.mission_validation_s
                 m.mission_ack_send(source, 0, mav.MAV_MISSION_ACCEPTED, 0)
         elif kind == "MISSION_REQUEST_LIST":
             m.mission_count_send(source, 0, len(self.state.mission), 0)
@@ -329,12 +335,16 @@ class MavlinkVehicle:
         elif command == mav.MAV_CMD_MISSION_START:
             if not self.state.mission:
                 return int(mav.MAV_RESULT_DENIED)
+            if time.monotonic() < self._mission_ready_at:
+                return int(mav.MAV_RESULT_TEMPORARILY_REJECTED)
             self._set_mode("mission")
         elif command == mav.MAV_CMD_DO_SET_MODE:  # how MAVSDK asks PX4 for hold and return
             wanted = (int(message.param2), int(message.param3))
             name = next((n for n, m in MODES.items() if m == wanted), None)
             if name is None:
                 return int(mav.MAV_RESULT_UNSUPPORTED)
+            if name == "mission" and time.monotonic() < self._mission_ready_at:
+                return int(mav.MAV_RESULT_TEMPORARILY_REJECTED)  # as PX4's commander answers
             self._set_mode(name)
         elif command == mav.MAV_CMD_DO_REPOSITION:
             latitude = message.x / 1e7 if is_int else message.param5

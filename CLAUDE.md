@@ -214,7 +214,7 @@ separate and simulates the swarm_sar companions.
 | M2b SIH 25/50, NATS, ROS 2 bridge, mock video | Done (swarm acceptance green; tracking to 25 in CI; 50 SIH deferred to M5/M6) |
 | M2c Gazebo tier, camera video | — |
 | M3 Console MVP | Done (7/7 E2E; 46–54 fps with 50 aircraft on a GPU) |
-| M4 Mission planning, patterns, deconfliction, alerts | — |
+| M4 Mission planning, patterns, deconfliction, alerts | In progress (backend built; console to do) |
 | M5 Video, roles, audit viewer, multi-operator, load | — |
 | M6 Hardening, packaging, runbooks, acceptance | — |
 

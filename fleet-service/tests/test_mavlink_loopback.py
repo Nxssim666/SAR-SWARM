@@ -265,3 +265,25 @@ async def test_a_mission_that_reads_back_differently_is_not_started(
     assert target["state"] == "nacked"
     assert "read-back mismatch" in target["reason"]
     assert mode != "mission"
+
+
+async def test_a_mission_is_started_once_the_aircraft_has_checked_it(
+    station: Station, port: int
+) -> None:
+    # Found in SITL: PX4 validates a new mission after acknowledging the upload and refuses
+    # Mission mode until then, so a start sent right after the read-back was nacked.
+    hexa = await station.register("HX-1", **link(port, 63))
+    await station.take(hexa)
+
+    with MavlinkVehicle(port, 63, mission_validation_s=0.5) as vehicle:
+        await station.wait_for(hexa, heard, LINK_TIMEOUT_S, "a fix")
+        for kind, params in (("arm", {}), ("takeoff", {"altitude_relative_m": 10.0})):
+            await station.settled(await station.command(kind, [hexa], **params), FLIGHT_TIMEOUT_S)
+        mission_id = await _planned_search(station, hexa)
+
+        outcome = await station.command("mission_start", [hexa], mission_id=mission_id)
+        states = await station.settled(outcome, FLIGHT_TIMEOUT_S)
+        mode = vehicle.state.mode
+
+    assert states == {hexa: "verified"}, await station.reasons(outcome)
+    assert mode == "mission"
