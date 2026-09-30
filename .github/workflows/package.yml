@@ -186,6 +186,7 @@ jobs:
           if ($code -ne 1) { throw "expected exit code 1, got $code" }
           if ($output -notmatch 'port 8003') { throw 'no clear message about the port' }
           Write-Host 'port-in-use smoke test passed'
+          exit 0  # the step would otherwise end with the exe's (expected) exit code 1
       - uses: actions/upload-artifact@v5
         with:
           name: ${{ steps.zip.outputs.name }}
