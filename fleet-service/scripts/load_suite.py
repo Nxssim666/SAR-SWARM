@@ -115,7 +115,9 @@ class ProcessMeter:
     def __init__(self, pid: int) -> None:
         self.pid = pid
         self.available = Path(f"/proc/{pid}/stat").exists()
-        self._ticks = os.sysconf("SC_CLK_TCK") if self.available else 100
+        self._ticks = 100
+        if sys.platform != "win32" and self.available:  # sysconf is POSIX-only (mypy on Windows)
+            self._ticks = os.sysconf("SC_CLK_TCK")
         self.rss_peak_mb = 0.0
 
     def cpu_seconds(self) -> float:
