@@ -489,7 +489,8 @@
           "video_down",
           "survivor_sighting",
           "return_energy",
-          "link_partial"
+          "link_partial",
+          "disk_low"
         ],
         "title": "AlertKind",
         "type": "string"

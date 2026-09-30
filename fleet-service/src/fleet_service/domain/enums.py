@@ -150,6 +150,7 @@ class AlertKind(StrEnum):
     SURVIVOR_SIGHTING = "survivor_sighting"  # a drone reports a possible survivor (M4)
     RETURN_ENERGY = "return_energy"  # the battery barely covers the way home (M4)
     LINK_PARTIAL = "link_partial"  # one of an aircraft's two links is lost (M4)
+    DISK_LOW = "disk_low"  # the station's data disk is filling up (M6)
 
 
 class AlertSeverity(StrEnum):

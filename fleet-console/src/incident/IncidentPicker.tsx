@@ -1,10 +1,12 @@
 // Which incident the console works on (top bar). Supervisors can open a new one, based where
-// the map is centred; the fleet service checks the base, radius and permission.
+// the map is centred; the fleet service checks the base, radius and permission. Those who
+// read the audit trail can export the incident's bundle (M6).
 import * as Dialog from '@radix-ui/react-dialog';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
 import { api, ProblemError } from '../api/client';
+import { download } from '../api/download';
 import type { IncidentCreate, IncidentOut } from '../api/types';
 import { formatCoord } from '../map/coords';
 import { useMapState } from '../map/mapState';
@@ -18,6 +20,8 @@ export function IncidentPicker() {
   const incidentId = useIncident((s) => s.incidentId);
   const setIncident = useIncident((s) => s.setIncident);
   const [creating, setCreating] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const token = session?.token ?? null;
   const items = incidents.data?.items ?? [];
 
   // One open incident is the usual case: pick it; forget a choice that has closed.
@@ -47,6 +51,25 @@ export function IncidentPicker() {
           ))}
         </select>
       </label>
+      {incidentId && can(session, 'audit.read') && (
+        <button
+          type="button"
+          title="Everything about this incident in a zip: areas, missions, POIs, alerts, commands, audit trail, telemetry"
+          onClick={() => {
+            setExportError(null);
+            void download(`/incidents/${incidentId}/export`, token, 'incident.zip').then(
+              setExportError,
+            );
+          }}
+        >
+          Export
+        </button>
+      )}
+      {exportError && (
+        <span role="alert" className="error">
+          {exportError}
+        </span>
+      )}
       {can(session, 'incidents.manage') && (
         <button
           type="button"

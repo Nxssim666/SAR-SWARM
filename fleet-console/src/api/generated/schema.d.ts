@@ -346,6 +346,28 @@ export interface paths {
         patch: operations["update_incident_api_v1_incidents__incident_id__patch"];
         trace?: never;
     };
+    "/api/v1/incidents/{incident_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Incident
+         * @description Everything about one incident in a zip (M6): areas, missions, POIs, alerts, commands,
+         *     the audit events of its span with the chain's verification, and the telemetry of the
+         *     aircraft involved; a manifest lists each file's SHA-256. The export is audited.
+         */
+        get: operations["export_incident_api_v1_incidents__incident_id__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search-areas": {
         parameters: {
             query?: never;
@@ -822,6 +844,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/aircraft/{aircraft_id}/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preflight Report
+         * @description The last preflight check of an aircraft's failsafe parameters (arm and takeoff run
+         *     one when theirs is older than a few minutes).
+         */
+        get: operations["preflight_report_api_v1_aircraft__aircraft_id__preflight_get"];
+        put?: never;
+        /**
+         * Run Preflight
+         * @description Read the aircraft's failsafe parameters now and check them (may take seconds).
+         */
+        post: operations["run_preflight_api_v1_aircraft__aircraft_id__preflight_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/simulation/aircraft/{aircraft_id}/faults": {
         parameters: {
             query?: never;
@@ -1063,7 +1110,8 @@ export interface paths {
         };
         /**
          * Verify Audit Chain
-         * @description Re-walk the whole chain: the first inconsistency, or the head if intact.
+         * @description Re-walk the whole chain: the first inconsistency, or the head if intact. The heads
+         *     exported outside the database must all still be in it (truncation, M6).
          */
         get: operations["verify_audit_chain_api_v1_audit_verify_get"];
         put?: never;
@@ -1228,7 +1276,7 @@ export interface components {
          * @description What an alert is about (engine from M1b/M4).
          * @enum {string}
          */
-        AlertKind: "link_stale" | "link_lost" | "battery_low" | "battery_critical" | "gps_lost" | "geofence_breach" | "mission_complete" | "route_deviation" | "deconfliction_risk" | "command_timeout" | "command_unverified" | "control_orphaned" | "video_down" | "survivor_sighting" | "return_energy" | "link_partial";
+        AlertKind: "link_stale" | "link_lost" | "battery_low" | "battery_critical" | "gps_lost" | "geofence_breach" | "mission_complete" | "route_deviation" | "deconfliction_risk" | "command_timeout" | "command_unverified" | "control_orphaned" | "video_down" | "survivor_sighting" | "return_energy" | "link_partial" | "disk_low";
         /**
          * AlertPage
          * @description A page of alerts, newest first.
@@ -1377,6 +1425,11 @@ export interface components {
             /** Reason */
             reason: string | null;
             /**
+             * Exported Heads
+             * @description Heads recorded outside the database (M6); each was found in the chain unless ``reason`` says otherwise.
+             */
+            exported_heads: number;
+            /**
              * Verified At
              * Format: date-time
              */
@@ -1508,6 +1561,11 @@ export interface components {
              * @default []
              */
             conflicts: string[];
+            /**
+             * Preflight
+             * @default []
+             */
+            preflight: string[];
         };
         /**
          * ControlAssignment
@@ -1566,6 +1624,13 @@ export interface components {
             gps?: boolean | null;
             /** Battery Pct */
             battery_pct?: number | null;
+            /**
+             * Parameters
+             * @description Autopilot parameters to set (the preflight parameters only), e.g. {"NAV_DLL_ACT": 0} for an aircraft that would do nothing on link loss.
+             */
+            parameters?: {
+                [key: string]: number;
+            } | null;
         };
         /**
          * FieldError
@@ -2584,6 +2649,51 @@ export interface components {
                 number,
                 number
             ][][];
+        };
+        /**
+         * PreflightFindingView
+         * @description One problem with an aircraft's failsafe configuration.
+         */
+        PreflightFindingView: {
+            /** Parameter */
+            parameter: string;
+            /** Value */
+            value: number | null;
+            /**
+             * Severity
+             * @description block: arm and takeoff are refused (a supervisor may override); warn: shown.
+             * @enum {string}
+             */
+            severity: "block" | "warn";
+            /** Message */
+            message: string;
+        };
+        /**
+         * PreflightReportView
+         * @description An aircraft's failsafe parameters and the station's findings (M6, ADR 0035).
+         */
+        PreflightReportView: {
+            /** Aircraft Id */
+            aircraft_id: string;
+            /**
+             * Checked At
+             * @description None: never checked.
+             */
+            checked_at: string | null;
+            /**
+             * Values
+             * @description None: could not be read.
+             */
+            values: {
+                [key: string]: number | null;
+            };
+            /** Findings */
+            findings: components["schemas"]["PreflightFindingView"][];
+            /**
+             * Ready
+             * @description Checked, and nothing blocks arm and takeoff.
+             */
+            ready: boolean;
         };
         /**
          * PresenceList
@@ -5112,6 +5222,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IncidentOut"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    export_incident_api_v1_incidents__incident_id__export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                incident_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The bundle. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": unknown;
                 };
             };
             /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
@@ -8104,6 +8290,158 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TelemetryHistory"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    preflight_report_api_v1_aircraft__aircraft_id__preflight_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                aircraft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreflightReportView"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    run_preflight_api_v1_aircraft__aircraft_id__preflight_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                aircraft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreflightReportView"];
                 };
             };
             /** @description The request body could not be parsed (not valid JSON or not UTF-8). */

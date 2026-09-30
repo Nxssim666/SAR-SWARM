@@ -1,8 +1,8 @@
-"""Live fleet state, telemetry history, operator presence, and fault injection in simulation
-mode."""
+"""Live fleet state, telemetry history, operator presence, preflight checks, and fault
+injection in simulation mode."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query, Request
 from pydantic import AwareDatetime, BaseModel, Field, model_validator
@@ -15,9 +15,11 @@ from fleet_service.db.models import TelemetrySample as TelemetryRow
 from fleet_service.db.models import User
 from fleet_service.domain.enums import FlightMode, GpsFix, Role
 from fleet_service.domain.geo import GeoPoint
+from fleet_service.domain.preflight import PREFLIGHT_PARAMETERS
 from fleet_service.drivers.mock import MockDriver
 from fleet_service.errors import Conflict, NotFound, problem_responses
 from fleet_service.services import audit
+from fleet_service.services.preflight import PreflightReport
 from fleet_service.services.views import AircraftLive, FleetState, UserRef
 
 router = APIRouter(tags=["live"], responses=problem_responses(400, 401, 403, 404, 409, 422))
@@ -95,12 +97,65 @@ class FaultInjection(InputModel):
     battery_pct: (
         Annotated[float, Field(strict=True, allow_inf_nan=False, ge=0.0, le=100.0)] | None
     ) = None
+    parameters: dict[str, Annotated[float, Field(allow_inf_nan=False)]] | None = Field(
+        default=None,
+        description="Autopilot parameters to set (the preflight parameters only), e.g. "
+        '{"NAV_DLL_ACT": 0} for an aircraft that would do nothing on link loss.',
+    )
 
     @model_validator(mode="after")
     def _something(self) -> "FaultInjection":
-        if self.link is None and self.gps is None and self.battery_pct is None:
-            raise ValueError("inject at least one fault: link, gps or battery_pct")
+        if (
+            self.link is None
+            and self.gps is None
+            and self.battery_pct is None
+            and not self.parameters
+        ):
+            raise ValueError("inject at least one fault: link, gps, battery_pct or parameters")
+        unknown = set(self.parameters or {}) - set(PREFLIGHT_PARAMETERS)
+        if unknown:
+            raise ValueError(f"not a preflight parameter: {', '.join(sorted(unknown))}")
         return self
+
+
+class PreflightFindingView(BaseModel):
+    """One problem with an aircraft's failsafe configuration."""
+
+    parameter: str
+    value: float | None
+    severity: Literal["block", "warn"] = Field(
+        description="block: arm and takeoff are refused (a supervisor may override); warn: shown."
+    )
+    message: str
+
+
+class PreflightReportView(BaseModel):
+    """An aircraft's failsafe parameters and the station's findings (M6, ADR 0035)."""
+
+    aircraft_id: str
+    checked_at: AwareDatetime | None = Field(description="None: never checked.")
+    values: dict[str, float | None] = Field(description="None: could not be read.")
+    findings: list[PreflightFindingView]
+    ready: bool = Field(description="Checked, and nothing blocks arm and takeoff.")
+
+
+def _preflight_view(aircraft_id: str, report: PreflightReport | None) -> PreflightReportView:
+    if report is None:
+        return PreflightReportView(
+            aircraft_id=aircraft_id, checked_at=None, values={}, findings=[], ready=False
+        )
+    return PreflightReportView(
+        aircraft_id=aircraft_id,
+        checked_at=report.checked_at,
+        values=report.values,
+        findings=[
+            PreflightFindingView(
+                parameter=f.parameter, value=f.value, severity=f.severity.value, message=f.message
+            )
+            for f in report.findings
+        ],
+        ready=not report.blocking,
+    )
 
 
 @router.get("/fleet/state", **requires(Permission.FLEET_VIEW))
@@ -162,6 +217,45 @@ def _point(row: TelemetryRow) -> TelemetryPoint:
     )
 
 
+@router.get("/aircraft/{aircraft_id}/preflight", **requires(Permission.FLEET_VIEW))
+async def preflight_report(aircraft_id: str, context: Context) -> PreflightReportView:
+    """The last preflight check of an aircraft's failsafe parameters (arm and takeoff run
+    one when theirs is older than a few minutes)."""
+    runtime = context.runtime()
+    if runtime.registry.get(aircraft_id) is None:
+        raise NotFound(f"Aircraft {aircraft_id} does not exist.")
+    return _preflight_view(aircraft_id, runtime.preflight.last(aircraft_id))
+
+
+@router.post("/aircraft/{aircraft_id}/preflight", **requires(Permission.AIRCRAFT_COMMAND))
+async def run_preflight(
+    aircraft_id: str,
+    request: Request,
+    db: DbSession,
+    context: Context,
+    principal: CurrentPrincipal,
+) -> PreflightReportView:
+    """Read the aircraft's failsafe parameters now and check them (may take seconds)."""
+    runtime = context.runtime()
+    if runtime.registry.get(aircraft_id) is None:
+        raise NotFound(f"Aircraft {aircraft_id} does not exist.")
+    report = await runtime.preflight.report(aircraft_id, fresh=True)  # no session held
+    await audit.record(
+        db,
+        actor(request, principal),
+        context.clock.now(),
+        "aircraft.preflight",
+        entity_type="aircraft",
+        entity_id=aircraft_id,
+        details={
+            "blocking": [f.parameter for f in report.blocking],
+            "warnings": [f.parameter for f in report.warnings],
+        },
+    )
+    await db.commit()
+    return _preflight_view(aircraft_id, report)
+
+
 @router.post("/simulation/aircraft/{aircraft_id}/faults", **requires(Permission.FLEET_MANAGE))
 async def inject_fault(
     aircraft_id: str,
@@ -181,7 +275,11 @@ async def inject_fault(
     driver = record.driver
     if not isinstance(driver, MockDriver):  # pragma: no cover - simulation backs every aircraft
         raise Conflict("This aircraft is not simulated.", slug="simulation-disabled")
-    driver.inject(link=body.link, gps=body.gps, battery_pct=body.battery_pct)
+    driver.inject(
+        link=body.link, gps=body.gps, battery_pct=body.battery_pct, parameters=body.parameters
+    )
+    if body.parameters:
+        runtime.preflight.forget(aircraft_id)
     await audit.record(
         db,
         actor(request, principal),

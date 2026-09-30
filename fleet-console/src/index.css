@@ -1002,3 +1002,23 @@ input.narrow {
 .ok-text {
   color: var(--ok);
 }
+
+/* Preflight checks (M6) */
+.preflight h3 {
+  font-size: 0.9rem;
+  margin: 0.8rem 0 0.3rem;
+}
+.preflight h3 .ok {
+  color: var(--ok, #3fb950);
+  font-weight: normal;
+}
+.preflight h3 .warning {
+  color: var(--warning);
+  font-weight: normal;
+}
+.preflight li[data-severity='block'] {
+  color: var(--danger);
+}
+.preflight li[data-severity='warn'] {
+  color: var(--warning);
+}

@@ -34,6 +34,7 @@ from pydantic import BaseModel, ValidationError
 from fleet_service.clock import Clock
 from fleet_service.domain.commands import SWARM_COMMANDS, route_command
 from fleet_service.domain.enums import CommandKind, FlightMode, LinkSource, SwarmFault
+from fleet_service.domain.preflight import ParameterType
 from fleet_service.domain.telemetry import (
     SurvivorSighting,
     SwarmState,
@@ -44,6 +45,7 @@ from fleet_service.drivers.base import (
     AreaMission,
     CommandResult,
     DriverCommand,
+    ParameterReader,
     TelemetrySink,
     VehicleDriver,
 )
@@ -464,6 +466,12 @@ class LinkedDriver:
         )
         if merged is not None and self._sink is not None:
             self._sink(merged)
+
+    async def read_parameters(self, names: dict[str, ParameterType]) -> dict[str, float | None]:
+        """The autopilot's parameters, over MAVLink (the companion has none to read)."""
+        if isinstance(self.mavlink, ParameterReader):
+            return await self.mavlink.read_parameters(names)
+        return dict.fromkeys(names)
 
     async def execute(self, command: DriverCommand) -> CommandResult:
         """Send ``command`` over the link ``route_command`` picks (ADR 0025)."""

@@ -52,6 +52,7 @@ export type PoiCreate = Schemas['PoiCreate'];
 export type PoiPage = Schemas['PoiPage'];
 export type PoiKind = Schemas['PoiKind'];
 export type PoiStatus = Schemas['PoiStatus'];
+export type PreflightReportView = Schemas['PreflightReportView'];
 
 /** Commands the console sends (the discriminated request bodies of POST /commands). */
 export type CommandRequest =

@@ -69,6 +69,8 @@ CONDITION_KINDS = frozenset(
         AlertKind.RETURN_ENERGY,
         AlertKind.LINK_PARTIAL,
         AlertKind.DECONFLICTION_RISK,
+        AlertKind.VIDEO_DOWN,
+        AlertKind.DISK_LOW,
     }
 )
 GEOFENCE_REFRESH = timedelta(seconds=5)

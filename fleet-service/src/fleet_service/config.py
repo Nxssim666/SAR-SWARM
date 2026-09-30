@@ -125,6 +125,35 @@ class Settings(BaseSettings):
     )
     min_takeoff_battery_pct: float = Field(default=40.0, ge=0.0, le=100.0)
 
+    # --- preflight checks of the aircraft's own failsafes (M6, ADR 0035) ---
+    preflight_max_link_loss_s: float = Field(
+        default=30.0,
+        gt=0.0,
+        le=600.0,
+        description="The aircraft must act on link loss within this (COM_DL_LOSS_T), else warn.",
+    )
+    preflight_min_return_altitude_m: float = Field(
+        default=30.0,
+        ge=0.0,
+        le=1500.0,
+        description="A return altitude (RTL_RETURN_ALT) below this warns: obstacles.",
+    )
+    preflight_min_critical_battery_pct: float = Field(
+        default=7.0,
+        ge=0.0,
+        le=100.0,
+        description="The aircraft's critical battery level (BAT_CRIT_THR) below this warns.",
+    )
+    preflight_timeout_s: float = Field(
+        default=10.0, ge=1.0, le=120.0, description="How long reading the parameters may take."
+    )
+    preflight_max_age_s: float = Field(
+        default=300.0,
+        ge=0.0,
+        le=86_400.0,
+        description="A preflight report is reused for this long (an arm, then a takeoff).",
+    )
+
     # --- mission planning and deconfliction (ADR 0028, ADR 0029, ADR 0030) ---
     terrain_dir: Path | None = Field(
         default=None,
@@ -179,9 +208,33 @@ class Settings(BaseSettings):
         default=90, ge=0, le=36_500, description="Finished commands older than this are purged."
     )
 
+    # --- station health and the audit trail's safeguards (M6) ---
+    disk_warn_free_mb: int = Field(
+        default=2048, ge=0, description="Less free space on the data disk raises disk_low."
+    )
+    disk_critical_free_mb: int = Field(
+        default=512,
+        ge=0,
+        description="Below this, disk_low turns critical and telemetry history pauses; the "
+        "operational database and the audit trail keep writing.",
+    )
+    audit_head_file: Path | None = Field(
+        default=None,
+        description="Where the audit chain's head is appended (default "
+        "<data_dir>/audit-heads.jsonl); ideally other media, e.g. a USB stick.",
+    )
+    audit_head_interval_s: float = Field(default=300.0, ge=10.0, le=86_400.0)
+
     # --- telemetry history and WebSocket ---
     telemetry_record_interval_s: float = Field(default=1.0, ge=0.1, le=60.0)
     ws_idle_timeout_s: float = Field(default=30.0, ge=5.0, le=600.0)
+
+    @property
+    def audit_heads_path(self) -> Path:
+        """Where audit chain heads are appended."""
+        if self.audit_head_file is not None:
+            return self.audit_head_file
+        return self.data_dir / "audit-heads.jsonl"
 
     @property
     def terrain_directory(self) -> Path:

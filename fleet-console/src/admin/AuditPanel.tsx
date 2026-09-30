@@ -5,6 +5,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { api, ProblemError } from '../api/client';
+import { download } from '../api/download';
 import { useSession } from '../session/session';
 import { auditQuery, type AuditFilterForm, EMPTY_FILTERS, summarize } from './auditFilters';
 
@@ -56,23 +57,9 @@ export function AuditPanel() {
 
   const exportAs = async (format: 'csv' | 'jsonl') => {
     setError(null);
-    const response = await fetch(`/api/v1/audit/export?${auditQuery(applied, { format })}`, {
-      headers: { Authorization: `Bearer ${token ?? ''}` },
-      cache: 'no-store',
-    });
-    if (!response.ok) {
-      setError(`The export failed (HTTP ${String(response.status)}).`);
-      return;
-    }
-    const name =
-      /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') ?? '')?.[1] ??
-      `audit.${format}`;
-    const url = URL.createObjectURL(await response.blob());
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = name;
-    link.click();
-    URL.revokeObjectURL(url);
+    setError(
+      await download(`/audit/export?${auditQuery(applied, { format })}`, token, `audit.${format}`),
+    );
   };
 
   const set = (change: Partial<AuditFilterForm>) => {

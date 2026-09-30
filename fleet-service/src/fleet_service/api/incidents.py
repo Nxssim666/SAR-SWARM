@@ -3,9 +3,10 @@ Incidents: the scope of search areas, geofences and missions, with an operating 
 (a radius around the base) that every geometry must fit in (ADR 0014).
 """
 
+import asyncio
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from pydantic import AwareDatetime, Field
 from sqlalchemy import func, select
 
@@ -30,7 +31,7 @@ from fleet_service.domain.enums import INCIDENT_TRANSITIONS, IncidentStatus
 from fleet_service.domain.geo import GeoPoint, PolygonGeoJSON, outside_operating_area
 from fleet_service.errors import Conflict, problem_responses
 from fleet_service.ids import new_id
-from fleet_service.services import audit
+from fleet_service.services import audit, incident_export
 
 router = APIRouter(
     prefix="/incidents",
@@ -190,6 +191,52 @@ async def create_incident(
 async def get_incident(incident_id: str, db: DbSession) -> IncidentOut:
     """One incident."""
     return IncidentOut.of(await get_or_404(db, Incident, incident_id, "Incident"))
+
+
+@router.get(
+    "/{incident_id}/export",
+    response_class=Response,
+    responses={200: {"content": {"application/zip": {}}, "description": "The bundle."}},
+    **requires(Permission.AUDIT_READ),
+)
+async def export_incident(
+    incident_id: str,
+    request: Request,
+    db: DbSession,
+    context: Context,
+    principal: CurrentPrincipal,
+) -> Response:
+    """Everything about one incident in a zip (M6): areas, missions, POIs, alerts, commands,
+    the audit events of its span with the chain's verification, and the telemetry of the
+    aircraft involved; a manifest lists each file's SHA-256. The export is audited."""
+    incident = await get_or_404(db, Incident, incident_id, "Incident")
+    now = context.clock.now()
+    station = context.settings.station_name
+    await audit.record(
+        db,
+        actor(request, principal),
+        now,
+        "incident.export",
+        entity_type="incident",
+        entity_id=incident_id,
+    )
+    await db.commit()  # the export event is in the bundle's own audit trail
+    files, aircraft, start, end = await incident_export.collect_ops(db, incident, now, station)
+    await db.commit()  # end the read transaction before the telemetry database is read
+    async with context.database().telemetry_session() as telemetry:
+        files["telemetry.csv"] = await incident_export.collect_telemetry(
+            telemetry, aircraft, start, end
+        )
+    bundle = incident_export.Bundle(incident_id, files, start, end, aircraft)
+    data = await asyncio.to_thread(incident_export.build_zip, bundle, now, station)
+    stamp = now.strftime("%Y%m%dT%H%M%SZ")
+    return Response(
+        content=data,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="incident-{incident_id}-{stamp}.zip"'
+        },
+    )
 
 
 @router.patch("/{incident_id}", **requires(Permission.INCIDENTS_MANAGE))

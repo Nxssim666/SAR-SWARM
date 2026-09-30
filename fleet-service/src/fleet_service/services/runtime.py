@@ -10,7 +10,12 @@ Three periodic activities:
 * video relay polling (M5, when ``mediamtx_api_url`` is set): stream health and
   ``video_down`` alerts (``services.video``);
 * data retention (M5), every six hours: old telemetry, cleared alerts and finished
-  commands are purged (``services.retention``).
+  commands are purged (``services.retention``);
+* the audit chain's head, appended to a file outside the database every few minutes, so
+  truncation is detectable (M6, ``services.audit_heads``).
+
+Evaluation also watches the data disk (M6, ``services.station_health``): ``disk_low``, and
+telemetry history pauses when space is critical.
 
 In production they run as asyncio tasks. Tests create the app with ``start_loops=False``
 and call ``step_simulation``/``evaluate``/``record`` themselves with a fake clock, so
@@ -35,10 +40,12 @@ from fleet_service.db.models import VideoStream
 from fleet_service.domain.commands import Limits
 from fleet_service.domain.deconfliction import Separation
 from fleet_service.domain.geo import GeoPoint
+from fleet_service.domain.preflight import PreflightPolicy
 from fleet_service.domain.terrain import TerrainSet
 from fleet_service.drivers.mavlink import MavlinkLinks
 from fleet_service.drivers.mock import MockFleet
 from fleet_service.drivers.swarm import SwarmLink
+from fleet_service.services import audit_heads
 from fleet_service.services.alerts import AlertService, AlertTuning
 from fleet_service.services.audit import Actor
 from fleet_service.services.commands import CommandService
@@ -46,8 +53,14 @@ from fleet_service.services.fleet import FleetManager, FleetRegistry
 from fleet_service.services.leases import LeaseService, Presence
 from fleet_service.services.missions import MissionService
 from fleet_service.services.pois import PoiService
+from fleet_service.services.preflight import PreflightService
 from fleet_service.services.recorder import TelemetryRecorder
 from fleet_service.services.retention import PurgeReport, RetentionPolicy, purge
+from fleet_service.services.station_health import (
+    disk_condition,
+    free_bytes,
+    recording_allowed,
+)
 from fleet_service.services.video import RelayConfig, StreamInfo, VideoMonitor, mediamtx_fetch
 
 log = logging.getLogger(__name__)
@@ -122,6 +135,13 @@ class Runtime:
             ),
         )
         self.separation = separation_of(settings)
+        self.preflight = PreflightService(
+            self.registry,
+            preflight_policy(settings),
+            clock,
+            timeout_s=settings.preflight_timeout_s,
+            max_age=timedelta(seconds=settings.preflight_max_age_s),
+        )
         self.commands = CommandService(
             bus=self.bus,
             clock=clock,
@@ -144,6 +164,7 @@ class Runtime:
             separation=self.separation,
             goto_spread_m=settings.goto_spread_m,
             mission_timeout_s=settings.mission_upload_timeout_s,
+            preflight=self.preflight,
         )
         self.recorder = TelemetryRecorder(self.bus, self.registry)
         self.pois = PoiService(self.bus, self.alerts)
@@ -157,6 +178,9 @@ class Runtime:
             if settings.mediamtx_api_url
             else None
         )
+        # Free space on the data disk; tests replace it.
+        self.free_bytes: Callable[[], int | None] = lambda: free_bytes(settings.data_dir)
+        self._recording_paused = False
         self._tasks: list[asyncio.Task[None]] = []
 
     async def start(self, start_loops: bool) -> None:
@@ -171,12 +195,16 @@ class Runtime:
             await self.fleet.load(db)
             await self.leases.load(db, self.clock.now())
             await self.alerts.load(db)
+            interrupted = await self.commands.load(db, self.clock.now())
+            if interrupted:
+                log.warning("%d command(s) interrupted by the restart; not re-sent", interrupted)
         if start_loops:
             if self.simulator is not None:
                 self._spawn("simulation", SIMULATION_STEP_S, self._simulation_tick)
             self._spawn("evaluation", EVALUATION_PERIOD_S, self.evaluate)
             self._spawn("recorder", self.settings.telemetry_record_interval_s, self.record)
             self._spawn("retention", RETENTION_PERIOD_S, self._retention_tick)
+            self._spawn("audit-head", self.settings.audit_head_interval_s, self.export_audit_head)
             if self.video is not None:
                 self._spawn("video", self.settings.video_poll_interval_s, self.poll_video)
 
@@ -211,20 +239,42 @@ class Runtime:
             await self.leases.evaluate(db, now)
             await self.missions.evaluate(db, now)
             video = self.video.conditions(now) if self.video is not None else []
+            disk = disk_condition(
+                self.free_bytes(),
+                self.settings.disk_warn_free_mb,
+                self.settings.disk_critical_free_mb,
+            )
             await self.alerts.evaluate(
                 db,
                 now,
                 self.registry,
                 self.leases.orphaned(),
-                [*self.missions.deviations(), *video],
+                [*self.missions.deviations(), *video, *([disk] if disk else [])],
             )
             await self.commands.evaluate(db, now)
             await self.pois.evaluate(db, now, self.registry)
 
     async def record(self) -> None:
-        """Write the newest telemetry to the history."""
+        """Write the newest telemetry to the history, unless the disk is nearly full."""
+        allowed = recording_allowed(self.free_bytes(), self.settings.disk_critical_free_mb)
+        if allowed == self._recording_paused:
+            self._recording_paused = not allowed
+            log.warning("telemetry history %s", "resumed" if allowed else "paused: disk full")
+        if not allowed:
+            self.recorder.skip()
+            return
         async with self.database.telemetry_session() as db:
             await self.recorder.flush(db)
+
+    async def export_audit_head(self) -> bool:
+        """Append the audit chain's head to the head file (a short session, then the file)."""
+        async with self.database.ops_session() as db:
+            head = await audit_heads.current_head(db)
+        if head is None:
+            return False
+        return await asyncio.to_thread(
+            audit_heads.append_head, self.settings.audit_heads_path, head, self.clock.now()
+        )
 
     async def purge(self, *, dry_run: bool = False) -> PurgeReport:
         """Apply the retention policy (short sessions of its own)."""
@@ -262,7 +312,7 @@ class Runtime:
     async def _simulation_tick(self) -> None:
         self.step_simulation(SIMULATION_STEP_S)
 
-    def _spawn(self, name: str, period_s: float, work: Callable[[], Awaitable[None]]) -> None:
+    def _spawn(self, name: str, period_s: float, work: Callable[[], Awaitable[object]]) -> None:
         async def loop() -> None:
             while True:
                 try:
@@ -272,6 +322,16 @@ class Runtime:
                 await asyncio.sleep(period_s)
 
         self._tasks.append(asyncio.create_task(loop(), name=f"runtime-{name}"))
+
+
+def preflight_policy(settings: Settings) -> PreflightPolicy:
+    """The preflight settings."""
+    return PreflightPolicy(
+        max_link_loss_s=settings.preflight_max_link_loss_s,
+        max_altitude_relative_m=settings.max_altitude_relative_m,
+        min_return_altitude_m=settings.preflight_min_return_altitude_m,
+        min_critical_battery_pct=settings.preflight_min_critical_battery_pct,
+    )
 
 
 def retention_policy(settings: Settings) -> RetentionPolicy:

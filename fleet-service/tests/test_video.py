@@ -6,7 +6,9 @@ from datetime import timedelta
 import httpx
 import pytest
 
-from fleet_service.domain.enums import AlertKind, Role
+from fleet_service.context import AppContext
+from fleet_service.domain.enums import AlertKind, AlertSeverity, Role
+from fleet_service.services.alerts import Condition
 from fleet_service.services.video import (
     RelayChange,
     RelayPath,
@@ -222,3 +224,21 @@ def test_the_relay_is_told_where_each_enabled_stream_comes_from() -> None:
         RelayChange("replace", "p-moved", cam),
         RelayChange("delete", "p-off"),
     ]
+
+
+async def test_video_down_clears_when_the_stream_is_back(
+    context: AppContext, clock: FakeClock
+) -> None:
+    """A bug found in M6: video_down was not a condition kind, so it never cleared."""
+    runtime = context.runtime()
+    down = Condition(AlertKind.VIDEO_DOWN, AlertSeverity.WARNING, None, "no video", "s1")
+
+    async with context.database().ops_session() as db:
+        await runtime.alerts.evaluate(db, clock.now(), runtime.registry, [], [down])
+        raised = {a.kind for a in runtime.alerts.open_alerts()}
+        clock.advance(seconds=10)
+        await runtime.alerts.evaluate(db, clock.now(), runtime.registry, [], [])
+        after = {a.kind for a in runtime.alerts.open_alerts()}
+
+    assert AlertKind.VIDEO_DOWN in raised
+    assert AlertKind.VIDEO_DOWN not in after

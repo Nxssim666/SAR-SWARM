@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -67,6 +68,23 @@ async def test_allow_header_lists_every_method_of_the_resource(client: httpx.Asy
 
     assert response.status_code == 405
     assert response.headers["allow"] == "GET, POST"
+
+
+async def test_api_docs_are_served_offline_without_inline_script(
+    client: httpx.AsyncClient,
+) -> None:
+    """M6: Swagger UI from vendored files (the field has no Internet), CSP-compatible."""
+    page = await client.get("/api/v1/docs")
+    bundle = await client.get("/api/v1/docs/static/swagger-ui-bundle.js")
+    init = await client.get("/api/v1/docs/static/swagger-init.js")
+
+    assert page.status_code == 200
+    assert page.headers["content-type"].startswith("text/html")
+    assert "http" not in page.text  # no CDN, nothing external
+    assert re.findall(r"<script(?![^>]*\ssrc=)", page.text) == []  # no inline script
+    assert bundle.status_code == 200
+    assert len(bundle.content) > 1_000_000
+    assert "SwaggerUIBundle" in init.text
 
 
 def test_settings_read_prefixed_environment(monkeypatch: pytest.MonkeyPatch) -> None:

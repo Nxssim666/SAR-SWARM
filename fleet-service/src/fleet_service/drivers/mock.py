@@ -24,6 +24,7 @@ from datetime import datetime
 from fleet_service.domain.commands import AUTOPILOT_COMMANDS
 from fleet_service.domain.enums import Airframe, CommandKind, FlightMode, GpsFix
 from fleet_service.domain.geo import GeoPoint
+from fleet_service.domain.preflight import ParameterType
 from fleet_service.domain.telemetry import TelemetrySample
 from fleet_service.drivers.base import CommandResult, DriverCommand, TelemetrySink
 
@@ -38,6 +39,19 @@ RTL_MIN_ALTITUDE_M = 50.0
 DEFAULT_TAKEOFF_ALTITUDE_M = 30.0
 SPAWN_SPACING_M = 15.0
 SPAWN_COLUMNS = 10
+# The simulated autopilot's parameters, as a field-ready PX4 would have them (M6 preflight).
+# NAV_DLL_ACT and COM_DL_LOSS_T drive its link-loss failsafe; the others are reported only.
+DEFAULT_PARAMETERS: dict[str, float] = {
+    "NAV_DLL_ACT": 2.0,  # return
+    "COM_DL_LOSS_T": FAILSAFE_LINK_LOSS_S,
+    "GF_ACTION": 3.0,  # return
+    "COM_LOW_BAT_ACT": 3.0,  # return, then land
+    "BAT_CRIT_THR": FAILSAFE_RTL_BATTERY_PCT / 100.0,
+    "BAT_EMERGEN_THR": FAILSAFE_LAND_BATTERY_PCT / 100.0,
+    "RTL_RETURN_ALT": RTL_MIN_ALTITUDE_M,
+    "MIS_TKO_LAND_REQ": 0.0,
+}
+_LINK_LOSS_ACTIONS = {1: "hold", 2: "return", 3: "land"}
 
 
 @dataclass(frozen=True)
@@ -103,6 +117,7 @@ class MockVehicle:
         self.loiter_left: float | None = None
         self.rtl_alt = RTL_MIN_ALTITUDE_M
         self.last_failsafe: str | None = None
+        self.parameters = dict(DEFAULT_PARAMETERS)
 
     # --- frames ---------------------------------------------------------------------------
 
@@ -324,8 +339,14 @@ class MockVehicle:
             self._failsafe("battery low: return", self._start_return)
         elif not self.gps_ok and self.mode is not FlightMode.LAND:
             self._failsafe("GNSS lost: land", self._start_land)
-        elif self.link_down_s > FAILSAFE_LINK_LOSS_S and not busy:
-            self._failsafe("data link lost: return", self._start_return)
+        elif self.link_down_s > self.parameters["COM_DL_LOSS_T"] and not busy:
+            action = _LINK_LOSS_ACTIONS.get(int(self.parameters["NAV_DLL_ACT"]))
+            if action == "return":
+                self._failsafe("data link lost: return", self._start_return)
+            elif action == "land":
+                self._failsafe("data link lost: land", self._start_land)
+            elif action == "hold" and self.link_down_s - dt <= self.parameters["COM_DL_LOSS_T"]:
+                self._failsafe("data link lost: hold", self._hold_here)  # once, where it is
 
     def _failsafe(self, reason: str, action: Callable[[], None]) -> None:
         self.last_failsafe = reason
@@ -499,10 +520,22 @@ class MockDriver:
         await self._link.wait()
         return self.vehicle.command(command)
 
+    async def read_parameters(self, names: dict[str, ParameterType]) -> dict[str, float | None]:
+        """The simulated autopilot's parameters; waits while the link is down."""
+        await self._link.wait()
+        return {name: self.vehicle.parameters.get(name) for name in names}
+
     def inject(
-        self, *, link: bool | None = None, gps: bool | None = None, battery_pct: float | None = None
+        self,
+        *,
+        link: bool | None = None,
+        gps: bool | None = None,
+        battery_pct: float | None = None,
+        parameters: dict[str, float] | None = None,
     ) -> None:
-        """Inject faults: link up/down, GNSS ok/lost, battery level."""
+        """Inject faults: link up/down, GNSS ok/lost, battery level, autopilot parameters."""
+        if parameters is not None:
+            self.vehicle.parameters.update(parameters)
         if link is not None:
             self.vehicle.link_up = link
             if link:

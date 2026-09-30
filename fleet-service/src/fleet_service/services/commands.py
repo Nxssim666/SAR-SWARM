@@ -49,6 +49,7 @@ from fleet_service.db.models import (
     Task,
 )
 from fleet_service.domain.commands import (
+    PREFLIGHT_COMMANDS,
     GotoTarget,
     Limits,
     Rejection,
@@ -77,6 +78,7 @@ from fleet_service.domain.enums import (
 from fleet_service.domain.geo import GeoPoint, distance_m
 from fleet_service.domain.geofence import Fence, GeofenceSet
 from fleet_service.domain.patterns import LocalFrame, RoutePoint
+from fleet_service.domain.preflight import describe
 from fleet_service.domain.spread import spread_targets
 from fleet_service.domain.telemetry import TelemetrySample
 from fleet_service.drivers.base import AreaMission, DriverCommand, Outcome, RouteMission
@@ -86,10 +88,12 @@ from fleet_service.services.alerts import AlertService
 from fleet_service.services.audit import Actor
 from fleet_service.services.fleet import FleetRegistry
 from fleet_service.services.leases import LeaseService
+from fleet_service.services.preflight import PreflightService
 from fleet_service.services.views import CommandTargetView, CommandView
 
 log = logging.getLogger(__name__)
 SYSTEM_ACTOR = Actor(user_id=None, username="system:commands")
+RESTART_ACTOR = Actor(user_id=None, username="system:restart")
 
 
 @dataclass(frozen=True)
@@ -151,6 +155,7 @@ class ConfirmationSummary(BaseModel):
     aircraft: list[SummaryAircraft]
     rejected: list[SummaryRejection]
     conflicts: list[str] = []  # deconfliction and clearance issues a supervisor overrides
+    preflight: list[str] = []  # failed preflight checks a supervisor overrides (M6)
 
 
 class ConfirmationRequiredError(ProblemError):
@@ -217,6 +222,7 @@ class _Plan:
     rejected: dict[str, Rejection] = field(default_factory=dict)
     warnings: dict[str, list[str]] = field(default_factory=dict)
     override: bool = False
+    control_override: bool = False  # another operator's lease
     reasons: list[str] = field(default_factory=list)
     mission: AreaMission | None = None  # mission_start: what the swarm is sent
     swarm_mission: bool = False
@@ -225,6 +231,7 @@ class _Plan:
         default_factory=dict
     )  # latitude, longitude, altitude, start delay: for the summary
     conflicts: list[str] = field(default_factory=list)
+    preflight: list[str] = field(default_factory=list)
     without_avoidance: int = 0
     timeout_s: float | None = None
     gcs_mission_ids: set[str] = field(default_factory=set)
@@ -270,6 +277,7 @@ class CommandService:
         separation: Separation | None = None,
         goto_spread_m: float = 60.0,
         mission_timeout_s: float = 60.0,
+        preflight: PreflightService | None = None,
     ) -> None:
         self._bus = bus
         self._clock = clock
@@ -287,6 +295,7 @@ class CommandService:
         self._separation = separation or Separation()
         self._goto_spread_m = goto_spread_m
         self._mission_timeout = mission_timeout_s
+        self._preflight = preflight
         self._secret = secrets.token_bytes(32)  # tokens do not survive a restart, by design
         self._last_dispatch: dict[str, datetime] = {}
         self._verifications: list[_Verification] = []
@@ -385,6 +394,7 @@ class CommandService:
                 continue
             plan.accepted.append(aircraft_id)
             plan.override |= override
+            plan.control_override |= override
             plan.warnings[aircraft_id] = warnings(vehicle, self._battery_low)
             autopilot_flies = spec.kind is CommandKind.GOTO or aircraft_id in gcs_aircraft
             if aircraft_id in companions and autopilot_flies:
@@ -415,17 +425,51 @@ class CommandService:
                     plan.commands[aircraft_id] = DriverCommand(
                         CommandKind.RESUME, command_id=spec.command_id, gcs_mission=True
                     )
+        if spec.kind in PREFLIGHT_COMMANDS and plan.accepted and self._preflight is not None:
+            await self._check_preflight(db, principal, spec.kind, plan, self._preflight)
         plan.reasons = confirmation_reasons(
             spec.kind,
             target_count=len(plan.accepted),
-            any_override=plan.override,
+            any_override=plan.control_override,
             goto_distance_m=farthest,
             limits=self._limits,
             swarm_mission=plan.swarm_mission,
             without_avoidance=plan.without_avoidance,
             plan_issues=len(plan.conflicts),
+            preflight_overrides=len(plan.preflight),
         )
         return plan
+
+    async def _check_preflight(
+        self,
+        db: AsyncSession,
+        principal: Principal,
+        kind: CommandKind,
+        plan: _Plan,
+        preflight: PreflightService,
+    ) -> None:
+        """The aircraft's own failsafes (M6, ADR 0035): blocking findings reject the aircraft
+        unless a supervisor overrides (confirmed, audited); warnings are shown."""
+        await db.commit()  # no transaction open while aircraft answer (ADR 0019)
+        # Arm is the gate: it reads the parameters now; a takeoff may reuse that report.
+        reports = await preflight.reports(list(plan.accepted), fresh=kind is CommandKind.ARM)
+        for aircraft_id, report in reports.items():
+            plan.warnings.setdefault(aircraft_id, []).extend(
+                f"preflight: {f.message}" for f in report.warnings
+            )
+            blocks = report.blocking
+            if not blocks:
+                continue
+            record = self._registry.get(aircraft_id)
+            name = record.callsign if record else aircraft_id
+            if principal.can(Permission.CONTROL_OVERRIDE):
+                plan.override = True
+                plan.preflight.append(f"{name}: {describe(blocks)}")
+                continue
+            plan.accepted.remove(aircraft_id)
+            plan.rejected[aircraft_id] = Rejection(
+                "preflight", f"{name} failed its preflight checks: {describe(blocks)}"
+            )
 
     async def _mission(self, db: AsyncSession, spec: CommandSpec) -> Mission:
         mission = await db.get(Mission, spec.mission_id) if spec.mission_id else None
@@ -863,6 +907,7 @@ class CommandService:
                 "kind": spec.kind.value,
                 "params": spec.params,
                 "override": plan.override,
+                "overridden": [*plan.conflicts, *plan.preflight],
                 "confirmed": confirmed,
                 "aircraft": plan.accepted,
                 "rejected": self._rejected(plan),
@@ -1004,6 +1049,84 @@ class CommandService:
         if result.outcome is Outcome.ACKED:
             return aircraft_id, CommandTargetState.ACKED, None, None
         return aircraft_id, CommandTargetState.NACKED, "refused", result.reason
+
+    # --- restart ------------------------------------------------------------------------------
+
+    async def load(self, db: AsyncSession, now: datetime) -> int:
+        """Close the commands a restart interrupted (M6, ADR 0035); returns how many.
+
+        Answers and effect checks lived in memory, so a command dispatched before the restart
+        has an unknown outcome: unanswered targets become ``timeout`` and acked ones whose
+        effect was being checked ``unverified``, each with the reason ``interrupted``. Nothing
+        is re-sent (ADR 0002, S5): operators decide again from the aircraft's current state.
+        """
+        interrupted = 0
+        dispatched = await db.scalars(
+            select(Command).where(Command.state == CommandState.IN_PROGRESS)
+        )
+        for command in dispatched.all():
+            await self._interrupt(
+                db,
+                now,
+                command,
+                {CommandTargetState.PENDING, CommandTargetState.DISPATCHED},
+                CommandTargetState.TIMEOUT,
+                "The ground station restarted before the aircraft answered; not re-sent.",
+            )
+            command.state, command.completed_at = CommandState.COMPLETED, now
+            interrupted += 1
+        verifying = await db.scalars(
+            select(Command)
+            .join(CommandTarget, CommandTarget.command_id == Command.id)
+            .where(
+                Command.state == CommandState.COMPLETED,
+                CommandTarget.state == CommandTargetState.ACKED,
+            )
+            .distinct()
+        )
+        for command in verifying.all():
+            if expected_effect(command.kind) is None:
+                continue  # nothing was being checked: acked is final
+            await self._interrupt(
+                db,
+                now,
+                command,
+                {CommandTargetState.ACKED},
+                CommandTargetState.UNVERIFIED,
+                "The ground station restarted while checking the effect.",
+            )
+            interrupted += 1
+        await db.commit()
+        return interrupted
+
+    async def _interrupt(
+        self,
+        db: AsyncSession,
+        now: datetime,
+        command: Command,
+        open_states: set[CommandTargetState],
+        state: CommandTargetState,
+        reason: str,
+    ) -> None:
+        targets = await db.scalars(
+            select(CommandTarget).where(
+                CommandTarget.command_id == command.id, CommandTarget.state.in_(open_states)
+            )
+        )
+        closed = {}
+        for target in targets.all():
+            target.state, target.reason_code, target.reason = state, "interrupted", reason
+            target.updated_at = now
+            closed[target.aircraft_id] = state.value
+        await audit.record(
+            db,
+            RESTART_ACTOR,
+            now,
+            "command.interrupt",
+            entity_type="command",
+            entity_id=command.id,
+            details={"outcomes": closed},
+        )
 
     # --- evaluation (tick) --------------------------------------------------------------------
 
@@ -1148,6 +1271,7 @@ class CommandService:
                 for a in plan.accepted
             ],
             conflicts=plan.conflicts,
+            preflight=plan.preflight,
             rejected=[
                 SummaryRejection(
                     aircraft_id=a, callsign=callsign(a), code=r.code, message=r.message

@@ -62,6 +62,8 @@ SAFE_ON_DEGRADED_LINK = frozenset(
     {CommandKind.HOLD, CommandKind.RETURN_TO_LAUNCH, CommandKind.LAND}
 )
 ALWAYS_CONFIRM = frozenset({CommandKind.ARM, CommandKind.TAKEOFF, CommandKind.MISSION_START})
+# Checked against the aircraft's own failsafe parameters first (M6, domain.preflight).
+PREFLIGHT_COMMANDS = frozenset({CommandKind.ARM, CommandKind.TAKEOFF})
 
 # Which link carries a command for an aircraft with both (ADR 0025). The safer commands go
 # to the companion while it is heard (it keeps the swarm consistent), else to the autopilot.
@@ -423,12 +425,14 @@ def confirmation_reasons(
     swarm_mission: bool = False,
     without_avoidance: int = 0,
     plan_issues: int = 0,
+    preflight_overrides: int = 0,
 ) -> list[str]:
     """Why this command needs an explicit confirmation (empty: it doesn't).
 
     ``without_avoidance``: aircraft with a swarm companion that the autopilot will fly
     instead (goto, GCS mission), so onboard obstacle avoidance is not active.
     ``plan_issues``: deconfliction conflicts and clearance issues a supervisor overrides.
+    ``preflight_overrides``: aircraft whose failed preflight checks a supervisor overrides.
     """
     reasons = []
     if kind in ALWAYS_CONFIRM:
@@ -439,6 +443,8 @@ def confirmation_reasons(
         reasons.append(f"onboard obstacle avoidance is not active on {without_avoidance} aircraft")
     if plan_issues:
         reasons.append(f"the plan has {plan_issues} deconfliction or clearance issue(s)")
+    if preflight_overrides:
+        reasons.append(f"{preflight_overrides} aircraft failed preflight checks (override)")
     if target_count > 1:
         reasons.append(f"sent to {target_count} aircraft")
     if any_override:

@@ -126,6 +126,7 @@ function problem(overrides: Partial<ConfirmationProblem['summary']> = {}): Confi
         },
       ],
       conflicts: [],
+      preflight: [],
       ...overrides,
     },
   };

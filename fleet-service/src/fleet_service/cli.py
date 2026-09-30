@@ -8,8 +8,11 @@
     fleet-service export-bridge-schema [--output P]  write the swarm bridge's NATS messages
     fleet-service db upgrade                   migrate both databases now
     fleet-service db revision --database ops -m "message"   (development) new migration
-    fleet-service audit-verify                 check the audit hash chain; exit 1 if broken
+    fleet-service audit-verify                 check the audit hash chain and the exported
+                                               heads; exit 1 if broken or truncated
     fleet-service purge [--dry-run]            apply the data retention policy now (M5)
+    fleet-service backup --output DIR          consistent copy of the databases and the
+                                               audit heads, while running (M6)
 
 Passwords are never command-line arguments (they would show in the process list and
 shell history): they are prompted, or read from stdin with ``--password-stdin``.
@@ -18,7 +21,9 @@ shell history): they are prompted, or read from stdin with ``--password-stdin``.
 import argparse
 import asyncio
 import getpass
+import hashlib
 import json
+import shutil
 import sys
 import tempfile
 from collections.abc import Sequence
@@ -30,11 +35,11 @@ from fleet_service.auth.passwords import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGT
 from fleet_service.clock import SystemClock
 from fleet_service.config import Settings, get_settings
 from fleet_service.db import migrate
-from fleet_service.db.engine import Database
+from fleet_service.db.engine import OPS_DB, TELEMETRY_DB, Database
 from fleet_service.db.models import User
 from fleet_service.domain.enums import Role
 from fleet_service.ids import new_id
-from fleet_service.services import audit
+from fleet_service.services import audit, audit_heads
 
 # docs/api/openapi.json in a source checkout (src/fleet_service/cli.py -> repository root).
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -85,6 +90,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("audit-verify", help="verify the audit hash chain")
     purge_cmd = sub.add_parser("purge", help="apply the data retention policy now")
     purge_cmd.add_argument("--dry-run", action="store_true", help="only count what would go")
+    backup_cmd = sub.add_parser("backup", help="copy the databases consistently, while running")
+    backup_cmd.add_argument("--output", type=Path, required=True, help="a new directory")
+    backup_cmd.add_argument(
+        "--no-telemetry", action="store_true", help="skip the (large) telemetry history"
+    )
     return parser
 
 
@@ -102,6 +112,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return export_asyncapi(args.output)
     if command == "export-bridge-schema":
         return export_bridge_schema(args.output)
+    if command == "backup":
+        return backup_now(get_settings(), args.output, telemetry=not args.no_telemetry)
     if command == "db" and args.db_command == "upgrade":
         migrate.upgrade_all(get_settings().data_dir, SystemClock().now())
         print("databases are at the newest schema")
@@ -248,20 +260,55 @@ async def _audit_verify(settings: Settings) -> int:
     try:
         async with database.ops_session() as db:
             report = await audit.verify_chain(db)
+            heads = await audit_heads.check_heads(db, settings.audit_heads_path)
     finally:
         await database.dispose()
-    if report.ok:
+    if not report.ok:
         print(
-            f"audit chain intact: {report.events} events; "
-            f"head seq={report.head_seq} hash={report.head_hash}"
+            f"AUDIT CHAIN BROKEN at seq={report.broken_at_seq}: {report.reason} "
+            f"({report.events} events verified before it)",
+            file=sys.stderr,
         )
-        return 0
+        return 1
+    if heads.problem is not None:
+        print(f"AUDIT CHAIN TRUNCATED OR REPLACED: {heads.problem}", file=sys.stderr)
+        return 1
     print(
-        f"AUDIT CHAIN BROKEN at seq={report.broken_at_seq}: {report.reason} "
-        f"({report.events} events verified before it)",
-        file=sys.stderr,
+        f"audit chain intact: {report.events} events; "
+        f"head seq={report.head_seq} hash={report.head_hash}; "
+        f"{heads.heads} exported head(s) found in it ({settings.audit_heads_path})"
     )
-    return 1
+    return 0
+
+
+def backup_now(settings: Settings, output: Path, *, telemetry: bool) -> int:
+    """Copy ops.db (and telemetry.db) with SQLite's online backup API, and the audit
+    heads, into a new directory with a manifest of SHA-256 sums. Safe while running."""
+    if output.exists() and any(output.iterdir()):
+        print(f"{output} is not empty; choose a new directory", file=sys.stderr)
+        return 1
+    names = [OPS_DB, TELEMETRY_DB] if telemetry else [OPS_DB]
+    for name in names:
+        source = settings.data_dir / name
+        if not source.exists():
+            print(f"{source} does not exist", file=sys.stderr)
+            return 1
+        migrate.backup(source, output / name)
+    heads = settings.audit_heads_path
+    if heads.exists():
+        shutil.copy2(heads, output / heads.name)
+    manifest = {
+        "station": settings.station_name,
+        "created_at": SystemClock().now().isoformat(),
+        "files": {
+            f.name: hashlib.sha256(f.read_bytes()).hexdigest()
+            for f in sorted(output.iterdir())
+            if f.is_file()
+        },
+    }
+    (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    print(f"backup written to {output}: {', '.join(manifest['files'])}")
+    return 0
 
 
 def purge_now(settings: Settings, *, dry_run: bool) -> int:

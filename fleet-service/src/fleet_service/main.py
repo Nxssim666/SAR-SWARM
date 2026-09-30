@@ -7,14 +7,18 @@ clock and (cheap) password hasher.
 """
 
 import asyncio
+import html
 import logging
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from fleet_service import API_VERSION, __version__
 from fleet_service.api import (
@@ -48,6 +52,7 @@ from fleet_service.log import configure_logging
 from fleet_service.services.runtime import Runtime
 
 API_PREFIX = f"/api/{API_VERSION}"
+SWAGGER_UI = Path(__file__).parent / "static" / "swagger-ui"  # vendored: no CDN (M6)
 _REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 log = logging.getLogger(__name__)
@@ -107,7 +112,7 @@ def create_app(
         summary="Ground fleet service for civilian search-and-rescue drone operations.",
         version=__version__,
         openapi_url=f"{API_PREFIX}/openapi.json",
-        docs_url=f"{API_PREFIX}/docs",
+        docs_url=None,  # served below from vendored files
         redoc_url=None,
         openapi_tags=TAGS,
         lifespan=lifespan,
@@ -149,6 +154,12 @@ def create_app(
     ):
         app.include_router(router, prefix=API_PREFIX)
 
+    app.mount(f"{API_PREFIX}/docs/static", StaticFiles(directory=SWAGGER_UI), name="swagger-ui")
+
+    @app.get(f"{API_PREFIX}/docs", include_in_schema=False)
+    async def api_docs() -> HTMLResponse:
+        return HTMLResponse(_docs_page(app.title, f"{API_PREFIX}/openapi.json"))
+
     def openapi() -> dict[str, Any]:
         if app.openapi_schema is None:
             app.openapi_schema = _problem_json_errors(
@@ -164,6 +175,26 @@ def create_app(
 
     app.openapi = openapi  # type: ignore[method-assign]
     return app
+
+
+def _docs_page(title: str, openapi_url: str) -> str:
+    """The API docs page: vendored Swagger UI and no inline script (the gateway's CSP)."""
+    static = f"{API_PREFIX}/docs/static"
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{html.escape(title)} - API</title>
+<link rel="icon" href="{static}/favicon-32x32.png">
+<link rel="stylesheet" href="{static}/swagger-ui.css">
+</head>
+<body data-openapi="{html.escape(openapi_url)}">
+<div id="swagger-ui"></div>
+<script src="{static}/swagger-ui-bundle.js"></script>
+<script src="{static}/swagger-init.js"></script>
+</body>
+</html>
+"""
 
 
 def _problem_json_errors(schema: dict[str, Any]) -> dict[str, Any]:

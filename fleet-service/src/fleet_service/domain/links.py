@@ -1,5 +1,5 @@
 """
-Link state with hysteresis (M6). Pure: the registry applies it.
+Link state with hysteresis (M6, ADR 0035). Pure: the registry applies it.
 
 A link degrades at once, by the age of the newest sample: live, then stale after
 ``stale_after``, then lost after ``lost_after`` (safety never waits). It recovers only once

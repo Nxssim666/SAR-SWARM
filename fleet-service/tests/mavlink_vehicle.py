@@ -4,7 +4,8 @@ A minimal PX4-like MAVLink vehicle for local tests of the MAVLink driver (ADR 00
 It lets the real MAVSDK binding and the whole command pipeline run on any machine,
 without PX4. It speaks just enough of PX4's dialect for what the driver uses: heartbeat
 with PX4 custom modes, position, GNSS, battery, landed state and home; command acks;
-parameter set; the mission protocol (upload, download, current item, item reached).
+parameter set and read (PX4's bytewise encoding); the mission protocol (upload,
+download, current item, item reached).
 Its "flight" is teleport-grade kinematics. It is test-only on purpose: flight behaviour
 is verified against PX4 SITL in CI (ADR 0023), not against this.
 
@@ -16,6 +17,7 @@ import contextlib
 import math
 import os
 import socket
+import struct
 import threading
 import time
 from dataclasses import dataclass, field
@@ -44,6 +46,19 @@ FLIGHT_COMMANDS = {
     mav.MAV_CMD_DO_SET_MODE,
     mav.MAV_CMD_DO_REPOSITION,
 }
+# Parameters and their types; a field-ready PX4's failsafes (the M6 preflight check).
+DEFAULT_PARAMS: dict[str, float] = {
+    "MIS_TAKEOFF_ALT": 2.5,
+    "NAV_DLL_ACT": 2,
+    "COM_DL_LOSS_T": 10,
+    "GF_ACTION": 3,
+    "COM_LOW_BAT_ACT": 3,
+    "BAT_CRIT_THR": 0.07,
+    "BAT_EMERGEN_THR": 0.05,
+    "RTL_RETURN_ALT": 60.0,
+    "MIS_TKO_LAND_REQ": 0,
+}
+INT_PARAMS = {"NAV_DLL_ACT", "COM_DL_LOSS_T", "GF_ACTION", "COM_LOW_BAT_ACT", "MIS_TKO_LAND_REQ"}
 EARTH_RADIUS_M = 6_371_000.0
 SPEED_MPS = 15.0
 CLIMB_MPS = 5.0
@@ -63,7 +78,7 @@ class VehicleState:
     battery_pct: int = 90
     gps_ok: bool = True
     target: tuple[float, float, float] | None = None  # latitude, longitude, relative altitude
-    params: dict[str, float] = field(default_factory=lambda: {"MIS_TAKEOFF_ALT": 2.5})
+    params: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_PARAMS))
     mission: list[Any] = field(default_factory=list)  # MISSION_ITEM_INT messages, by seq
     mission_seq: int = 0  # the raw item being flown
     hold_left: float | None = None  # seconds still to wait at the reached waypoint
@@ -246,15 +261,31 @@ class MavlinkVehicle:
             self._mission_message(kind, message)
             return
         if kind == "PARAM_SET" and message.target_system == self.system_id:
-            self.state.params[message.param_id] = message.param_value
-            self._mav().param_value_send(
-                message.param_id.encode(), message.param_value, message.param_type, 1, 0
-            )
+            name = message.param_id
+            value = message.param_value
+            self.state.params[name] = _decode_int(value) if name in INT_PARAMS else value
+            self._param_value(name)
+        elif kind == "PARAM_REQUEST_READ" and message.target_system == self.system_id:
+            names = list(self.state.params)
+            name = message.param_id if message.param_index < 0 else None
+            if name is None and 0 <= message.param_index < len(names):
+                name = names[message.param_index]
+            if name in self.state.params:  # like PX4: an unknown name gets no answer
+                self._param_value(name)
         elif kind in ("COMMAND_LONG", "COMMAND_INT") and message.target_system in (
             0,
             self.system_id,
         ):
             self._command(message, kind == "COMMAND_INT")
+
+    def _param_value(self, name: str) -> None:
+        names = list(self.state.params)
+        value = self.state.params[name]
+        if name in INT_PARAMS:
+            encoded, kind = _encode_int(int(value)), mav.MAV_PARAM_TYPE_INT32
+        else:
+            encoded, kind = float(value), mav.MAV_PARAM_TYPE_REAL32
+        self._mav().param_value_send(name.encode(), encoded, kind, len(names), names.index(name))
 
     def _mission_message(self, kind: str, message: Any) -> None:
         """The mission microservice: uploads, downloads and clears (mission type 0 only)."""
@@ -428,8 +459,18 @@ class MavlinkVehicle:
             mav.MAV_PROTOCOL_CAPABILITY_MAVLINK2
             | mav.MAV_PROTOCOL_CAPABILITY_COMMAND_INT
             | mav.MAV_PROTOCOL_CAPABILITY_PARAM_FLOAT
+            | mav.MAV_PROTOCOL_CAPABILITY_PARAM_ENCODE_BYTEWISE
             | mav.MAV_PROTOCOL_CAPABILITY_MISSION_INT
         )
         self._mav().autopilot_version_send(
             capabilities, 0, 0, 0, 0, [0] * 8, [0] * 8, [0] * 8, 0, 0, self.system_id
         )
+
+
+def _encode_int(value: int) -> float:
+    """PX4's bytewise encoding: the int32's bytes in the float field."""
+    return float(struct.unpack("<f", struct.pack("<i", value))[0])
+
+
+def _decode_int(value: float) -> int:
+    return int(struct.unpack("<i", struct.pack("<f", value))[0])

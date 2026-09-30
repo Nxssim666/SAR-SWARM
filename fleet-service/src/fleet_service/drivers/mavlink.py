@@ -40,12 +40,14 @@ from mavsdk.asyncio.plugins.mission import (
     MissionPlan,
     MissionResult,
 )
+from mavsdk.asyncio.plugins.param import ParamAsync, ParamError, ParamResult
 from mavsdk.asyncio.plugins.telemetry import TelemetryAsync
 
 from fleet_service.clock import Clock
 from fleet_service.domain.commands import AUTOPILOT_COMMANDS
 from fleet_service.domain.enums import Airframe, CommandKind, FlightMode, GpsFix
 from fleet_service.domain.geo import GeoPoint, distance_m
+from fleet_service.domain.preflight import ParameterType
 from fleet_service.domain.telemetry import TelemetrySample
 from fleet_service.drivers.base import (
     CommandResult,
@@ -101,6 +103,7 @@ _FIXES = {
 _NO_ANSWER = {ActionResult.NO_SYSTEM, ActionResult.CONNECTION_ERROR, ActionResult.TIMEOUT}
 _MISSION_NO_ANSWER = {MissionResult.NO_SYSTEM, MissionResult.TIMEOUT}
 # How MAVSDK reports PX4's "Mission currently not available" (MAV_RESULT_TEMPORARILY_REJECTED).
+_PARAM_WRONG_TYPE = {ParamResult.WRONG_TYPE, ParamResult.TYPE_MISMATCH}
 _MISSION_NOT_YET = {MissionResult.DENIED, MissionResult.BUSY}
 
 
@@ -241,6 +244,7 @@ class MavlinkDriver:
         self._paused: _Target | None = None
         self._action: Any = None
         self._mission: Any = None
+        self._param: Any = None
         self._mission_paused = False
         self._bound = asyncio.Event()
         self._tasks: list[asyncio.Task[None]] = []
@@ -271,10 +275,11 @@ class MavlinkDriver:
         """True once the hub has heard from this aircraft."""
         return self._bound.is_set()
 
-    def bind(self, telemetry: Any, action: Any, mission: Any = None) -> None:
+    def bind(self, telemetry: Any, action: Any, mission: Any = None, param: Any = None) -> None:
         """Attach the aircraft's MAVSDK plugins (called by the hub on discovery)."""
         self._action = action
         self._mission = mission
+        self._param = param
         subscriptions: list[tuple[Callable[[], AsyncIterator[Any]], Callable[[Any], None]]] = [
             (telemetry.subscribe_position, self._on_position),
             (telemetry.subscribe_heading, self._on_heading),
@@ -470,6 +475,30 @@ class MavlinkDriver:
                 self._mission_paused = False
         return result
 
+    async def read_parameters(self, names: dict[str, ParameterType]) -> dict[str, float | None]:
+        """Read the autopilot's parameters one by one; None where one cannot be read.
+
+        Waits until the aircraft has been heard (the caller bounds the wait).
+        """
+        await self._bound.wait()
+        return {name: await self._read_parameter(name, kind) for name, kind in names.items()}
+
+    async def _read_parameter(self, name: str, kind: ParameterType) -> float | None:
+        param = self._param
+        if param is None:
+            return None
+        getters = (param.get_param_int, param.get_param_float)
+        if kind is ParameterType.FLOAT:
+            getters = getters[::-1]
+        for get in getters:  # the declared type first; an airframe may differ
+            try:
+                return _number(float(await get(name)))
+            except ParamError as error:
+                if error.result not in _PARAM_WRONG_TYPE:
+                    log.warning("%s: parameter %s unreadable (%s)", self, name, error.result.name)
+                    return None
+        return None
+
     async def _start_mission(self, route: RouteMission) -> CommandResult:
         """Upload, read back and compare, then start (ADR 0028). Nothing flies unverified."""
         mission = self._mission
@@ -599,7 +628,7 @@ class MavlinkHub:
         self._after = after  # a previous hub on this connection that is still closing
         self._drivers: dict[int, MavlinkDriver] = {}
         self._retired: list[MavlinkDriver] = []  # detached, subscriptions maybe still ending
-        self._plugins: dict[int, tuple[Any, Any, Any]] = {}
+        self._plugins: dict[int, tuple[Any, Any, Any, Any]] = {}
         self._mavsdk: Mavsdk | None = None
         self._task = asyncio.create_task(self._run(), name=f"mavlink-hub-{url}")
 
@@ -666,6 +695,7 @@ class MavlinkHub:
                 TelemetryAsync(system),
                 ActionAsync(system),
                 MissionAsync(system),
+                ParamAsync(system),
             )
             log.info("MAVLink system %d heard on %s", system_id, self.url)
             driver = self._drivers.get(system_id)

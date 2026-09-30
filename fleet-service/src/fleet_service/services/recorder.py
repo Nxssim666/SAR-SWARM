@@ -19,6 +19,10 @@ class TelemetryRecorder:
         self._subscription = bus.latest([TELEMETRY])
         self._last_written: dict[str, object] = {}
 
+    def skip(self) -> None:
+        """Drop the pending samples unwritten (the disk is nearly full, M6)."""
+        self._subscription.drain()
+
     async def flush(self, db: AsyncSession) -> int:
         """Write the newest unseen sample of every aircraft; return how many rows."""
         rows = []

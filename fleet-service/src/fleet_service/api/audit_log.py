@@ -13,7 +13,7 @@ from enum import StrEnum
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from pydantic import AwareDatetime
+from pydantic import AwareDatetime, Field
 from sqlalchemy import Select, select
 
 from fleet_service.api.common import OutputModel, PageParams, fetch_page, page_params
@@ -22,7 +22,7 @@ from fleet_service.api.pages import Page
 from fleet_service.auth.permissions import Permission
 from fleet_service.db.models import AuditEvent
 from fleet_service.errors import InvalidRequest, problem_responses
-from fleet_service.services import audit
+from fleet_service.services import audit, audit_heads
 
 MAX_EXPORT_EVENTS = 100_000
 
@@ -126,20 +126,27 @@ class ChainStatus(OutputModel):
     head_hash: str | None
     broken_at_seq: int | None
     reason: str | None
+    exported_heads: int = Field(
+        description="Heads recorded outside the database (M6); each was found in the chain "
+        "unless ``reason`` says otherwise."
+    )
     verified_at: AwareDatetime
 
 
 @router.get("/verify", **requires(Permission.AUDIT_READ))
 async def verify_audit_chain(db: DbSession, context: Context) -> ChainStatus:
-    """Re-walk the whole chain: the first inconsistency, or the head if intact."""
+    """Re-walk the whole chain: the first inconsistency, or the head if intact. The heads
+    exported outside the database must all still be in it (truncation, M6)."""
     report = await audit.verify_chain(db)
+    heads = await audit_heads.check_heads(db, context.settings.audit_heads_path)
     return ChainStatus(
-        ok=report.ok,
+        ok=report.ok and heads.problem is None,
         events=report.events,
         head_seq=report.head_seq,
         head_hash=report.head_hash,
         broken_at_seq=report.broken_at_seq,
-        reason=report.reason,
+        reason=report.reason or heads.problem,
+        exported_heads=heads.heads,
         verified_at=context.clock.now(),
     )
 

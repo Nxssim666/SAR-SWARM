@@ -1,8 +1,8 @@
 // The confirmation of a risky or bulk command (ADR 0011): it shows the server's own summary,
 // names the aircraft count, lists warnings and the aircraft that will be rejected, and flags
 // an override. Per aircraft it shows its own target, layer and start delay (a bulk goto or a
-// mission, ADR 0029), and any conflicts the server found. Focus starts on Cancel; confirming
-// takes a held press (HoldToConfirm).
+// mission, ADR 0029), any conflicts the server found, and failed preflight checks a supervisor
+// overrides (M6). Focus starts on Cancel; confirming takes a held press (HoldToConfirm).
 import * as Dialog from '@radix-ui/react-dialog';
 import { useRef } from 'react';
 
@@ -83,6 +83,16 @@ export function ConfirmDialog({ problem, busy, onConfirm, onCancel }: Props) {
               <ul className="summary-list rejected">
                 {summary.conflicts.map((c) => (
                   <li key={c}>{c}</li>
+                ))}
+              </ul>
+            </>
+          )}
+          {summary.preflight.length > 0 && (
+            <>
+              <h3>⛔ Failed preflight checks, overridden</h3>
+              <ul className="summary-list rejected">
+                {summary.preflight.map((p) => (
+                  <li key={p}>{p}</li>
                 ))}
               </ul>
             </>

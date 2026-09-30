@@ -7,6 +7,7 @@ import { useMapState } from '../map/mapState';
 import { useSelection } from '../selection/store';
 import { LeaseControls } from '../control/LeaseControls';
 import { LINK_ICON, LINK_LABEL, MODE_LABEL, number, UNKNOWN, yesNo } from './format';
+import { PreflightSection } from './PreflightSection';
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -72,6 +73,7 @@ function Single({ a, lease }: { a: AircraftLive; lease: LeaseView | null }) {
         />
       </dl>
       <LeaseControls aircraftIds={[a.aircraft_id]} />
+      <PreflightSection aircraftId={a.aircraft_id} />
     </>
   );
 }

@@ -10,10 +10,11 @@ is down may simply wait.
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from fleet_service.domain.enums import CommandKind
 from fleet_service.domain.patterns.route import RoutePoint
+from fleet_service.domain.preflight import ParameterType
 from fleet_service.domain.telemetry import TelemetrySample
 
 TelemetrySink = Callable[[TelemetrySample], None]
@@ -110,4 +111,14 @@ class VehicleDriver(Protocol):
 
     async def execute(self, command: DriverCommand) -> CommandResult:
         """Send ``command``; may wait indefinitely if the link is down (callers time out)."""
+        ...
+
+
+@runtime_checkable
+class ParameterReader(Protocol):
+    """A link that can read the autopilot's parameters (preflight checks, M6)."""
+
+    async def read_parameters(self, names: dict[str, ParameterType]) -> dict[str, float | None]:
+        """Each parameter's value, None where it could not be read; may wait for the link
+        (callers time out)."""
         ...

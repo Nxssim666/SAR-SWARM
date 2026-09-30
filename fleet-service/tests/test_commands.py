@@ -300,6 +300,31 @@ async def test_rule_a_lost_link_allows_only_hold_return_and_land(
     assert {"link_stale", "command_timeout"} <= kinds
 
 
+async def test_a_timed_out_command_is_not_delivered_when_the_link_returns(
+    client: httpx.AsyncClient,
+    auth: dict[Role, dict[str, str]],
+    fleet: list[str],
+    sim: Sim,
+) -> None:
+    """ADR 0002 S5, ADR 0035: nothing is re-sent automatically."""
+    await airborne(client, auth[Role.OPERATOR], sim, [fleet[0]])
+    lat, lon = sim.vehicle(fleet[0]).to_geo(300.0, 0.0)
+    await send(
+        client, auth[Role.OPERATOR], "goto", [fleet[0]], target={"latitude": lat, "longitude": lon}
+    )
+    await sim.fly(1)
+    driver = sim.runtime.simulator.drivers[fleet[0]]  # type: ignore[union-attr]
+    driver.inject(link=False)
+    await sim.fly(4)
+
+    hold = await send(client, auth[Role.OPERATOR], "hold", [fleet[0]])
+    driver.inject(link=True)
+    await sim.fly(5)
+
+    assert states(hold.json()) == {fleet[0]: "timeout"}
+    assert sim.vehicle(fleet[0]).mode is FlightMode.GOTO  # still flying the goto: no late hold
+
+
 async def test_rule_disarm_is_refused_in_flight(
     client: httpx.AsyncClient, auth: dict[Role, dict[str, str]], fleet: list[str], sim: Sim
 ) -> None:

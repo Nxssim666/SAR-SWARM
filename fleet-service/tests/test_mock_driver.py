@@ -155,6 +155,27 @@ def test_failsafe_link_loss_returns_after_ten_seconds() -> None:
     assert v.last_failsafe == "data link lost: return"
 
 
+@pytest.mark.parametrize(
+    ("nav_dll_act", "mode", "failsafe"),
+    [
+        (0, FlightMode.HOLD, None),  # disabled: nothing happens (the preflight check blocks it)
+        (1, FlightMode.HOLD, "data link lost: hold"),
+        (3, FlightMode.LAND, "data link lost: land"),
+    ],
+)
+def test_failsafe_link_loss_follows_the_autopilot_parameters(
+    nav_dll_act: int, mode: FlightMode, failsafe: str | None
+) -> None:
+    v = airborne()
+    v.parameters |= {"NAV_DLL_ACT": nav_dll_act, "COM_DL_LOSS_T": 5}
+    v.link_up = False
+    run(v, 4.9)
+    assert v.last_failsafe is None
+    run(v, 0.5)
+    assert v.mode is mode
+    assert v.last_failsafe == failsafe
+
+
 def test_failsafe_gnss_loss_lands_and_hides_the_position() -> None:
     v = airborne()
     v.gps_ok = False

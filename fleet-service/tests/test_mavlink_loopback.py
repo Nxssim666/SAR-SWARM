@@ -287,3 +287,38 @@ async def test_a_mission_is_started_once_the_aircraft_has_checked_it(
 
     assert states == {hexa: "verified"}, await station.reasons(outcome)
     assert mode == "mission"
+
+
+async def test_preflight_reads_the_autopilots_parameters_over_mavlink(
+    station: Station, port: int
+) -> None:
+    """M6 (ADR 0035): int and float parameters, PX4's bytewise encoding, and a parameter
+    the autopilot does not answer for, which stays unknown and blocks."""
+    hexa = await station.register("HX-1", **link(port, 51))
+
+    with MavlinkVehicle(port, 51) as vehicle:
+        await station.wait_for(hexa, heard, LINK_TIMEOUT_S, "a fix")
+        ready = await station.client.post(
+            f"/api/v1/aircraft/{hexa}/preflight", headers=station.headers
+        )
+        vehicle.state.params["NAV_DLL_ACT"] = 0
+        del vehicle.state.params["RTL_RETURN_ALT"]
+        unsafe = await station.client.post(
+            f"/api/v1/aircraft/{hexa}/preflight", headers=station.headers
+        )
+
+    assert ready.status_code == 200, ready.text
+    assert ready.json()["ready"] is True
+    assert ready.json()["values"] == {
+        "NAV_DLL_ACT": 2,
+        "COM_DL_LOSS_T": 10,
+        "GF_ACTION": 3,
+        "COM_LOW_BAT_ACT": 3,
+        "BAT_CRIT_THR": pytest.approx(0.07),
+        "BAT_EMERGEN_THR": pytest.approx(0.05),
+        "RTL_RETURN_ALT": 60.0,
+        "MIS_TKO_LAND_REQ": 0,
+    }
+    blocking = {f["parameter"] for f in unsafe.json()["findings"] if f["severity"] == "block"}
+    assert blocking == {"NAV_DLL_ACT", "RTL_RETURN_ALT"}
+    assert unsafe.json()["values"]["RTL_RETURN_ALT"] is None
