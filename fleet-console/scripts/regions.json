@@ -1,0 +1,19 @@
+{
+  "$comment": "Regions prepared for offline use (ADR 0030): basemap (fetch-basemap.mjs), terrain and imagery (scripts/fetch_region.py). Civilian SAR only (ADR 0002).",
+  "regions": [
+    {
+      "id": "zurich",
+      "name": "Zurich (simulator site)",
+      "bbox": [8.4, 47.3, 8.7, 47.48],
+      "maxzoom": 15,
+      "imagery_scene": "S2B_32TMT_20260724_0_L2A"
+    },
+    {
+      "id": "kramatorsk",
+      "name": "Kramatorsk",
+      "bbox": [37.44, 48.66, 37.66, 48.8],
+      "maxzoom": 15,
+      "imagery_scene": "S2C_37UCQ_20260818_0_L2A"
+    }
+  ]
+}

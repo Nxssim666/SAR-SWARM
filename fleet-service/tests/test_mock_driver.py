@@ -8,7 +8,8 @@ import pytest
 
 from fleet_service.domain.enums import Airframe, CommandKind, FlightMode, GpsFix
 from fleet_service.domain.geo import GeoPoint, distance_m
-from fleet_service.drivers.base import DriverCommand, Outcome
+from fleet_service.domain.patterns import RoutePoint
+from fleet_service.drivers.base import DriverCommand, Outcome, RouteMission
 from fleet_service.drivers.mock import MockFleet, MockVehicle
 
 from support import START
@@ -267,3 +268,89 @@ def test_telemetry_stops_while_the_link_is_down() -> None:
     fleet.step(DT, START)
 
     assert len(received) == 1
+
+
+def route(
+    *points: tuple[float, float], altitude: float = 30.0, loiter: float | None = None
+) -> RouteMission:
+    return RouteMission(
+        "m1", tuple(RoutePoint(lat, lon, altitude, None, loiter) for lat, lon in points)
+    )
+
+
+def test_a_mission_is_flown_item_by_item_and_reports_its_progress() -> None:
+    v = airborne(altitude=30.0)
+    a = v.to_geo(0.0, 100.0)
+    b = v.to_geo(100.0, 100.0)
+
+    ack = v.command(DriverCommand(CommandKind.MISSION_START, route=route(a, b)))
+    for _ in range(100):  # 10 s
+        v.step(0.1)
+    halfway = v.sample("a1", START)
+    for _ in range(400):
+        v.step(0.1)
+    done = v.sample("a1", START)
+
+    assert ack.outcome is Outcome.ACKED
+    assert halfway.flight_mode is FlightMode.MISSION
+    assert halfway.mission_items == 2
+    assert halfway.mission_item in (0, 1)
+    assert done.mission_item == done.mission_items == 2  # PX4: the count once done
+    assert done.flight_mode in (FlightMode.RETURN, FlightMode.LAND, FlightMode.HOLD)
+
+
+def test_pause_holds_a_mission_and_resume_continues_from_the_same_item() -> None:
+    v = airborne(altitude=30.0)
+    far = v.to_geo(0.0, 1000.0)
+    v.command(DriverCommand(CommandKind.MISSION_START, route=route(far)))
+    for _ in range(50):
+        v.step(0.1)
+
+    paused = v.command(DriverCommand(CommandKind.MISSION_PAUSE))
+    where = (v.x, v.y)
+    for _ in range(50):
+        v.step(0.1)
+    held = math.dist(where, (v.x, v.y))
+    resumed = v.command(DriverCommand(CommandKind.RESUME))
+    v.step(0.1)
+
+    assert paused.outcome is Outcome.ACKED
+    assert held < 3.0
+    assert resumed.outcome is Outcome.ACKED
+    assert v.mode is FlightMode.MISSION
+    assert v.mission_index == 0  # still flying to the same item
+
+
+def test_a_start_delay_is_flown_as_a_loiter_at_the_first_item() -> None:
+    v = airborne(altitude=30.0)
+    here = v.to_geo(v.x, v.y)
+    there = v.to_geo(0.0, 200.0)
+    v.command(
+        DriverCommand(
+            CommandKind.MISSION_START,
+            route=RouteMission(
+                "m1", (RoutePoint(*here, 30.0, None, 20.0), RoutePoint(*there, 30.0))
+            ),
+        )
+    )
+
+    for _ in range(150):  # 15 s: still waiting
+        v.step(0.1)
+    waiting = v.mission_index
+    for _ in range(100):  # 25 s: gone
+        v.step(0.1)
+
+    assert waiting == 0
+    assert v.mission_index == 1
+
+
+def test_a_mission_without_items_or_on_the_ground_is_refused() -> None:
+    grounded = vehicle()
+
+    empty = airborne(altitude=30.0).command(DriverCommand(CommandKind.MISSION_START, route=None))
+    on_ground = grounded.command(
+        DriverCommand(CommandKind.MISSION_START, route=route(grounded.to_geo(0.0, 10.0)))
+    )
+
+    assert empty.outcome is Outcome.NACKED
+    assert on_ground.outcome is Outcome.NACKED

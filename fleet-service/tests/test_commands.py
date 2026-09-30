@@ -4,6 +4,7 @@ The command pipeline against simulated aircraft (ADR 0011, ADR 0020).
 Each safety rule of ADR 0011 has a test here; the test names say which rule.
 """
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,7 @@ from fleet_service.config import Settings
 from fleet_service.context import AppContext
 from fleet_service.db.models import AuditEvent
 from fleet_service.domain.enums import FlightMode, Role
+from fleet_service.domain.geo import GeoPoint, distance_m
 from live_support import Sim, confirmed, register, send, states, take
 
 from support import FakeClock, bearer, insert_user, login
@@ -77,8 +79,16 @@ async def test_arm_asks_for_confirmation_with_a_server_summary(
     assert problem["type"] == "urn:sar-gcs:problem:confirmation-required"
     assert problem["summary"]["kind"] == "arm"
     assert problem["summary"]["aircraft"] == [
-        {"aircraft_id": fleet[0], "callsign": "HX-1", "warnings": []}
+        {
+            "aircraft_id": fleet[0],
+            "callsign": "HX-1",
+            "warnings": [],
+            "target": None,
+            "altitude_relative_m": None,
+            "start_delay_s": None,
+        }
     ]
+    assert problem["summary"]["conflicts"] == []
     assert problem["summary"]["reasons"] == ["arm always needs confirmation"]
     assert problem["confirmation_token"]
 
@@ -137,21 +147,39 @@ async def test_long_goto_needs_confirmation(
     assert "goto of 1" in response.json()["summary"]["reasons"][0]
 
 
-async def test_goto_takes_one_aircraft_so_two_never_share_a_target(
+async def test_a_goto_to_several_aircraft_gives_each_its_own_point_and_layer(
     client: httpx.AsyncClient, auth: dict[Role, dict[str, str]], fleet: list[str], sim: Sim
 ) -> None:
-    # One target point for several aircraft would converge them on it: nothing spreads them
-    # apart until deconfliction (M4). The console only greys the button out; this is the rule.
+    # ADR 0029: a shared target would converge them on one point. Each aircraft gets its
+    # own point around the target and its own altitude layer, and it is always confirmed.
     await airborne(client, auth[Role.OPERATOR], sim, fleet)
     lat, lon = sim.vehicle(fleet[0]).to_geo(200.0, 200.0)
 
-    response = await send(
+    first = await send(
         client, auth[Role.OPERATOR], "goto", fleet, target={"latitude": lat, "longitude": lon}
     )
-    await sim.fly(5)
+    assert first.status_code == 428, first.text
+    summary = first.json()["summary"]
+    points = {a["aircraft_id"]: a for a in summary["aircraft"]}
+    targets = [(p["target"]["latitude"], p["target"]["longitude"]) for p in points.values()]
+    assert len(set(targets)) == 2
+    assert distance_m(
+        GeoPoint(latitude=targets[0][0], longitude=targets[0][1]),
+        GeoPoint(latitude=targets[1][0], longitude=targets[1][1]),
+    ) == pytest.approx(60.0, abs=0.5)
+    altitudes = sorted(p["altitude_relative_m"] for p in points.values())
+    assert altitudes[1] - altitudes[0] == pytest.approx(15.0)
 
-    assert response.status_code == 422
-    assert all(sim.vehicle(a).mode is not FlightMode.GOTO for a in fleet)
+    outcome = await confirmed(
+        client, auth[Role.OPERATOR], "goto", fleet, target={"latitude": lat, "longitude": lon}
+    )
+    await sim.fly(60)
+
+    assert states(outcome) == dict.fromkeys(fleet, "acked")
+    first_xy = (sim.vehicle(fleet[0]).x, sim.vehicle(fleet[0]).y)
+    second_xy = (sim.vehicle(fleet[1]).x, sim.vehicle(fleet[1]).y)
+    assert math.dist(first_xy, second_xy) == pytest.approx(60.0, abs=3.0)
+    assert abs(sim.vehicle(fleet[0]).z - sim.vehicle(fleet[1]).z) == pytest.approx(15.0, abs=1.0)
 
 
 # --- ADR 0011 rules --------------------------------------------------------------------------

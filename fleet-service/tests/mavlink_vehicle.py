@@ -4,8 +4,9 @@ A minimal PX4-like MAVLink vehicle for local tests of the MAVLink driver (ADR 00
 It lets the real MAVSDK binding and the whole command pipeline run on any machine,
 without PX4. It speaks just enough of PX4's dialect for what the driver uses: heartbeat
 with PX4 custom modes, position, GNSS, battery, landed state and home; command acks;
-parameter set. Its "flight" is teleport-grade kinematics. It is test-only on purpose:
-flight behaviour is verified against PX4 SITL in CI (ADR 0023), not against this.
+parameter set; the mission protocol (upload, download, current item, item reached).
+Its "flight" is teleport-grade kinematics. It is test-only on purpose: flight behaviour
+is verified against PX4 SITL in CI (ADR 0023), not against this.
 
 Each vehicle runs in its own thread with its own UDP socket, like a PX4 instance, and
 sends to the ground station's port; several vehicles may share that port.
@@ -63,6 +64,9 @@ class VehicleState:
     gps_ok: bool = True
     target: tuple[float, float, float] | None = None  # latitude, longitude, relative altitude
     params: dict[str, float] = field(default_factory=lambda: {"MIS_TAKEOFF_ALT": 2.5})
+    mission: list[Any] = field(default_factory=list)  # MISSION_ITEM_INT messages, by seq
+    mission_seq: int = 0  # the raw item being flown
+    hold_left: float | None = None  # seconds still to wait at the reached waypoint
 
 
 class _Sender:
@@ -96,6 +100,9 @@ class MavlinkVehicle:
         self.deny = deny  # MAV_CMD ids refused with MAV_RESULT_DENIED
         self.silent = silent  # never acknowledge flight commands
         self.received: list[int] = []  # MAV_CMD ids received, in order
+        self.corrupt_download = False  # answer downloads with a shifted latitude (read-back test)
+        self._upload: list[Any] | None = None  # items being uploaded
+        self._upload_count = 0
         # A plain socket and pymavlink's codec: mavutil's "udpout" binds the destination
         # port on Windows, which breaks several vehicles sharing one ground station port.
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -165,6 +172,8 @@ class MavlinkVehicle:
                 s.mode = "hold"
         elif s.mode in ("hold", "return") and s.target is not None:
             self._fly_to(s.target, dt)
+        elif s.mode == "mission":
+            self._fly_mission(dt)
         elif s.mode == "land":
             s.altitude_relative_m = max(0.0, s.altitude_relative_m - CLIMB_MPS * dt)
             if s.altitude_relative_m == 0.0:
@@ -191,8 +200,46 @@ class MavlinkVehicle:
             s.longitude += (target[1] - s.longitude) * step / distance
         s.altitude_relative_m = target[2]
 
+    def _fly_mission(self, dt: float) -> None:
+        s = self.state
+        while s.mission_seq < len(s.mission) and s.mission[s.mission_seq].command not in (
+            mav.MAV_CMD_NAV_WAYPOINT,
+            mav.MAV_CMD_NAV_RETURN_TO_LAUNCH,
+        ):
+            s.mission_seq += 1  # DO_ items (speed...) take effect at once
+        if s.mission_seq >= len(s.mission):
+            s.mode = "hold"
+            return
+        item = s.mission[s.mission_seq]
+        if item.command == mav.MAV_CMD_NAV_RETURN_TO_LAUNCH:
+            self._mav().mission_item_reached_send(s.mission_seq)
+            s.mission_seq = len(s.mission)
+            self._set_mode("return")
+            return
+        if s.hold_left is not None:
+            s.hold_left -= dt
+            if s.hold_left <= 0.0:
+                s.hold_left = None
+                s.mission_seq += 1
+            return
+        target = (item.x / 1e7, item.y / 1e7, item.z)
+        s.target = target
+        self._fly_to(target, dt)
+        if s.target is None:  # reached
+            self._mav().mission_item_reached_send(s.mission_seq)
+            if item.param1 > 0.0:
+                s.hold_left = item.param1
+            else:
+                s.mission_seq += 1
+
     def _handle(self, message: Any) -> None:
         kind = message.get_type()
+        if kind.startswith("MISSION_") and getattr(message, "target_system", 0) in (
+            0,
+            self.system_id,
+        ):
+            self._mission_message(kind, message)
+            return
         if kind == "PARAM_SET" and message.target_system == self.system_id:
             self.state.params[message.param_id] = message.param_value
             self._mav().param_value_send(
@@ -203,6 +250,53 @@ class MavlinkVehicle:
             self.system_id,
         ):
             self._command(message, kind == "COMMAND_INT")
+
+    def _mission_message(self, kind: str, message: Any) -> None:
+        """The mission microservice: uploads, downloads and clears (mission type 0 only)."""
+        m = self._mav()
+        source = message.get_srcSystem()
+        mission_type = getattr(message, "mission_type", 0)
+        if mission_type != mav.MAV_MISSION_TYPE_MISSION:
+            if kind == "MISSION_REQUEST_LIST":
+                m.mission_count_send(source, 0, 0, mission_type)
+            else:
+                m.mission_ack_send(source, 0, mav.MAV_MISSION_ACCEPTED, mission_type)
+            return
+        if kind == "MISSION_COUNT":
+            self._upload, self._upload_count = [], message.count
+            if message.count == 0:
+                self.state.mission, self._upload = [], None
+                m.mission_ack_send(source, 0, mav.MAV_MISSION_ACCEPTED, 0)
+            else:
+                m.mission_request_int_send(source, 0, 0, 0)
+        elif kind == "MISSION_ITEM_INT" and self._upload is not None:
+            if message.seq != len(self._upload):
+                m.mission_request_int_send(source, 0, len(self._upload), 0)
+                return
+            self._upload.append(message)
+            if len(self._upload) < self._upload_count:
+                m.mission_request_int_send(source, 0, len(self._upload), 0)
+            else:
+                self.state.mission, self.state.mission_seq = self._upload, 0
+                self.state.hold_left, self._upload = None, None
+                m.mission_ack_send(source, 0, mav.MAV_MISSION_ACCEPTED, 0)
+        elif kind == "MISSION_REQUEST_LIST":
+            m.mission_count_send(source, 0, len(self.state.mission), 0)
+        elif kind in ("MISSION_REQUEST_INT", "MISSION_REQUEST"):
+            if message.seq >= len(self.state.mission):
+                m.mission_ack_send(source, 0, mav.MAV_MISSION_INVALID_SEQUENCE, 0)
+                return
+            i = self.state.mission[message.seq]
+            shift = 100 if self.corrupt_download else 0  # about 1 m in latitude
+            m.mission_item_int_send(
+                source, 0, i.seq, i.frame, i.command, int(i.seq == self.state.mission_seq),
+                i.autocontinue, i.param1, i.param2, i.param3, i.param4, i.x + shift, i.y, i.z, 0,
+            )  # fmt: skip
+        elif kind == "MISSION_CLEAR_ALL":
+            self.state.mission, self.state.mission_seq = [], 0
+            m.mission_ack_send(source, 0, mav.MAV_MISSION_ACCEPTED, 0)
+        elif kind == "MISSION_SET_CURRENT":
+            self.state.mission_seq = message.seq
 
     def _command(self, message: Any, is_int: bool) -> None:
         command = message.command
@@ -232,6 +326,10 @@ class MavlinkVehicle:
             s.mode, s.target = "land", None
         elif command == mav.MAV_CMD_NAV_RETURN_TO_LAUNCH:
             self._set_mode("return")
+        elif command == mav.MAV_CMD_MISSION_START:
+            if not self.state.mission:
+                return int(mav.MAV_RESULT_DENIED)
+            self._set_mode("mission")
         elif command == mav.MAV_CMD_DO_SET_MODE:  # how MAVSDK asks PX4 for hold and return
             wanted = (int(message.param2), int(message.param3))
             name = next((n for n, m in MODES.items() if m == wanted), None)
@@ -254,6 +352,7 @@ class MavlinkVehicle:
         s = self.state
         s.mode = name
         s.target = (*self.home, max(s.altitude_relative_m, 10.0)) if name == "return" else None
+        s.hold_left = None
 
     # --- telemetry ---------------------------------------------------------------------------
 
@@ -297,6 +396,13 @@ class MavlinkVehicle:
         m.battery_status_send(0, 0, 0, 2500, [4000] * 6 + [65535] * 4, 1000, -1, -1, s.battery_pct)
         landed = mav.MAV_LANDED_STATE_IN_AIR if s.in_air else mav.MAV_LANDED_STATE_ON_GROUND
         m.extended_sys_state_send(mav.MAV_VTOL_STATE_UNDEFINED, landed)
+        if s.mission:
+            done = s.mission_seq >= len(s.mission)
+            m.mission_current_send(
+                min(s.mission_seq, len(s.mission) - 1),
+                len(s.mission),
+                mav.MISSION_STATE_COMPLETE if done else mav.MISSION_STATE_ACTIVE,
+            )
         self._home()
 
     def _home(self) -> None:

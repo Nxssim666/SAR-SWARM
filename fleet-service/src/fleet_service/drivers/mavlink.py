@@ -33,6 +33,13 @@ from typing import Any
 from mavsdk import log_subscribe
 from mavsdk.asyncio import ComponentType, Configuration, Mavsdk, MavsdkConnectionError
 from mavsdk.asyncio.plugins.action import ActionAsync, ActionError, ActionResult
+from mavsdk.asyncio.plugins.mission import (
+    MissionAsync,
+    MissionError,
+    MissionItem,
+    MissionPlan,
+    MissionResult,
+)
 from mavsdk.asyncio.plugins.telemetry import TelemetryAsync
 
 from fleet_service.clock import Clock
@@ -40,7 +47,13 @@ from fleet_service.domain.commands import AUTOPILOT_COMMANDS
 from fleet_service.domain.enums import Airframe, CommandKind, FlightMode, GpsFix
 from fleet_service.domain.geo import GeoPoint, distance_m
 from fleet_service.domain.telemetry import TelemetrySample
-from fleet_service.drivers.base import CommandResult, DriverCommand, Outcome, TelemetrySink
+from fleet_service.drivers.base import (
+    CommandResult,
+    DriverCommand,
+    Outcome,
+    RouteMission,
+    TelemetrySink,
+)
 
 log = logging.getLogger(__name__)
 
@@ -82,6 +95,7 @@ _FIXES = {
 
 # Results that mean "no answer from the aircraft": the pipeline reports a timeout.
 _NO_ANSWER = {ActionResult.NO_SYSTEM, ActionResult.CONNECTION_ERROR, ActionResult.TIMEOUT}
+_MISSION_NO_ANSWER = {MissionResult.NO_SYSTEM, MissionResult.TIMEOUT}
 
 
 def flight_mode(px4_mode: str) -> FlightMode:
@@ -147,6 +161,52 @@ class _Latest:
     home_latitude: float | None = None
     home_longitude: float | None = None
     home_amsl_m: float | None = None
+    mission_item: int | None = None
+    mission_items: int | None = None
+
+
+# Read-back tolerances: MAVLink carries positions as 1e-7 degrees and altitudes as float32.
+READBACK_DEGREES = 2e-7
+READBACK_METRES = 0.05
+
+
+def mission_items(route: RouteMission) -> list[Any]:
+    """MAVSDK mission items for a route (altitudes above home; NaN: not set)."""
+    nan = math.nan
+    return [
+        MissionItem(
+            latitude_deg=p.latitude,
+            longitude_deg=p.longitude,
+            relative_altitude_m=p.altitude_relative_m,
+            speed_m_s=p.speed_mps if p.speed_mps is not None else nan,
+            is_fly_through=not p.loiter_s,
+            gimbal_pitch_deg=nan,
+            gimbal_yaw_deg=nan,
+            camera_action=MissionItem.CameraAction.NONE,
+            loiter_time_s=p.loiter_s if p.loiter_s else nan,
+            camera_photo_interval_s=nan,
+            acceptance_radius_m=nan,
+            yaw_deg=nan,
+            camera_photo_distance_m=nan,
+            vehicle_action=MissionItem.VehicleAction.NONE,
+        )
+        for p in route.items
+    ]
+
+
+def readback_mismatch(sent: list[Any], received: list[Any]) -> str | None:
+    """Why the aircraft's copy of a mission differs from what was sent, or None."""
+    if len(received) != len(sent):
+        return f"the aircraft holds {len(received)} items, {len(sent)} were sent"
+    for i, (a, b) in enumerate(zip(sent, received, strict=True)):
+        if (
+            abs(a.latitude_deg - b.latitude_deg) > READBACK_DEGREES
+            or abs(a.longitude_deg - b.longitude_deg) > READBACK_DEGREES
+        ):
+            return f"item {i} is at a different position"
+        if abs(a.relative_altitude_m - b.relative_altitude_m) > READBACK_METRES:
+            return f"item {i} is at a different altitude"
+    return None
 
 
 class MavlinkDriver:
@@ -174,6 +234,8 @@ class MavlinkDriver:
         self._target: _Target | None = None
         self._paused: _Target | None = None
         self._action: Any = None
+        self._mission: Any = None
+        self._mission_paused = False
         self._bound = asyncio.Event()
         self._tasks: list[asyncio.Task[None]] = []
 
@@ -203,9 +265,10 @@ class MavlinkDriver:
         """True once the hub has heard from this aircraft."""
         return self._bound.is_set()
 
-    def bind(self, telemetry: Any, action: Any) -> None:
+    def bind(self, telemetry: Any, action: Any, mission: Any = None) -> None:
         """Attach the aircraft's MAVSDK plugins (called by the hub on discovery)."""
         self._action = action
+        self._mission = mission
         subscriptions: list[tuple[Callable[[], AsyncIterator[Any]], Callable[[Any], None]]] = [
             (telemetry.subscribe_position, self._on_position),
             (telemetry.subscribe_heading, self._on_heading),
@@ -217,6 +280,8 @@ class MavlinkDriver:
             (telemetry.subscribe_in_air, self._on_in_air),
             (telemetry.subscribe_home, self._on_home),
         ]
+        if mission is not None:
+            subscriptions.append((mission.subscribe_mission_progress, self._on_progress))
         for subscribe, apply in subscriptions:
             self._tasks.append(
                 asyncio.create_task(
@@ -289,6 +354,11 @@ class MavlinkDriver:
         self._latest.home_longitude = _number(home.longitude_deg)
         self._latest.home_amsl_m = _number(home.absolute_altitude_m)
 
+    def _on_progress(self, progress: Any) -> None:
+        total = int(progress.total)
+        self._latest.mission_items = total if total > 0 else None
+        self._latest.mission_item = int(progress.current) if total > 0 else None
+
     async def _emit_loop(self) -> None:
         while True:
             await asyncio.sleep(EMIT_PERIOD_S)
@@ -328,6 +398,8 @@ class MavlinkDriver:
             in_air=latest.in_air,
             home_latitude=latest.home_latitude,
             home_longitude=latest.home_longitude,
+            mission_item=latest.mission_item,
+            mission_items=latest.mission_items,
         )
 
     def _mode(self, now: float, positioned: bool) -> FlightMode:
@@ -357,6 +429,19 @@ class MavlinkDriver:
     async def execute(self, command: DriverCommand) -> CommandResult:
         """Send ``command``; waits while the aircraft is undiscovered (callers time out)."""
         await self._bound.wait()
+        if command.kind is CommandKind.MISSION_START:
+            if command.route is None:
+                return CommandResult.nack("Swarm missions go through the swarm link.")
+            return await self._start_mission(command.route)
+        if command.kind is CommandKind.MISSION_PAUSE:
+            result = await self._mission_result(self._mission.pause_mission())
+            self._mission_paused = result.outcome is Outcome.ACKED
+            return result
+        if command.kind is CommandKind.RESUME and (command.gcs_mission or self._mission_paused):
+            result = await self._mission_result(self._mission.start_mission())
+            if result.outcome is Outcome.ACKED:
+                self._mission_paused = False
+            return result
         if command.kind is CommandKind.RESUME:
             if self._paused is None:
                 return CommandResult.nack("Nothing to resume: no reposition was paused.")
@@ -373,7 +458,48 @@ class MavlinkDriver:
         if result.outcome is Outcome.ACKED:
             self._paused = self._target if command.kind is CommandKind.HOLD else None
             self._target = None
+            if command.kind is CommandKind.HOLD and self._latest.px4_mode == "MISSION":
+                self._mission_paused = True  # hold pauses the mission; resume continues it
+            elif command.kind is not CommandKind.HOLD:
+                self._mission_paused = False
         return result
+
+    async def _start_mission(self, route: RouteMission) -> CommandResult:
+        """Upload, read back and compare, then start (ADR 0028). Nothing flies unverified."""
+        mission = self._mission
+        items = mission_items(route)
+        for call in (
+            mission.set_return_to_launch_after_mission(route.return_home),
+            mission.upload_mission(MissionPlan(items)),
+        ):
+            result = await self._mission_result(call)
+            if result.outcome is not Outcome.ACKED:
+                return result
+        try:
+            copy = await mission.download_mission()
+        except MissionError as error:
+            if error.result in _MISSION_NO_ANSWER:
+                await asyncio.Future()  # never resolves; the pipeline's timeout applies
+            return CommandResult.nack(f"The mission could not be read back ({error.result.name}).")
+        mismatch = readback_mismatch(items, list(copy.mission_items))
+        if mismatch is not None:
+            return CommandResult.nack(f"Mission read-back mismatch: {mismatch}; not started.")
+        result = await self._mission_result(mission.start_mission())
+        if result.outcome is Outcome.ACKED:
+            self._target = self._paused = None
+            self._mission_paused = False
+        return result
+
+    @staticmethod
+    async def _mission_result(call: Any) -> CommandResult:
+        """Ack, nack with the reason, or wait (no answer: the caller times out)."""
+        try:
+            await call
+        except MissionError as error:
+            if error.result in _MISSION_NO_ANSWER:
+                await asyncio.Future()  # never resolves; the pipeline's timeout applies
+            return CommandResult.nack(f"The aircraft refused the mission ({error.result.name}).")
+        return CommandResult.ack()
 
     def _goto_amsl(self, altitude_relative_m: float | None) -> float | None:
         """MAVLink repositions take AMSL: home plus the height asked for, or the current one."""
@@ -451,7 +577,7 @@ class MavlinkHub:
         self._after = after  # a previous hub on this connection that is still closing
         self._drivers: dict[int, MavlinkDriver] = {}
         self._retired: list[MavlinkDriver] = []  # detached, subscriptions maybe still ending
-        self._plugins: dict[int, tuple[Any, Any]] = {}
+        self._plugins: dict[int, tuple[Any, Any, Any]] = {}
         self._mavsdk: Mavsdk | None = None
         self._task = asyncio.create_task(self._run(), name=f"mavlink-hub-{url}")
 
@@ -514,7 +640,11 @@ class MavlinkHub:
             system_id = await system.get_system_id()
             if system_id in self._plugins:
                 continue
-            self._plugins[system_id] = (TelemetryAsync(system), ActionAsync(system))
+            self._plugins[system_id] = (
+                TelemetryAsync(system),
+                ActionAsync(system),
+                MissionAsync(system),
+            )
             log.info("MAVLink system %d heard on %s", system_id, self.url)
             driver = self._drivers.get(system_id)
             if driver is not None:

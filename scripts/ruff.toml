@@ -1,0 +1,6 @@
+# Repository scripts (check.py, fetch_region.py) follow the fleet service's rules; they are
+# command-line tools, so they print to their user and run the project's own commands.
+extend = "../fleet-service/pyproject.toml"
+
+[lint.per-file-ignores]
+"*.py" = ["T201", "S603"]

@@ -102,29 +102,43 @@ class LandCommand(_CommandRequest):
 class GotoCommand(_CommandRequest):
     """Fly to a position (and altitude above home), then hold there.
 
-    One aircraft only: a shared target would converge several aircraft on one point, and
-    nothing spreads them apart yet (deconfliction is M4).
+    One aircraft flies to the target itself. Several aircraft never share it (ADR 0029):
+    each gets its own point, ``spread_m`` apart around the target, and its own altitude
+    layer; their flights are checked in 4D and the command is always confirmed.
     """
 
     kind: Literal["goto"]
-    aircraft_ids: Annotated[
-        list[EntityId],
-        Field(min_length=1, max_length=1, description="Exactly one aircraft."),
-    ]
     target: GeoPoint
     altitude_relative_m: AltitudeRelative | None = None
+    spread_m: float | None = Field(
+        default=None,
+        strict=True,
+        allow_inf_nan=False,
+        ge=10.0,
+        le=1000.0,
+        description="Several aircraft: distance between their points (default: settings).",
+    )
 
 
 class MissionStartCommand(_CommandRequest):
-    """Start a planned swarm area mission (ADR 0024). Always confirmed.
+    """Start a planned mission. Always confirmed.
 
-    The swarm protocol cannot address a mission: every drone on the swarm link adopts it,
-    so ``aircraft_ids`` must be every swarm aircraft, and exactly the mission's tasks.
-    GCS-planned missions (waypoint, area search) cannot be started yet (M4).
+    - A swarm area mission (ADR 0024): the swarm protocol cannot address a mission, every
+      drone on the swarm link adopts it, so ``aircraft_ids`` must be every swarm aircraft,
+      and exactly the mission's tasks.
+    - A GCS-planned mission (waypoint, area search; ADR 0028): each aircraft is sent its
+      own planned route (uploaded, read back, started). Conflicts or clearance issues in
+      the plan need a supervisor's override.
     """
 
     kind: Literal["mission_start"]
     mission_id: EntityId
+
+
+class MissionPauseCommand(_CommandRequest):
+    """Pause the GCS-planned mission the aircraft fly (they hold; resume continues it)."""
+
+    kind: Literal["mission_pause"]
 
 
 CommandRequest = Annotated[
@@ -136,7 +150,8 @@ CommandRequest = Annotated[
     | ReturnCommand
     | LandCommand
     | GotoCommand
-    | MissionStartCommand,
+    | MissionStartCommand
+    | MissionPauseCommand,
     Field(discriminator="kind"),
 ]
 
@@ -167,6 +182,7 @@ def spec_of(body: _CommandRequest) -> CommandSpec:
         takeoff_altitude_m=body.altitude_relative_m if isinstance(body, TakeoffCommand) else None,
         goto=goto,
         mission_id=body.mission_id if isinstance(body, MissionStartCommand) else None,
+        spread_m=body.spread_m if isinstance(body, GotoCommand) else None,
     )
 
 

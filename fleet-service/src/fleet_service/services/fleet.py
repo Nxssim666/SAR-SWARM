@@ -210,11 +210,14 @@ class FleetManager:
                 self._release(record)
                 record.sample, record.link, record.links = None, LinkState.OFFLINE, {}
                 self._attach(record, aircraft, route)
+            elif self.simulator is not None:
+                record.route = route  # informational: which aircraft have a companion
             self.registry.announce(aircraft.id)
             return
         record = LiveRecord(aircraft.id, aircraft.callsign, aircraft.airframe)
         if self.simulator is not None:
             record.driver = self.simulator.add(aircraft.id, aircraft.airframe)
+            record.route = route  # informational: the simulator stands in for every link
             record.driver.start(self.registry.ingest)
         else:
             self._attach(record, aircraft, route)

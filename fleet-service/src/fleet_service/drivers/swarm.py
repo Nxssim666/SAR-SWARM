@@ -467,7 +467,11 @@ class LinkedDriver:
 
     async def execute(self, command: DriverCommand) -> CommandResult:
         """Send ``command`` over the link ``route_command`` picks (ADR 0025)."""
-        route = route_command(command.kind, swarm_live=self._fresh(LinkSource.SWARM))
+        route = route_command(
+            command.kind,
+            swarm_live=self._fresh(LinkSource.SWARM),
+            gcs_mission=command.gcs_mission or command.route is not None,
+        )
         if route is LinkSource.SWARM:
             return await self.swarm.execute(command)
         if route is LinkSource.MAVLINK:

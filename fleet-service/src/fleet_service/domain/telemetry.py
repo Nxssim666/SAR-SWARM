@@ -65,6 +65,8 @@ class TelemetrySample:
     home_latitude: float | None
     home_longitude: float | None
     swarm: SwarmState | None = None  # only from a swarm link
+    mission_item: int | None = None  # item flown (0-based); = mission_items when done
+    mission_items: int | None = None  # items in the loaded mission; None: unknown or none
 
     @property
     def has_position(self) -> bool:

@@ -14,6 +14,7 @@ fixed-wing (which keeps circling home) and the link-loss quad (which PX4 returns
 
 import asyncio
 import os
+from typing import Any
 
 import pytest
 from linkem import Impairment, LinkEmulator
@@ -234,3 +235,76 @@ async def test_gnss_loss_raises_an_alert(station: Station) -> None:
 async def _with(station: Station, aircraft_id: str, kind: str) -> set[str] | None:
     active = await station.active_alerts(aircraft_id)
     return active if kind in active else None
+
+
+async def test_a_lawnmower_split_across_three_mixed_aircraft_completes(station: Station) -> None:
+    # ADR 0028/0029: an area split between two hexacopters and the airplane, each strip
+    # its own route (the airplane's with turn-feasible lane order), layered, uploaded,
+    # read back, started, flown and completed by PX4 itself.
+    ids = await hexa_fleet(station, 1, 2)
+    hexas = list(ids.values())
+    plane = await station.register(
+        "FW-1", airframe="fixed_wing", mavlink_connection=GCS, mavlink_system_id=4
+    )
+    await station.take(plane)
+    await station.wait_for(plane, ready, BOOT_TIMEOUT_S, "plane ready")
+    await arm(station, hexas)
+    await station.settled(await station.command("takeoff", hexas, altitude_relative_m=20.0), 60.0)
+    for hexa in hexas:
+        await station.wait_for(hexa, lambda t: t["in_air"] is True, FLIGHT_TIMEOUT_S, "airborne")
+    if not (await station.telemetry(plane) or {}).get("in_air"):  # this test run alone
+        await arm(station, [plane])
+        await station.command("takeoff", [plane], altitude_relative_m=40.0)
+        await station.wait_for(
+            plane,
+            lambda t: t["in_air"] is True and (t["altitude_relative_m"] or 0) > 10.0,
+            2 * FLIGHT_TIMEOUT_S,
+            "plane climb-out",
+        )
+
+    base = {"latitude": 47.397742, "longitude": 8.545594}
+    incident = await station.client.post(
+        "/api/v1/incidents",
+        json={"name": "SITL grid", "base": base, "operating_radius_m": 5000.0},
+        headers=station.headers,
+    )
+    lat, lon, dlat, dlon = 47.40024, 8.5462, 0.0012, 0.0018  # ~270 x 270 m, 280 m north
+    ring = [[lon - dlon, lat - dlat], [lon + dlon, lat - dlat], [lon + dlon, lat + dlat],
+            [lon - dlon, lat + dlat], [lon - dlon, lat - dlat]]  # fmt: skip
+    area = await station.client.post(
+        "/api/v1/search-areas",
+        json={"incident_id": incident.json()["id"], "name": "Grid",
+              "geometry": {"type": "Polygon", "coordinates": [ring]}},
+        headers=station.headers,
+    )  # fmt: skip
+    mission = await station.client.post(
+        "/api/v1/missions",
+        json={"incident_id": incident.json()["id"], "name": "Grid", "kind": "area_search",
+              "search_area_id": area.json()["id"], "default_altitude_relative_m": 50.0},
+        headers=station.headers,
+    )  # fmt: skip
+    mission_id = mission.json()["id"]
+    plan = await station.client.post(
+        f"/api/v1/missions/{mission_id}/plan",
+        json={"pattern": "parallel_track", "spacing_m": 60.0, "aircraft_ids": [*hexas, plane]},
+        headers=station.headers,
+    )
+    assert plan.status_code == 200, plan.text
+
+    start = await station.command("mission_start", [*hexas, plane], mission_id=mission_id)
+    started = await station.settled(start, 120.0)
+
+    async def finished() -> dict[str, Any] | None:
+        response = await station.client.get(
+            f"/api/v1/missions/{mission_id}/progress", headers=station.headers
+        )
+        progress: dict[str, Any] = response.json()
+        return progress if progress["status"] == "completed" else None
+
+    progress = await until(finished, 600.0, "the mission to complete", every_s=2.0)
+    await land_all(station, hexas)
+    await station.command("return_to_launch", [plane])
+
+    assert started == dict.fromkeys([*hexas, plane], "verified"), await station.reasons(start)
+    assert {t["status"] for t in progress["tasks"]} == {"completed"}
+    assert progress["coverage"] >= 0.8

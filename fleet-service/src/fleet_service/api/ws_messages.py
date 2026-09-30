@@ -25,10 +25,12 @@ from fleet_service.services.views import (
     CommandView,
     ControlChange,
     LeaseView,
+    MissionProgressView,
+    PoiView,
     UserRef,
 )
 
-Topic = Literal["fleet.telemetry", "alerts", "commands", "control"]
+Topic = Literal["fleet.telemetry", "alerts", "commands", "control", "missions", "pois"]
 
 CLOSE_BAD_MESSAGE = 4400
 CLOSE_UNAUTHENTICATED = 4401
@@ -46,7 +48,7 @@ def _unique(topics: list[Topic]) -> list[Topic]:
 Topics = Annotated[
     list[Topic],
     AfterValidator(_unique),
-    Field(min_length=1, max_length=4, json_schema_extra={"uniqueItems": True}),
+    Field(min_length=1, max_length=6, json_schema_extra={"uniqueItems": True}),
 ]
 
 # --- client -> server ----------------------------------------------------------------------------
@@ -194,6 +196,50 @@ class ControlEvent(ServerMessage):
     data: ControlChange
 
 
+class MissionsSnapshotData(BaseModel):
+    """Every planned, running or paused GCS mission's progress."""
+
+    missions: list[MissionProgressView]
+
+
+class PoisSnapshotData(BaseModel):
+    """The points of interest of the open incidents (dismissed and resolved ones too)."""
+
+    pois: list[PoiView]
+
+
+class MissionsSnapshot(ServerMessage):
+    """Mission progress, on subscribing to missions."""
+
+    type: Literal["snapshot"] = "snapshot"
+    topic: Literal["missions"] = "missions"
+    data: MissionsSnapshotData
+
+
+class PoisSnapshot(ServerMessage):
+    """Points of interest, on subscribing to pois."""
+
+    type: Literal["snapshot"] = "snapshot"
+    topic: Literal["pois"] = "pois"
+    data: PoisSnapshotData
+
+
+class MissionEvent(ServerMessage):
+    """A mission's status or progress changed (at most once a second per mission)."""
+
+    type: Literal["event"] = "event"
+    topic: Literal["missions"] = "missions"
+    data: MissionProgressView
+
+
+class PoiEvent(ServerMessage):
+    """A point of interest was marked, reported by a drone, or changed."""
+
+    type: Literal["event"] = "event"
+    topic: Literal["pois"] = "pois"
+    data: PoiView
+
+
 class PongMessage(ServerMessage):
     """Answer to ping."""
 
@@ -227,10 +273,14 @@ SERVER_MESSAGES: list[type[ServerMessage]] = [
     AlertsSnapshot,
     CommandsSnapshot,
     ControlSnapshot,
+    MissionsSnapshot,
+    PoisSnapshot,
     TelemetryEvent,
     AlertEvent,
     CommandEvent,
     ControlEvent,
+    MissionEvent,
+    PoiEvent,
     PongMessage,
     ErrorMessage,
     SessionEndedMessage,

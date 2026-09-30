@@ -21,9 +21,14 @@ from fleet_service.domain.enums import (
     LeaseState,
     LinkSource,
     LinkState,
+    MissionKind,
+    MissionStatus,
+    PoiKind,
+    PoiStatus,
     SwarmFault,
     SwarmHealth,
     SwarmPhase,
+    TaskStatus,
 )
 from fleet_service.domain.geo import GeoPoint
 from fleet_service.domain.telemetry import SwarmState, TelemetrySample
@@ -97,6 +102,11 @@ class TelemetryView(View):
     in_air: bool | None
     home: GeoPoint | None
     swarm: SwarmView | None = Field(description="Only for aircraft with a swarm link.")
+    mission_item: int | None = Field(
+        default=None,
+        description="Mission item flown (0-based); equals mission_items once done. Null: none.",
+    )
+    mission_items: int | None = Field(default=None, description="Items of the loaded mission.")
 
     @classmethod
     def of(cls, s: TelemetrySample) -> "TelemetryView":
@@ -129,6 +139,8 @@ class TelemetryView(View):
             in_air=s.in_air,
             home=home,
             swarm=SwarmView.of(s.swarm) if s.swarm else None,
+            mission_item=s.mission_item,
+            mission_items=s.mission_items,
         )
 
 
@@ -203,6 +215,9 @@ class AlertView(View):
     acknowledged_by: str | None
     acknowledged_at: AwareDatetime | None
     cleared_at: AwareDatetime | None
+    escalated_at: AwareDatetime | None = Field(
+        default=None, description="When an unacknowledged warning became critical."
+    )
 
 
 class CommandTargetView(View):
@@ -230,3 +245,45 @@ class CommandView(View):
     confirmed_at: AwareDatetime | None
     completed_at: AwareDatetime | None
     targets: list[CommandTargetView]
+
+
+class PoiView(View):
+    """A point of interest: marked by an operator, or a survivor sighting a drone reported."""
+
+    id: str
+    incident_id: str
+    kind: PoiKind
+    status: PoiStatus
+    latitude: float
+    longitude: float
+    uncertainty_m: float | None = Field(description="1-sigma horizontal uncertainty [m].")
+    aircraft_id: str | None = Field(description="The reporting aircraft (null: an operator).")
+    reported_at: AwareDatetime | None
+    notes: str | None
+    created_by: str | None
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+
+
+class TaskProgressView(View):
+    """How far one aircraft is through its part of a mission."""
+
+    task_id: str
+    aircraft_id: str
+    callsign: str
+    status: TaskStatus
+    item: int | None = Field(description="Waypoint being flown (0-based). Null: unknown.")
+    items: int | None = Field(description="Waypoints of its route. Null: unknown.")
+
+
+class MissionProgressView(View):
+    """A mission's execution: status, per-aircraft progress, and area covered."""
+
+    mission_id: str
+    incident_id: str
+    name: str
+    kind: MissionKind
+    status: MissionStatus
+    coverage: float | None = Field(description="Share of the search area swept (0-1).")
+    tasks: list[TaskProgressView]
+    updated_at: AwareDatetime

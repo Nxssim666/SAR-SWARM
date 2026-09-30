@@ -92,6 +92,12 @@ class MockVehicle:
         self.target_alt = 0.0
         self.anchor: tuple[float, float, float] | None = None  # hold point or goto target
         self.paused_goto: tuple[float, float, float] | None = None
+        # A GCS-planned mission (ADR 0028): local (x, y, z, speed, loiter) per item.
+        self.mission: list[tuple[float, float, float, float | None, float | None]] = []
+        self.mission_index = 0
+        self.mission_return = True
+        self.mission_paused = False
+        self.loiter_left: float | None = None
         self.rtl_alt = RTL_MIN_ALTITUDE_M
         self.last_failsafe: str | None = None
 
@@ -141,15 +147,43 @@ class MockVehicle:
             return CommandResult.ack()
         if not self.in_air:
             return CommandResult.nack(f"{kind.value} denied: on the ground")
-        if kind is CommandKind.HOLD:
+        if kind in (CommandKind.HOLD, CommandKind.MISSION_PAUSE):
+            if kind is CommandKind.MISSION_PAUSE and self.mode is not FlightMode.MISSION:
+                return CommandResult.nack("pause denied: no mission in progress")
             if self.mode is FlightMode.GOTO:
                 self.paused_goto = self.anchor
+            if self.mode is FlightMode.MISSION:
+                self.mission_paused = True
             self._hold_here()
         elif kind is CommandKind.RESUME:
-            if self.paused_goto is None:
+            if self.mission_paused and self.mission:
+                self.mission_paused = False
+                self.mode = FlightMode.MISSION
+            elif self.paused_goto is not None:
+                self.anchor, self.paused_goto = self.paused_goto, None
+                self.mode = FlightMode.GOTO
+            else:
                 return CommandResult.nack("nothing to resume")
-            self.anchor, self.paused_goto = self.paused_goto, None
-            self.mode = FlightMode.GOTO
+        elif kind is CommandKind.MISSION_START:
+            if cmd.route is None or not cmd.route.items:
+                return CommandResult.nack("mission denied: no mission items")
+            if not self.gps_ok:
+                return CommandResult.nack("mission denied: no position")
+            self.mission = [
+                (
+                    *self.to_local(p.latitude, p.longitude),
+                    p.altitude_relative_m,
+                    p.speed_mps,
+                    p.loiter_s,
+                )
+                for p in cmd.route.items
+            ]
+            self.mission_index = 0
+            self.mission_return = cmd.route.return_home
+            self.mission_paused = False
+            self.loiter_left = None
+            self.paused_goto = None
+            self.mode = FlightMode.MISSION
         elif kind is CommandKind.RETURN_TO_LAUNCH:
             self._start_return()
         elif kind is CommandKind.LAND:
@@ -173,6 +207,7 @@ class MockVehicle:
         self.anchor = (self.x, self.y, self.z)
 
     def _start_return(self) -> None:
+        self.mission_paused = False
         self.mode = FlightMode.RETURN
         self.rtl_alt = max(self.z, RTL_MIN_ALTITUDE_M)
         self.paused_goto = None
@@ -207,11 +242,35 @@ class MockVehicle:
         elif self.mode is FlightMode.GOTO and self.anchor is not None:
             if self._fly_to(self.anchor, dt):
                 self.mode = FlightMode.HOLD  # arrived: hold at the target
+        elif self.mode is FlightMode.MISSION:
+            self._fly_mission(dt)
         elif self.mode is FlightMode.RETURN:
             self._return(dt)
         elif self.mode is FlightMode.LAND:
             self._land(dt)
         self._drain(dt)
+
+    def _fly_mission(self, dt: float) -> None:
+        """Fly to the current item, loiter there if asked, then on; return or hold at the end."""
+        if self.mission_index >= len(self.mission):
+            if self.mission_return:
+                self._start_return()
+            else:
+                self._hold_here()
+            return
+        x, y, z, speed, loiter = self.mission[self.mission_index]
+        if self.loiter_left is not None:
+            self._station_keep((x, y, z), dt)
+            self.loiter_left -= dt
+            if self.loiter_left <= 0.0:
+                self.loiter_left = None
+                self.mission_index += 1
+            return
+        if self._fly_to((x, y, z), dt, speed):
+            if loiter:
+                self.loiter_left = loiter
+            else:
+                self.mission_index += 1
 
     def _failsafes(self, dt: float) -> None:
         self.link_down_s = 0.0 if self.link_up else self.link_down_s + dt
@@ -253,20 +312,23 @@ class MockVehicle:
         self.x += math.sin(heading) * speed * dt
         self.y += math.cos(heading) * speed * dt
 
-    def _fly_to(self, target: tuple[float, float, float], dt: float) -> bool:
-        """Move toward ``target``; True once within the arrival radius."""
+    def _fly_to(
+        self, target: tuple[float, float, float], dt: float, cruise: float | None = None
+    ) -> bool:
+        """Move toward ``target`` (at ``cruise`` if given); True once within the arrival radius."""
         tx, ty, tz = target
         self._vertical_toward(tz, dt)
         dx, dy = tx - self.x, ty - self.y
         distance = math.hypot(dx, dy)
         if distance <= self.model.arrive_radius_m:
             return abs(self.z - tz) < 1.0 or not self.model.hovers
+        top = min(cruise, self.model.cruise_mps) if cruise else self.model.cruise_mps
         if self.model.hovers:
             braking = math.sqrt(2 * self.model.accel_mps2 * distance)
-            desired = min(self.model.cruise_mps, braking)
+            desired = min(top, braking)
             self.speed = min(desired, self.speed + self.model.accel_mps2 * dt)
         else:
-            self.speed = self.model.cruise_mps
+            self.speed = top
         travel = min(distance, self.speed * dt)
         self.x += dx / distance * travel
         self.y += dy / distance * travel
@@ -326,6 +388,7 @@ class MockVehicle:
         self.mode = FlightMode.HOLD
         self.anchor = None
         self.paused_goto = None
+        self.mission_paused = False
 
     # --- telemetry ----------------------------------------------------------------------------
 
@@ -358,6 +421,9 @@ class MockVehicle:
             in_air=self.in_air,
             home_latitude=home_lat,
             home_longitude=home_lon,
+            # As PX4 reports it: the item flown, equal to the count once the mission is done.
+            mission_item=self.mission_index if self.mission else None,
+            mission_items=len(self.mission) if self.mission else None,
         )
 
 

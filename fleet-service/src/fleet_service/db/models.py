@@ -43,6 +43,8 @@ from fleet_service.domain.enums import (
     LeaseState,
     MissionKind,
     MissionStatus,
+    PoiKind,
+    PoiStatus,
     Role,
     SearchAreaStatus,
     TaskStatus,
@@ -132,6 +134,7 @@ class Aircraft(OpsBase):
     mavlink_connection: Mapped[str | None] = mapped_column(String(200))
     swarm_drone_id: Mapped[int | None] = mapped_column(Integer, unique=True)
     cruise_speed_mps: Mapped[float | None] = mapped_column(Float)
+    endurance_s: Mapped[float | None] = mapped_column(Float)
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime]
     updated_at: Mapped[datetime]
@@ -226,6 +229,8 @@ class Mission(OpsBase):
     default_altitude_relative_m: Mapped[float] = mapped_column(Float)
     default_speed_mps: Mapped[float | None] = mapped_column(Float)
     notes: Mapped[str | None] = mapped_column(Text)
+    # The saved plan (ADR 0028/0029): pattern parameters and the deconfliction report.
+    plan: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime]
     updated_at: Mapped[datetime]
@@ -268,6 +273,31 @@ class Task(OpsBase):
     altitude_relative_m: Mapped[float | None] = mapped_column(Float)
     speed_mps: Mapped[float | None] = mapped_column(Float)
     start_delay_s: Mapped[float | None] = mapped_column(Float)
+    # The planned route (list of waypoints, altitudes above home) and how it was made.
+    route: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    plan: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    created_at: Mapped[datetime]
+    updated_at: Mapped[datetime]
+
+
+class Poi(OpsBase):
+    """A point of interest of an incident, marked by an operator or reported by a drone."""
+
+    __tablename__ = "pois"
+
+    id: Mapped[str] = mapped_column(ID, primary_key=True)
+    incident_id: Mapped[str] = mapped_column(ForeignKey("incidents.id"), index=True)
+    kind: Mapped[PoiKind] = mapped_column(enum_type(PoiKind))
+    status: Mapped[PoiStatus] = mapped_column(enum_type(PoiStatus))
+    latitude: Mapped[float] = mapped_column(Float)
+    longitude: Mapped[float] = mapped_column(Float)
+    uncertainty_m: Mapped[float | None] = mapped_column(Float)
+    aircraft_id: Mapped[str | None] = mapped_column(
+        ForeignKey("aircraft.id", ondelete="SET NULL"), index=True
+    )  # the reporting aircraft (None: marked by an operator)
+    reported_at: Mapped[datetime | None]  # when the aircraft saw it
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime]
     updated_at: Mapped[datetime]
 
@@ -311,6 +341,7 @@ class Alert(OpsBase):
     acknowledged_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
     acknowledged_at: Mapped[datetime | None]
     cleared_at: Mapped[datetime | None]
+    escalated_at: Mapped[datetime | None]  # a warning left unacknowledged became critical
 
 
 class Command(OpsBase):

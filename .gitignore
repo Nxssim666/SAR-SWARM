@@ -32,8 +32,10 @@ fleet-service/data-*/
 !.env.example
 # Generated PX4 fleets (sim/sitl/fleet.py)
 sim/sitl/generated/
-# Offline sample basemap (fleet-console/scripts/fetch-basemap.mjs)
+# Offline region data (ADR 0030): basemaps and imagery (fleet-console/scripts/fetch-basemap.mjs,
+# scripts/fetch_region.py) and terrain grids (scripts/fetch_region.py)
 fleet-console/public/basemap/
+fleet-service/terrain/
 # Playwright output
 fleet-console/test-results/
 fleet-console/playwright-report/

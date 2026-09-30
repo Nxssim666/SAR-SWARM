@@ -24,8 +24,10 @@ TELEMETRY = "fleet.telemetry"  # key: aircraft id; data: live aircraft state
 ALERTS = "alerts"
 COMMANDS = "commands"
 CONTROL = "control"
+MISSIONS = "missions"  # key: mission id; data: mission progress
+POIS = "pois"  # key: poi id; data: point of interest
 SESSIONS = "sessions"  # key: session id; data: {"revoked": True}
-TOPICS = (TELEMETRY, ALERTS, COMMANDS, CONTROL)
+TOPICS = (TELEMETRY, ALERTS, COMMANDS, CONTROL, MISSIONS, POIS)
 
 
 @dataclass(frozen=True, slots=True)

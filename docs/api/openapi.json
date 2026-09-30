@@ -4737,6 +4737,784 @@
         "x-permission": "missions.plan"
       }
     },
+    "/api/v1/missions/{mission_id}/plan": {
+      "post": {
+        "tags": [
+          "missions"
+        ],
+        "summary": "Plan",
+        "description": "Plan a mission: routes for its aircraft, split, layered, sequenced and checked.",
+        "operationId": "plan_api_v1_missions__mission_id__plan_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Mission Id"
+            }
+          },
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Only compute and answer; save nothing.",
+              "default": false,
+              "title": "Dry Run"
+            },
+            "description": "Only compute and answer; save nothing."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "missions.plan"
+      },
+      "get": {
+        "tags": [
+          "missions"
+        ],
+        "summary": "Get Plan",
+        "description": "The saved plan of a mission.",
+        "operationId": "get_plan_api_v1_missions__mission_id__plan_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Mission Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "fleet.view"
+      }
+    },
+    "/api/v1/missions/{mission_id}/progress": {
+      "get": {
+        "tags": [
+          "missions"
+        ],
+        "summary": "Get Progress",
+        "description": "Progress of a mission: status, per-aircraft item, coverage and its geometry.",
+        "operationId": "get_progress_api_v1_missions__mission_id__progress_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Mission Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MissionProgressOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "fleet.view"
+      }
+    },
+    "/api/v1/incidents/{incident_id}/pois": {
+      "get": {
+        "tags": [
+          "pois"
+        ],
+        "summary": "List Pois",
+        "description": "An incident's points of interest, optionally by status.",
+        "operationId": "list_pois_api_v1_incidents__incident_id__pois_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "incident_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Incident Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PoiStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "description": "Maximum items to return.",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum items to return."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque cursor from a previous page's next_cursor.",
+              "title": "Cursor"
+            },
+            "description": "Opaque cursor from a previous page's next_cursor."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoiPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "fleet.view"
+      },
+      "post": {
+        "tags": [
+          "pois"
+        ],
+        "summary": "Create Poi",
+        "description": "Mark a point of interest in an open incident.",
+        "operationId": "create_poi_api_v1_incidents__incident_id__pois_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "incident_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Incident Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoiCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoiView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "missions.plan"
+      }
+    },
+    "/api/v1/pois/{poi_id}": {
+      "get": {
+        "tags": [
+          "pois"
+        ],
+        "summary": "Get Poi",
+        "description": "One point of interest.",
+        "operationId": "get_poi_api_v1_pois__poi_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "poi_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Poi Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoiView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "fleet.view"
+      },
+      "patch": {
+        "tags": [
+          "pois"
+        ],
+        "summary": "Update Poi",
+        "description": "Confirm, dismiss or resolve a point, change its kind, or add notes.",
+        "operationId": "update_poi_api_v1_pois__poi_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "poi_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Poi Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoiUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoiView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "missions.plan"
+      }
+    },
     "/api/v1/video-streams": {
       "get": {
         "tags": [
@@ -5639,6 +6417,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/MissionStartCommand"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MissionPauseCommand"
                   }
                 ],
                 "title": "Body"
@@ -7139,6 +7920,20 @@
             ],
             "title": "Cruise Speed Mps"
           },
+          "endurance_s": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 86400.0,
+                "exclusiveMinimum": 0.0,
+                "description": "Flight time on a full battery, seconds; weighs its share of a search."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endurance S"
+          },
           "notes": {
             "anyOf": [
               {
@@ -7292,6 +8087,17 @@
             ],
             "title": "Cruise Speed Mps"
           },
+          "endurance_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endurance S"
+          },
           "notes": {
             "anyOf": [
               {
@@ -7330,6 +8136,7 @@
           "mavlink_connection",
           "swarm_drone_id",
           "cruise_speed_mps",
+          "endurance_s",
           "notes",
           "group_ids",
           "created_at",
@@ -7433,6 +8240,20 @@
             ],
             "title": "Cruise Speed Mps"
           },
+          "endurance_s": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 86400.0,
+                "exclusiveMinimum": 0.0,
+                "description": "Flight time on a full battery, seconds; weighs its share of a search."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endurance S"
+          },
           "notes": {
             "anyOf": [
               {
@@ -7476,7 +8297,10 @@
           "command_timeout",
           "command_unverified",
           "control_orphaned",
-          "video_down"
+          "video_down",
+          "survivor_sighting",
+          "return_energy",
+          "link_partial"
         ],
         "title": "AlertKind",
         "description": "What an alert is about (engine from M1b/M4)."
@@ -7600,6 +8424,19 @@
               }
             ],
             "title": "Cleared At"
+          },
+          "escalated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Escalated At",
+            "description": "When an unacknowledged warning became critical."
           }
         },
         "type": "object",
@@ -8121,6 +8958,14 @@
             },
             "type": "array",
             "title": "Rejected"
+          },
+          "conflicts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Conflicts",
+            "default": []
           }
         },
         "type": "object",
@@ -8339,6 +9184,44 @@
         ],
         "title": "FlightMode",
         "description": "Autopilot-agnostic flight mode shown to operators (drivers map to it)."
+      },
+      "Footprint": {
+        "properties": {
+          "hfov_deg": {
+            "type": "number",
+            "exclusiveMaximum": 180.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Hfov Deg"
+          },
+          "overlap": {
+            "type": "number",
+            "maximum": 0.9,
+            "minimum": 0.0,
+            "title": "Overlap"
+          },
+          "height_agl_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1500.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height Agl M",
+            "description": "Height above ground; default: the mission's altitude above home."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "hfov_deg",
+          "overlap"
+        ],
+        "title": "Footprint",
+        "description": "The camera, for the lane spacing: 2 · height · tan(HFOV / 2) · (1 - overlap)."
       },
       "GeoPoint": {
         "properties": {
@@ -8570,10 +9453,10 @@
               "minLength": 1
             },
             "type": "array",
-            "maxItems": 1,
+            "maxItems": 254,
             "minItems": 1,
-            "title": "Aircraft Ids",
-            "description": "Exactly one aircraft."
+            "uniqueItems": true,
+            "title": "Aircraft Ids"
           },
           "confirmation_token": {
             "anyOf": [
@@ -8609,6 +9492,20 @@
               }
             ],
             "title": "Altitude Relative M"
+          },
+          "spread_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000.0,
+                "minimum": 10.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spread M",
+            "description": "Several aircraft: distance between their points (default: settings)."
           }
         },
         "additionalProperties": false,
@@ -8620,7 +9517,7 @@
           "target"
         ],
         "title": "GotoCommand",
-        "description": "Fly to a position (and altitude above home), then hold there.\n\nOne aircraft only: a shared target would converge several aircraft on one point, and\nnothing spreads them apart yet (deconfliction is M4)."
+        "description": "Fly to a position (and altitude above home), then hold there.\n\nOne aircraft flies to the target itself. Several aircraft never share it (ADR 0029):\neach gets its own point, ``spread_m`` apart around the target, and its own altitude\nlayer; their flights are checked in 4D and the command is always confirmed."
       },
       "GpsFix": {
         "type": "string",
@@ -9572,6 +10469,127 @@
         "title": "MissionPage",
         "description": "A page of missions."
       },
+      "MissionPauseCommand": {
+        "properties": {
+          "command_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Command Id",
+            "description": "Client-generated; the idempotency key."
+          },
+          "aircraft_ids": {
+            "items": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 254,
+            "minItems": 1,
+            "uniqueItems": true,
+            "title": "Aircraft Ids"
+          },
+          "confirmation_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Token",
+            "description": "From a 428 answer to this exact request."
+          },
+          "kind": {
+            "type": "string",
+            "const": "mission_pause",
+            "title": "Kind"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "command_id",
+          "aircraft_ids",
+          "kind"
+        ],
+        "title": "MissionPauseCommand",
+        "description": "Pause the GCS-planned mission the aircraft fly (they hold; resume continues it)."
+      },
+      "MissionProgressOut": {
+        "properties": {
+          "mission_id": {
+            "type": "string",
+            "title": "Mission Id"
+          },
+          "incident_id": {
+            "type": "string",
+            "title": "Incident Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MissionKind"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MissionStatus"
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage",
+            "description": "Share of the search area swept (0-1)."
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/TaskProgressView"
+            },
+            "type": "array",
+            "title": "Tasks"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "coverage_geometry": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage Geometry"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mission_id",
+          "incident_id",
+          "name",
+          "kind",
+          "status",
+          "coverage",
+          "tasks",
+          "updated_at",
+          "coverage_geometry"
+        ],
+        "title": "MissionProgressOut",
+        "description": "A mission's progress, with the area swept so far (WGS84 GeoJSON MultiPolygon)."
+      },
       "MissionStartCommand": {
         "properties": {
           "command_id": {
@@ -9626,7 +10644,7 @@
           "mission_id"
         ],
         "title": "MissionStartCommand",
-        "description": "Start a planned swarm area mission (ADR 0024). Always confirmed.\n\nThe swarm protocol cannot address a mission: every drone on the swarm link adopts it,\nso ``aircraft_ids`` must be every swarm aircraft, and exactly the mission's tasks.\nGCS-planned missions (waypoint, area search) cannot be started yet (M4)."
+        "description": "Start a planned mission. Always confirmed.\n\n- A swarm area mission (ADR 0024): the swarm protocol cannot address a mission, every\n  drone on the swarm link adopts it, so ``aircraft_ids`` must be every swarm aircraft,\n  and exactly the mission's tasks.\n- A GCS-planned mission (waypoint, area search; ADR 0028): each aircraft is sent its\n  own planned route (uploaded, read back, started). Conflicts or clearance issues in\n  the plan need a supervisor's override."
       },
       "MissionStatus": {
         "type": "string",
@@ -9745,6 +10763,19 @@
         "title": "PasswordReset",
         "description": "An administrator sets a new password; the user's sessions are revoked."
       },
+      "PatternKind": {
+        "type": "string",
+        "enum": [
+          "parallel_track",
+          "creeping_line",
+          "expanding_square",
+          "sector",
+          "contour",
+          "route"
+        ],
+        "title": "PatternKind",
+        "description": "Search patterns (IAMSAR names where they exist)."
+      },
       "Permission": {
         "type": "string",
         "enum": [
@@ -9763,6 +10794,709 @@
         ],
         "title": "Permission",
         "description": "Something a session may be allowed to do."
+      },
+      "PlanClearance": {
+        "properties": {
+          "aircraft_id": {
+            "type": "string",
+            "title": "Aircraft Id"
+          },
+          "callsign": {
+            "type": "string",
+            "title": "Callsign"
+          },
+          "waypoint": {
+            "type": "integer",
+            "title": "Waypoint"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "height_m": {
+            "type": "number",
+            "title": "Height M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "aircraft_id",
+          "callsign",
+          "waypoint",
+          "kind",
+          "height_m"
+        ],
+        "title": "PlanClearance",
+        "description": "A waypoint too close to the ground or too high."
+      },
+      "PlanConflict": {
+        "properties": {
+          "aircraft_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Aircraft Ids"
+          },
+          "callsigns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Callsigns"
+          },
+          "t_s": {
+            "type": "number",
+            "title": "T S"
+          },
+          "latitude": {
+            "type": "number",
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "title": "Longitude"
+          },
+          "horizontal_m": {
+            "type": "number",
+            "title": "Horizontal M"
+          },
+          "vertical_m": {
+            "type": "number",
+            "title": "Vertical M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "aircraft_ids",
+          "callsigns",
+          "t_s",
+          "latitude",
+          "longitude",
+          "horizontal_m",
+          "vertical_m"
+        ],
+        "title": "PlanConflict",
+        "description": "Two aircraft too close in the plan: where and when they come closest."
+      },
+      "PlanOut": {
+        "properties": {
+          "mission_id": {
+            "type": "string",
+            "title": "Mission Id"
+          },
+          "pattern": {
+            "$ref": "#/components/schemas/PatternKind"
+          },
+          "spacing_m": {
+            "type": "number",
+            "title": "Spacing M"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run"
+          },
+          "clear": {
+            "type": "boolean",
+            "title": "Clear",
+            "description": "No conflict and no clearance issue: startable."
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage",
+            "description": "Share of the area within the sweep (0-1)."
+          },
+          "area_m2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area M2"
+          },
+          "duration_s": {
+            "type": "number",
+            "title": "Duration S"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/PlannedTask"
+            },
+            "type": "array",
+            "title": "Tasks"
+          },
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/PlanConflict"
+            },
+            "type": "array",
+            "title": "Conflicts"
+          },
+          "clearance": {
+            "items": {
+              "$ref": "#/components/schemas/PlanClearance"
+            },
+            "type": "array",
+            "title": "Clearance"
+          },
+          "unchecked_terrain": {
+            "type": "integer",
+            "title": "Unchecked Terrain"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          },
+          "planned_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Planned At"
+          },
+          "request": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Request"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mission_id",
+          "pattern",
+          "spacing_m",
+          "dry_run",
+          "clear",
+          "coverage",
+          "area_m2",
+          "duration_s",
+          "tasks",
+          "conflicts",
+          "clearance",
+          "unchecked_terrain",
+          "notes",
+          "planned_at",
+          "request"
+        ],
+        "title": "PlanOut",
+        "description": "A mission's plan."
+      },
+      "PlanRequest": {
+        "properties": {
+          "pattern": {
+            "$ref": "#/components/schemas/PatternKind"
+          },
+          "spacing_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 2000.0,
+                "minimum": 5.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spacing M"
+          },
+          "footprint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Footprint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bearing_deg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 360.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bearing Deg",
+            "description": "Lane direction or first leg, degrees true; default: the area's long axis."
+          },
+          "datum": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GeoPoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "radius_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 50000.0,
+                "minimum": 10.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Radius M"
+          },
+          "second_pass": {
+            "type": "boolean",
+            "title": "Second Pass",
+            "default": false
+          },
+          "height_agl_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1500.0,
+                "minimum": 5.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height Agl M",
+            "description": "Contour search: height above the contour lines."
+          },
+          "aircraft_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "maxLength": 64,
+                  "minLength": 1
+                },
+                "type": "array",
+                "maxItems": 254,
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aircraft Ids"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "overrides": {
+            "items": {
+              "$ref": "#/components/schemas/TaskOverride"
+            },
+            "type": "array",
+            "maxItems": 254,
+            "title": "Overrides"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "pattern"
+        ],
+        "title": "PlanRequest",
+        "description": "What to plan. Area patterns need ``spacing_m`` or ``footprint``; aircraft come from\n``aircraft_ids``, a ``group_id``, or (neither) the mission's current tasks."
+      },
+      "PlannedTask": {
+        "properties": {
+          "aircraft_id": {
+            "type": "string",
+            "title": "Aircraft Id"
+          },
+          "callsign": {
+            "type": "string",
+            "title": "Callsign"
+          },
+          "airframe": {
+            "$ref": "#/components/schemas/Airframe"
+          },
+          "companion": {
+            "type": "boolean",
+            "title": "Companion",
+            "description": "Has a swarm companion (onboard obstacle avoidance)."
+          },
+          "layer_m": {
+            "type": "number",
+            "title": "Layer M",
+            "description": "Metres added to the planned altitude for separation."
+          },
+          "speed_mps": {
+            "type": "number",
+            "title": "Speed Mps"
+          },
+          "start_delay_s": {
+            "type": "number",
+            "title": "Start Delay S"
+          },
+          "strip_area_m2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strip Area M2"
+          },
+          "length_m": {
+            "type": "number",
+            "title": "Length M"
+          },
+          "duration_s": {
+            "type": "number",
+            "title": "Duration S"
+          },
+          "fallback": {
+            "type": "boolean",
+            "title": "Fallback"
+          },
+          "infeasible_turns": {
+            "type": "integer",
+            "title": "Infeasible Turns"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          },
+          "waypoints": {
+            "items": {
+              "$ref": "#/components/schemas/PlannedWaypoint"
+            },
+            "type": "array",
+            "title": "Waypoints"
+          }
+        },
+        "type": "object",
+        "required": [
+          "aircraft_id",
+          "callsign",
+          "airframe",
+          "companion",
+          "layer_m",
+          "speed_mps",
+          "start_delay_s",
+          "strip_area_m2",
+          "length_m",
+          "duration_s",
+          "fallback",
+          "infeasible_turns",
+          "notes",
+          "waypoints"
+        ],
+        "title": "PlannedTask",
+        "description": "One aircraft's part of a plan."
+      },
+      "PlannedWaypoint": {
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "title": "Longitude"
+          },
+          "altitude_relative_m": {
+            "type": "number",
+            "title": "Altitude Relative M"
+          },
+          "speed_mps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed Mps"
+          },
+          "loiter_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loiter S"
+          }
+        },
+        "type": "object",
+        "required": [
+          "latitude",
+          "longitude",
+          "altitude_relative_m",
+          "speed_mps",
+          "loiter_s"
+        ],
+        "title": "PlannedWaypoint",
+        "description": "One waypoint of a planned route (altitude above the aircraft's home)."
+      },
+      "PoiCreate": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/PoiKind",
+            "default": "poi"
+          },
+          "position": {
+            "$ref": "#/components/schemas/GeoPoint"
+          },
+          "uncertainty_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 10000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uncertainty M"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "position"
+        ],
+        "title": "PoiCreate",
+        "description": "A point an operator marks."
+      },
+      "PoiKind": {
+        "type": "string",
+        "enum": [
+          "poi",
+          "survivor_sighting",
+          "clue",
+          "hazard"
+        ],
+        "title": "PoiKind",
+        "description": "A point of interest: a place operators mark, or a survivor sighting a drone reports."
+      },
+      "PoiPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PoiView"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor",
+            "description": "Null when this is the last page."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "PoiPage",
+        "description": "A page of points of interest."
+      },
+      "PoiStatus": {
+        "type": "string",
+        "enum": [
+          "new",
+          "confirmed",
+          "dismissed",
+          "resolved"
+        ],
+        "title": "PoiStatus",
+        "description": "What operators made of a point of interest."
+      },
+      "PoiUpdate": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/PoiKind"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PoiStatus"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PoiUpdate",
+        "description": "What operators decide about a point, or add to it."
+      },
+      "PoiView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "incident_id": {
+            "type": "string",
+            "title": "Incident Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PoiKind"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PoiStatus"
+          },
+          "latitude": {
+            "type": "number",
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "title": "Longitude"
+          },
+          "uncertainty_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uncertainty M",
+            "description": "1-sigma horizontal uncertainty [m]."
+          },
+          "aircraft_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aircraft Id",
+            "description": "The reporting aircraft (null: an operator)."
+          },
+          "reported_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported At"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "incident_id",
+          "kind",
+          "status",
+          "latitude",
+          "longitude",
+          "uncertainty_m",
+          "aircraft_id",
+          "reported_at",
+          "notes",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PoiView",
+        "description": "A point of interest: marked by an operator, or a survivor sighting a drone reported."
       },
       "PolygonGeoJSON": {
         "properties": {
@@ -10198,6 +11932,38 @@
             },
             "type": "array",
             "title": "Warnings"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GeoPoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "altitude_relative_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Altitude Relative M"
+          },
+          "start_delay_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Delay S"
           }
         },
         "type": "object",
@@ -10575,6 +12341,63 @@
         "title": "TaskOut",
         "description": "An aircraft's assignment to a mission."
       },
+      "TaskOverride": {
+        "properties": {
+          "aircraft_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Aircraft Id"
+          },
+          "altitude_relative_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1500.0,
+                "minimum": -500.0,
+                "description": "Metres above each aircraft's home position (ADR 0014)."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Altitude Relative M"
+          },
+          "speed_mps": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 60.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed Mps"
+          },
+          "start_delay_s": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 86400.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Delay S"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "aircraft_id"
+        ],
+        "title": "TaskOverride",
+        "description": "Per-aircraft changes to the mission's defaults."
+      },
       "TaskPage": {
         "properties": {
           "items": {
@@ -10604,6 +12427,60 @@
         ],
         "title": "TaskPage",
         "description": "A page of tasks."
+      },
+      "TaskProgressView": {
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "title": "Task Id"
+          },
+          "aircraft_id": {
+            "type": "string",
+            "title": "Aircraft Id"
+          },
+          "callsign": {
+            "type": "string",
+            "title": "Callsign"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "item": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item",
+            "description": "Waypoint being flown (0-based). Null: unknown."
+          },
+          "items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items",
+            "description": "Waypoints of its route. Null: unknown."
+          }
+        },
+        "type": "object",
+        "required": [
+          "task_id",
+          "aircraft_id",
+          "callsign",
+          "status",
+          "item",
+          "items"
+        ],
+        "title": "TaskProgressView",
+        "description": "How far one aircraft is through its part of a mission."
       },
       "TaskStatus": {
         "type": "string",
@@ -11005,6 +12882,30 @@
               }
             ],
             "description": "Only for aircraft with a swarm link."
+          },
+          "mission_item": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mission Item",
+            "description": "Mission item flown (0-based); equals mission_items once done. Null: none."
+          },
+          "mission_items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mission Items",
+            "description": "Items of the loaded mission."
           }
         },
         "type": "object",

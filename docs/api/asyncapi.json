@@ -49,6 +49,12 @@
         "ControlSnapshot": {
           "$ref": "#/components/messages/ControlSnapshot"
         },
+        "MissionsSnapshot": {
+          "$ref": "#/components/messages/MissionsSnapshot"
+        },
+        "PoisSnapshot": {
+          "$ref": "#/components/messages/PoisSnapshot"
+        },
         "TelemetryEvent": {
           "$ref": "#/components/messages/TelemetryEvent"
         },
@@ -60,6 +66,12 @@
         },
         "ControlEvent": {
           "$ref": "#/components/messages/ControlEvent"
+        },
+        "MissionEvent": {
+          "$ref": "#/components/messages/MissionEvent"
+        },
+        "PoiEvent": {
+          "$ref": "#/components/messages/PoiEvent"
         },
         "PongMessage": {
           "$ref": "#/components/messages/PongMessage"
@@ -118,6 +130,12 @@
           "$ref": "#/channels/fleet/messages/ControlSnapshot"
         },
         {
+          "$ref": "#/channels/fleet/messages/MissionsSnapshot"
+        },
+        {
+          "$ref": "#/channels/fleet/messages/PoisSnapshot"
+        },
+        {
           "$ref": "#/channels/fleet/messages/TelemetryEvent"
         },
         {
@@ -128,6 +146,12 @@
         },
         {
           "$ref": "#/channels/fleet/messages/ControlEvent"
+        },
+        {
+          "$ref": "#/channels/fleet/messages/MissionEvent"
+        },
+        {
+          "$ref": "#/channels/fleet/messages/PoiEvent"
         },
         {
           "$ref": "#/channels/fleet/messages/PongMessage"
@@ -224,6 +248,24 @@
           "$ref": "#/components/schemas/ControlSnapshot"
         }
       },
+      "MissionsSnapshot": {
+        "name": "MissionsSnapshot",
+        "title": "MissionsSnapshot",
+        "summary": "Mission progress, on subscribing to missions.",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/MissionsSnapshot"
+        }
+      },
+      "PoisSnapshot": {
+        "name": "PoisSnapshot",
+        "title": "PoisSnapshot",
+        "summary": "Points of interest, on subscribing to pois.",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/PoisSnapshot"
+        }
+      },
       "TelemetryEvent": {
         "name": "TelemetryEvent",
         "title": "TelemetryEvent",
@@ -258,6 +300,24 @@
         "contentType": "application/json",
         "payload": {
           "$ref": "#/components/schemas/ControlEvent"
+        }
+      },
+      "MissionEvent": {
+        "name": "MissionEvent",
+        "title": "MissionEvent",
+        "summary": "A mission's status or progress changed (at most once a second per mission).",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/MissionEvent"
+        }
+      },
+      "PoiEvent": {
+        "name": "PoiEvent",
+        "title": "PoiEvent",
+        "summary": "A point of interest was marked, reported by a drone, or changed.",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/PoiEvent"
         }
       },
       "PongMessage": {
@@ -426,7 +486,10 @@
           "command_timeout",
           "command_unverified",
           "control_orphaned",
-          "video_down"
+          "video_down",
+          "survivor_sighting",
+          "return_energy",
+          "link_partial"
         ],
         "title": "AlertKind",
         "type": "string"
@@ -521,6 +584,20 @@
               }
             ],
             "title": "Cleared At"
+          },
+          "escalated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "When an unacknowledged warning became critical.",
+            "title": "Escalated At"
           }
         },
         "required": [
@@ -1205,6 +1282,181 @@
         "title": "LinkState",
         "type": "string"
       },
+      "MissionEvent": {
+        "description": "A mission's status or progress changed (at most once a second per mission).",
+        "properties": {
+          "seq": {
+            "description": "Per-connection sequence number; gaps never occur.",
+            "minimum": 1,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "type": {
+            "const": "event",
+            "default": "event",
+            "title": "Type",
+            "type": "string"
+          },
+          "topic": {
+            "const": "missions",
+            "default": "missions",
+            "title": "Topic",
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/MissionProgressView"
+          }
+        },
+        "required": [
+          "seq",
+          "ts",
+          "data"
+        ],
+        "title": "MissionEvent",
+        "type": "object"
+      },
+      "MissionKind": {
+        "description": "Waypoint route, GCS-planned area search (model A), swarm area search (model B, ADR 0003).",
+        "enum": [
+          "waypoint",
+          "area_search",
+          "swarm_area"
+        ],
+        "title": "MissionKind",
+        "type": "string"
+      },
+      "MissionProgressView": {
+        "description": "A mission's execution: status, per-aircraft progress, and area covered.",
+        "properties": {
+          "mission_id": {
+            "title": "Mission Id",
+            "type": "string"
+          },
+          "incident_id": {
+            "title": "Incident Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MissionKind"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MissionStatus"
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Share of the search area swept (0-1).",
+            "title": "Coverage"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/TaskProgressView"
+            },
+            "title": "Tasks",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mission_id",
+          "incident_id",
+          "name",
+          "kind",
+          "status",
+          "coverage",
+          "tasks",
+          "updated_at"
+        ],
+        "title": "MissionProgressView",
+        "type": "object"
+      },
+      "MissionStatus": {
+        "description": "Mission lifecycle. ``active``, ``paused`` and ``completed`` are set by execution only.",
+        "enum": [
+          "draft",
+          "planned",
+          "active",
+          "paused",
+          "completed",
+          "aborted"
+        ],
+        "title": "MissionStatus",
+        "type": "string"
+      },
+      "MissionsSnapshot": {
+        "description": "Mission progress, on subscribing to missions.",
+        "properties": {
+          "seq": {
+            "description": "Per-connection sequence number; gaps never occur.",
+            "minimum": 1,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "type": {
+            "const": "snapshot",
+            "default": "snapshot",
+            "title": "Type",
+            "type": "string"
+          },
+          "topic": {
+            "const": "missions",
+            "default": "missions",
+            "title": "Topic",
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/MissionsSnapshotData"
+          }
+        },
+        "required": [
+          "seq",
+          "ts",
+          "data"
+        ],
+        "title": "MissionsSnapshot",
+        "type": "object"
+      },
+      "MissionsSnapshotData": {
+        "description": "Every planned, running or paused GCS mission's progress.",
+        "properties": {
+          "missions": {
+            "items": {
+              "$ref": "#/components/schemas/MissionProgressView"
+            },
+            "title": "Missions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "missions"
+        ],
+        "title": "MissionsSnapshotData",
+        "type": "object"
+      },
       "Permission": {
         "description": "Something a session may be allowed to do.",
         "enum": [
@@ -1238,6 +1490,233 @@
           "type"
         ],
         "title": "PingMessage",
+        "type": "object"
+      },
+      "PoiEvent": {
+        "description": "A point of interest was marked, reported by a drone, or changed.",
+        "properties": {
+          "seq": {
+            "description": "Per-connection sequence number; gaps never occur.",
+            "minimum": 1,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "type": {
+            "const": "event",
+            "default": "event",
+            "title": "Type",
+            "type": "string"
+          },
+          "topic": {
+            "const": "pois",
+            "default": "pois",
+            "title": "Topic",
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PoiView"
+          }
+        },
+        "required": [
+          "seq",
+          "ts",
+          "data"
+        ],
+        "title": "PoiEvent",
+        "type": "object"
+      },
+      "PoiKind": {
+        "description": "A point of interest: a place operators mark, or a survivor sighting a drone reports.",
+        "enum": [
+          "poi",
+          "survivor_sighting",
+          "clue",
+          "hazard"
+        ],
+        "title": "PoiKind",
+        "type": "string"
+      },
+      "PoiStatus": {
+        "description": "What operators made of a point of interest.",
+        "enum": [
+          "new",
+          "confirmed",
+          "dismissed",
+          "resolved"
+        ],
+        "title": "PoiStatus",
+        "type": "string"
+      },
+      "PoiView": {
+        "description": "A point of interest: marked by an operator, or a survivor sighting a drone reported.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "incident_id": {
+            "title": "Incident Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PoiKind"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PoiStatus"
+          },
+          "latitude": {
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "title": "Longitude",
+            "type": "number"
+          },
+          "uncertainty_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1-sigma horizontal uncertainty [m].",
+            "title": "Uncertainty M"
+          },
+          "aircraft_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The reporting aircraft (null: an operator).",
+            "title": "Aircraft Id"
+          },
+          "reported_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported At"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "incident_id",
+          "kind",
+          "status",
+          "latitude",
+          "longitude",
+          "uncertainty_m",
+          "aircraft_id",
+          "reported_at",
+          "notes",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PoiView",
+        "type": "object"
+      },
+      "PoisSnapshot": {
+        "description": "Points of interest, on subscribing to pois.",
+        "properties": {
+          "seq": {
+            "description": "Per-connection sequence number; gaps never occur.",
+            "minimum": 1,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "type": {
+            "const": "snapshot",
+            "default": "snapshot",
+            "title": "Type",
+            "type": "string"
+          },
+          "topic": {
+            "const": "pois",
+            "default": "pois",
+            "title": "Topic",
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PoisSnapshotData"
+          }
+        },
+        "required": [
+          "seq",
+          "ts",
+          "data"
+        ],
+        "title": "PoisSnapshot",
+        "type": "object"
+      },
+      "PoisSnapshotData": {
+        "description": "The points of interest of the open incidents (dismissed and resolved ones too).",
+        "properties": {
+          "pois": {
+            "items": {
+              "$ref": "#/components/schemas/PoiView"
+            },
+            "title": "Pois",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pois"
+        ],
+        "title": "PoisSnapshotData",
         "type": "object"
       },
       "PongMessage": {
@@ -1327,11 +1806,13 @@
                 "fleet.telemetry",
                 "alerts",
                 "commands",
-                "control"
+                "control",
+                "missions",
+                "pois"
               ],
               "type": "string"
             },
-            "maxItems": 4,
+            "maxItems": 6,
             "minItems": 1,
             "title": "Topics",
             "type": "array",
@@ -1485,6 +1966,72 @@
         ],
         "title": "SwarmView",
         "type": "object"
+      },
+      "TaskProgressView": {
+        "description": "How far one aircraft is through its part of a mission.",
+        "properties": {
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          },
+          "aircraft_id": {
+            "title": "Aircraft Id",
+            "type": "string"
+          },
+          "callsign": {
+            "title": "Callsign",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "item": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Waypoint being flown (0-based). Null: unknown.",
+            "title": "Item"
+          },
+          "items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Waypoints of its route. Null: unknown.",
+            "title": "Items"
+          }
+        },
+        "required": [
+          "task_id",
+          "aircraft_id",
+          "callsign",
+          "status",
+          "item",
+          "items"
+        ],
+        "title": "TaskProgressView",
+        "type": "object"
+      },
+      "TaskStatus": {
+        "description": "An aircraft's assignment to a mission.",
+        "enum": [
+          "pending",
+          "active",
+          "completed",
+          "failed",
+          "cancelled"
+        ],
+        "title": "TaskStatus",
+        "type": "string"
       },
       "TelemetryBatch": {
         "description": "Live states of aircraft (all of them in a snapshot, the changed ones in an event).",
@@ -1745,6 +2292,32 @@
               }
             ],
             "description": "Only for aircraft with a swarm link."
+          },
+          "mission_item": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Mission item flown (0-based); equals mission_items once done. Null: none.",
+            "title": "Mission Item"
+          },
+          "mission_items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Items of the loaded mission.",
+            "title": "Mission Items"
           }
         },
         "required": [
@@ -1784,11 +2357,13 @@
                 "fleet.telemetry",
                 "alerts",
                 "commands",
-                "control"
+                "control",
+                "missions",
+                "pois"
               ],
               "type": "string"
             },
-            "maxItems": 4,
+            "maxItems": 6,
             "minItems": 1,
             "title": "Topics",
             "type": "array",

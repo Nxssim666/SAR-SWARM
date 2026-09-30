@@ -50,6 +50,16 @@ MavlinkConnection = Annotated[
         "which it requires."
     ),
 ]
+Endurance = Annotated[
+    float,
+    Field(
+        strict=True,
+        allow_inf_nan=False,
+        gt=0.0,
+        le=86_400.0,
+        description="Flight time on a full battery, seconds; weighs its share of a search.",
+    ),
+]
 SwarmDroneId = Annotated[
     int,
     Field(strict=True, ge=0, le=2**31 - 1, description="drone_id in the onboard swarm protocol."),
@@ -66,6 +76,7 @@ class AircraftOut(OutputModel):
     mavlink_connection: str | None
     swarm_drone_id: int | None
     cruise_speed_mps: float | None
+    endurance_s: float | None
     notes: str | None
     group_ids: list[str]
     created_at: AwareDatetime
@@ -82,6 +93,7 @@ class AircraftOut(OutputModel):
             mavlink_connection=aircraft.mavlink_connection,
             swarm_drone_id=aircraft.swarm_drone_id,
             cruise_speed_mps=aircraft.cruise_speed_mps,
+            endurance_s=aircraft.endurance_s,
             notes=aircraft.notes,
             group_ids=sorted(g.id for g in aircraft.groups),
             created_at=aircraft.created_at,
@@ -102,6 +114,7 @@ class AircraftCreate(InputModel):
     mavlink_connection: MavlinkConnection | None = None
     swarm_drone_id: SwarmDroneId | None = None
     cruise_speed_mps: Speed | None = None
+    endurance_s: Endurance | None = None
     notes: Notes | None = None
 
     @field_validator("callsign")
@@ -119,6 +132,7 @@ class AircraftUpdate(PatchModel):
     mavlink_connection: MavlinkConnection | None = optional()
     swarm_drone_id: SwarmDroneId | None = optional()
     cruise_speed_mps: Speed | None = optional()
+    endurance_s: Endurance | None = optional()
     notes: Notes | None = optional()
 
     @field_validator("callsign")

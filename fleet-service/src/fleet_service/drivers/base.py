@@ -13,6 +13,7 @@ from enum import StrEnum
 from typing import Protocol
 
 from fleet_service.domain.enums import CommandKind
+from fleet_service.domain.patterns.route import RoutePoint
 from fleet_service.domain.telemetry import TelemetrySample
 
 TelemetrySink = Callable[[TelemetrySample], None]
@@ -31,6 +32,19 @@ class AreaMission:
 
 
 @dataclass(frozen=True)
+class RouteMission:
+    """A GCS-planned mission for one aircraft (ADR 0028), flown by its autopilot.
+
+    Altitudes are above the aircraft's home. The first item may be a loiter where the
+    aircraft is: its planned start delay, flown on board so departures stay sequenced.
+    """
+
+    mission_id: str
+    items: tuple[RoutePoint, ...]
+    return_home: bool = True
+
+
+@dataclass(frozen=True)
 class DriverCommand:
     """A command for one aircraft, already authorized and checked.
 
@@ -44,6 +58,8 @@ class DriverCommand:
     longitude: float | None = None
     command_id: str | None = None
     mission: AreaMission | None = None
+    route: RouteMission | None = None  # mission_start of a GCS-planned mission
+    gcs_mission: bool = False  # the command concerns a GCS-planned (autopilot) mission
 
 
 class Outcome(StrEnum):

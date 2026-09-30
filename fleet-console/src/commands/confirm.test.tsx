@@ -125,6 +125,7 @@ function problem(overrides: Partial<ConfirmationProblem['summary']> = {}): Confi
           message: 'Take control first.',
         },
       ],
+      conflicts: [],
       ...overrides,
     },
   };

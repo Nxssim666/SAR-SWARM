@@ -157,7 +157,13 @@ async def test_secrets_never_reach_the_audit_trail(context: AppContext) -> None:
         ("update audit_events set details = '{\"n\": 99}' where seq = 2", 2),
         ("update audit_events set actor_username = 'mallory' where seq = 1", 1),
         ("delete from audit_events where seq = 2", 3),
-        ("update audit_events set hash = 'f' || substr(hash, 2) where seq = 3", 3),
+        # Flip the first hex digit to a different one (a fixed 'f' left hashes starting with
+        # 'f' unchanged, so the test failed 1 time in 16).
+        (
+            "update audit_events set hash = (case when substr(hash, 1, 1) = 'f' then 'e' "
+            "else 'f' end) || substr(hash, 2) where seq = 3",
+            3,
+        ),
     ],
 )
 async def test_tampering_breaks_the_chain(

@@ -176,3 +176,92 @@ async def test_relinking_moves_the_aircraft_and_removal_frees_the_port(
 
     assert moved["position"]["latitude"] == pytest.approx(47.3990, abs=1e-6)
     assert await until(port_free, 5.0, "the hub to release its port")
+
+
+async def _planned_search(station: Station, hexa: str) -> str:
+    """A small area search 150 m north of the vehicle, planned for ``hexa``; its id."""
+    base = {"latitude": 47.3977, "longitude": 8.5456}
+    incident = await station.client.post(
+        "/api/v1/incidents",
+        json={"name": "Test", "base": base, "operating_radius_m": 5000.0},
+        headers=station.headers,
+    )
+    lat, lon, half = 47.3995, 8.5456, 0.0005
+    ring = [[lon - half, lat - half], [lon + half, lat - half], [lon + half, lat + half],
+            [lon - half, lat + half], [lon - half, lat - half]]  # fmt: skip
+    area = await station.client.post(
+        "/api/v1/search-areas",
+        json={"incident_id": incident.json()["id"], "name": "A",
+              "geometry": {"type": "Polygon", "coordinates": [ring]}},
+        headers=station.headers,
+    )  # fmt: skip
+    mission = await station.client.post(
+        "/api/v1/missions",
+        json={"incident_id": incident.json()["id"], "name": "Grid", "kind": "area_search",
+              "search_area_id": area.json()["id"], "default_altitude_relative_m": 15.0},
+        headers=station.headers,
+    )  # fmt: skip
+    mission_id: str = mission.json()["id"]
+    plan = await station.client.post(
+        f"/api/v1/missions/{mission_id}/plan",
+        json={"pattern": "parallel_track", "spacing_m": 40.0, "aircraft_ids": [hexa]},
+        headers=station.headers,
+    )
+    assert plan.status_code == 200, plan.text
+    return mission_id
+
+
+async def test_a_planned_mission_is_uploaded_read_back_started_and_flown(
+    station: Station, port: int
+) -> None:
+    hexa = await station.register("HX-1", **link(port, 61))
+    await station.take(hexa)
+
+    with MavlinkVehicle(port, 61) as vehicle:
+        await station.wait_for(hexa, heard, LINK_TIMEOUT_S, "a fix")
+        for kind, params in (("arm", {}), ("takeoff", {"altitude_relative_m": 10.0})):
+            await station.settled(await station.command(kind, [hexa], **params), FLIGHT_TIMEOUT_S)
+        mission_id = await _planned_search(station, hexa)
+
+        outcome = await station.command("mission_start", [hexa], mission_id=mission_id)
+        states = await station.settled(outcome, FLIGHT_TIMEOUT_S)
+        flying = await station.wait_for(
+            hexa, lambda t: t["mission_items"] is not None, FLIGHT_TIMEOUT_S, "mission progress"
+        )
+        done = await station.wait_for(
+            hexa,
+            lambda t: t["mission_items"] is not None and t["mission_item"] == t["mission_items"],
+            60.0,
+            "the mission to finish",
+        )
+        uploaded = list(vehicle.state.mission)
+
+    assert states == {hexa: "verified"}, await station.reasons(outcome)
+    assert flying["flight_mode"] in ("mission", "return", "land")
+    assert done["mission_item"] == done["mission_items"]
+    # The route went up as planned: a hold where the aircraft was, then the lanes, then home.
+    waypoints = [i for i in uploaded if i.command == 16]  # MAV_CMD_NAV_WAYPOINT
+    assert len(waypoints) >= 3
+    assert uploaded[-1].command == 20  # MAV_CMD_NAV_RETURN_TO_LAUNCH
+
+
+async def test_a_mission_that_reads_back_differently_is_not_started(
+    station: Station, port: int
+) -> None:
+    hexa = await station.register("HX-1", **link(port, 62))
+    await station.take(hexa)
+
+    with MavlinkVehicle(port, 62) as vehicle:
+        vehicle.corrupt_download = True
+        await station.wait_for(hexa, heard, LINK_TIMEOUT_S, "a fix")
+        for kind, params in (("arm", {}), ("takeoff", {"altitude_relative_m": 10.0})):
+            await station.settled(await station.command(kind, [hexa], **params), FLIGHT_TIMEOUT_S)
+        mission_id = await _planned_search(station, hexa)
+
+        outcome = await station.command("mission_start", [hexa], mission_id=mission_id)
+        mode = vehicle.state.mode
+
+    target = outcome["targets"][0]
+    assert target["state"] == "nacked"
+    assert "read-back mismatch" in target["reason"]
+    assert mode != "mission"

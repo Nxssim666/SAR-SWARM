@@ -57,8 +57,8 @@ jobs:
           tar -xzf "$RUNNER_TEMP/$file" -C "$RUNNER_TEMP"
           bin=$RUNNER_TEMP/nats-server-$version-linux-amd64/nats-server
           echo "NATS_SERVER_BIN=$bin" >> "$GITHUB_ENV"
-      - run: uv run ruff check . ../sim ../fleet-console/e2e
-      - run: uv run ruff format --check . ../sim ../fleet-console/e2e
+      - run: uv run ruff check . ../sim ../fleet-console/e2e ../scripts
+      - run: uv run ruff format --check . ../sim ../fleet-console/e2e ../scripts
       - run: uv run ruff check --config ../src/sar_gcs_bridge/ruff.toml ../src/sar_gcs_bridge
       - run: uv run mypy
       - run: uv run pytest -q
@@ -111,10 +111,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: fleet-console/public/basemap
-          key: basemap-${{ hashFiles('fleet-console/scripts/fetch-basemap.mjs') }}
+          key: basemap-${{ hashFiles('fleet-console/scripts/fetch-basemap.mjs', 'fleet-console/scripts/regions.json') }}
       - name: Fetch the basemap if not cached
         run: |
-          if [ ! -f public/basemap/manifest.json ]; then
+          if [ ! -f public/basemap/index.json ]; then
             version=v1.31.2
             sum=3ed7dbf4ec2e6dfe5e25b6f70d1ffc932729f93c86db353bf514dd71010a312f
             file=go-pmtiles_1.31.2_Linux_x86_64.tar.gz
@@ -122,7 +122,7 @@ jobs:
               "https://github.com/protomaps/go-pmtiles/releases/download/$version/$file"
             echo "$sum  $RUNNER_TEMP/$file" | sha256sum -c -
             tar -xzf "$RUNNER_TEMP/$file" -C "$RUNNER_TEMP" pmtiles
-            PMTILES_BIN="$RUNNER_TEMP/pmtiles" node scripts/fetch-basemap.mjs
+            PMTILES_BIN="$RUNNER_TEMP/pmtiles" node scripts/fetch-basemap.mjs --region zurich
           fi
       - name: E2E tests
         env:

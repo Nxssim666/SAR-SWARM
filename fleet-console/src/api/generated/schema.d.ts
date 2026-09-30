@@ -578,6 +578,98 @@ export interface paths {
         patch: operations["update_task_api_v1_tasks__task_id__patch"];
         trace?: never;
     };
+    "/api/v1/missions/{mission_id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Plan
+         * @description The saved plan of a mission.
+         */
+        get: operations["get_plan_api_v1_missions__mission_id__plan_get"];
+        put?: never;
+        /**
+         * Plan
+         * @description Plan a mission: routes for its aircraft, split, layered, sequenced and checked.
+         */
+        post: operations["plan_api_v1_missions__mission_id__plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/missions/{mission_id}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Progress
+         * @description Progress of a mission: status, per-aircraft item, coverage and its geometry.
+         */
+        get: operations["get_progress_api_v1_missions__mission_id__progress_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/incidents/{incident_id}/pois": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Pois
+         * @description An incident's points of interest, optionally by status.
+         */
+        get: operations["list_pois_api_v1_incidents__incident_id__pois_get"];
+        put?: never;
+        /**
+         * Create Poi
+         * @description Mark a point of interest in an open incident.
+         */
+        post: operations["create_poi_api_v1_incidents__incident_id__pois_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pois/{poi_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Poi
+         * @description One point of interest.
+         */
+        get: operations["get_poi_api_v1_pois__poi_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Poi
+         * @description Confirm, dismiss or resolve a point, change its kind, or add notes.
+         */
+        patch: operations["update_poi_api_v1_pois__poi_id__patch"];
+        trace?: never;
+    };
     "/api/v1/video-streams": {
         parameters: {
             query?: never;
@@ -925,6 +1017,8 @@ export interface components {
             swarm_drone_id?: number | null;
             /** Cruise Speed Mps */
             cruise_speed_mps?: number | null;
+            /** Endurance S */
+            endurance_s?: number | null;
             /** Notes */
             notes?: string | null;
         };
@@ -969,6 +1063,8 @@ export interface components {
             swarm_drone_id: number | null;
             /** Cruise Speed Mps */
             cruise_speed_mps: number | null;
+            /** Endurance S */
+            endurance_s: number | null;
             /** Notes */
             notes: string | null;
             /** Group Ids */
@@ -1016,6 +1112,8 @@ export interface components {
             swarm_drone_id?: number | null;
             /** Cruise Speed Mps */
             cruise_speed_mps?: number | null;
+            /** Endurance S */
+            endurance_s?: number | null;
             /** Notes */
             notes?: string | null;
         };
@@ -1030,7 +1128,7 @@ export interface components {
          * @description What an alert is about (engine from M1b/M4).
          * @enum {string}
          */
-        AlertKind: "link_stale" | "link_lost" | "battery_low" | "battery_critical" | "gps_lost" | "geofence_breach" | "mission_complete" | "route_deviation" | "deconfliction_risk" | "command_timeout" | "command_unverified" | "control_orphaned" | "video_down";
+        AlertKind: "link_stale" | "link_lost" | "battery_low" | "battery_critical" | "gps_lost" | "geofence_breach" | "mission_complete" | "route_deviation" | "deconfliction_risk" | "command_timeout" | "command_unverified" | "control_orphaned" | "video_down" | "survivor_sighting" | "return_energy" | "link_partial";
         /**
          * AlertPage
          * @description A page of alerts, newest first.
@@ -1081,6 +1179,11 @@ export interface components {
             acknowledged_at: string | null;
             /** Cleared At */
             cleared_at: string | null;
+            /**
+             * Escalated At
+             * @description When an unacknowledged warning became critical.
+             */
+            escalated_at?: string | null;
         };
         /**
          * ArmCommand
@@ -1277,6 +1380,11 @@ export interface components {
             aircraft: components["schemas"]["SummaryAircraft"][];
             /** Rejected */
             rejected: components["schemas"]["SummaryRejection"][];
+            /**
+             * Conflicts
+             * @default []
+             */
+            conflicts: string[];
         };
         /**
          * ControlAssignment
@@ -1366,6 +1474,21 @@ export interface components {
          * @enum {string}
          */
         FlightMode: "hold" | "takeoff" | "goto" | "mission" | "return" | "land" | "manual" | "offboard" | "unknown";
+        /**
+         * Footprint
+         * @description The camera, for the lane spacing: 2 · height · tan(HFOV / 2) · (1 - overlap).
+         */
+        Footprint: {
+            /** Hfov Deg */
+            hfov_deg: number;
+            /** Overlap */
+            overlap: number;
+            /**
+             * Height Agl M
+             * @description Height above ground; default: the mission's altitude above home.
+             */
+            height_agl_m?: number | null;
+        };
         /**
          * GeoPoint
          * @description A WGS84 position with explicit keys (never a bare pair).
@@ -1460,8 +1583,9 @@ export interface components {
          * GotoCommand
          * @description Fly to a position (and altitude above home), then hold there.
          *
-         *     One aircraft only: a shared target would converge several aircraft on one point, and
-         *     nothing spreads them apart yet (deconfliction is M4).
+         *     One aircraft flies to the target itself. Several aircraft never share it (ADR 0029):
+         *     each gets its own point, ``spread_m`` apart around the target, and its own altitude
+         *     layer; their flights are checked in 4D and the command is always confirmed.
          */
         GotoCommand: {
             /**
@@ -1470,10 +1594,7 @@ export interface components {
              * @description Client-generated; the idempotency key.
              */
             command_id: string;
-            /**
-             * Aircraft Ids
-             * @description Exactly one aircraft.
-             */
+            /** Aircraft Ids */
             aircraft_ids: string[];
             /**
              * Confirmation Token
@@ -1488,6 +1609,11 @@ export interface components {
             target: components["schemas"]["GeoPoint"];
             /** Altitude Relative M */
             altitude_relative_m?: number | null;
+            /**
+             * Spread M
+             * @description Several aircraft: distance between their points (default: settings).
+             */
+            spread_m?: number | null;
         };
         /**
          * GpsFix
@@ -1892,12 +2018,69 @@ export interface components {
             next_cursor: string | null;
         };
         /**
+         * MissionPauseCommand
+         * @description Pause the GCS-planned mission the aircraft fly (they hold; resume continues it).
+         */
+        MissionPauseCommand: {
+            /**
+             * Command Id
+             * Format: uuid
+             * @description Client-generated; the idempotency key.
+             */
+            command_id: string;
+            /** Aircraft Ids */
+            aircraft_ids: string[];
+            /**
+             * Confirmation Token
+             * @description From a 428 answer to this exact request.
+             */
+            confirmation_token?: string | null;
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "mission_pause";
+        };
+        /**
+         * MissionProgressOut
+         * @description A mission's progress, with the area swept so far (WGS84 GeoJSON MultiPolygon).
+         */
+        MissionProgressOut: {
+            /** Mission Id */
+            mission_id: string;
+            /** Incident Id */
+            incident_id: string;
+            /** Name */
+            name: string;
+            kind: components["schemas"]["MissionKind"];
+            status: components["schemas"]["MissionStatus"];
+            /**
+             * Coverage
+             * @description Share of the search area swept (0-1).
+             */
+            coverage: number | null;
+            /** Tasks */
+            tasks: components["schemas"]["TaskProgressView"][];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Coverage Geometry */
+            coverage_geometry: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
          * MissionStartCommand
-         * @description Start a planned swarm area mission (ADR 0024). Always confirmed.
+         * @description Start a planned mission. Always confirmed.
          *
-         *     The swarm protocol cannot address a mission: every drone on the swarm link adopts it,
-         *     so ``aircraft_ids`` must be every swarm aircraft, and exactly the mission's tasks.
-         *     GCS-planned missions (waypoint, area search) cannot be started yet (M4).
+         *     - A swarm area mission (ADR 0024): the swarm protocol cannot address a mission, every
+         *       drone on the swarm link adopts it, so ``aircraft_ids`` must be every swarm aircraft,
+         *       and exactly the mission's tasks.
+         *     - A GCS-planned mission (waypoint, area search; ADR 0028): each aircraft is sent its
+         *       own planned route (uploaded, read back, started). Conflicts or clearance issues in
+         *       the plan need a supervisor's override.
          */
         MissionStartCommand: {
             /**
@@ -1967,11 +2150,279 @@ export interface components {
             new_password: string;
         };
         /**
+         * PatternKind
+         * @description Search patterns (IAMSAR names where they exist).
+         * @enum {string}
+         */
+        PatternKind: "parallel_track" | "creeping_line" | "expanding_square" | "sector" | "contour" | "route";
+        /**
          * Permission
          * @description Something a session may be allowed to do.
          * @enum {string}
          */
         Permission: "fleet.view" | "missions.plan" | "alerts.ack" | "aircraft.hold" | "aircraft.command" | "control.override" | "fleet.manage" | "incidents.manage" | "geofences.manage" | "users.view" | "audit.read" | "users.manage";
+        /**
+         * PlanClearance
+         * @description A waypoint too close to the ground or too high.
+         */
+        PlanClearance: {
+            /** Aircraft Id */
+            aircraft_id: string;
+            /** Callsign */
+            callsign: string;
+            /** Waypoint */
+            waypoint: number;
+            /** Kind */
+            kind: string;
+            /** Height M */
+            height_m: number;
+        };
+        /**
+         * PlanConflict
+         * @description Two aircraft too close in the plan: where and when they come closest.
+         */
+        PlanConflict: {
+            /** Aircraft Ids */
+            aircraft_ids: string[];
+            /** Callsigns */
+            callsigns: string[];
+            /** T S */
+            t_s: number;
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
+            /** Horizontal M */
+            horizontal_m: number;
+            /** Vertical M */
+            vertical_m: number;
+        };
+        /**
+         * PlanOut
+         * @description A mission's plan.
+         */
+        PlanOut: {
+            /** Mission Id */
+            mission_id: string;
+            pattern: components["schemas"]["PatternKind"];
+            /** Spacing M */
+            spacing_m: number;
+            /** Dry Run */
+            dry_run: boolean;
+            /**
+             * Clear
+             * @description No conflict and no clearance issue: startable.
+             */
+            clear: boolean;
+            /**
+             * Coverage
+             * @description Share of the area within the sweep (0-1).
+             */
+            coverage: number | null;
+            /** Area M2 */
+            area_m2: number | null;
+            /** Duration S */
+            duration_s: number;
+            /** Tasks */
+            tasks: components["schemas"]["PlannedTask"][];
+            /** Conflicts */
+            conflicts: components["schemas"]["PlanConflict"][];
+            /** Clearance */
+            clearance: components["schemas"]["PlanClearance"][];
+            /** Unchecked Terrain */
+            unchecked_terrain: number;
+            /** Notes */
+            notes: string[];
+            /**
+             * Planned At
+             * Format: date-time
+             */
+            planned_at: string;
+            /** Request */
+            request: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * PlanRequest
+         * @description What to plan. Area patterns need ``spacing_m`` or ``footprint``; aircraft come from
+         *     ``aircraft_ids``, a ``group_id``, or (neither) the mission's current tasks.
+         */
+        PlanRequest: {
+            pattern: components["schemas"]["PatternKind"];
+            /** Spacing M */
+            spacing_m?: number | null;
+            footprint?: components["schemas"]["Footprint"] | null;
+            /**
+             * Bearing Deg
+             * @description Lane direction or first leg, degrees true; default: the area's long axis.
+             */
+            bearing_deg?: number | null;
+            datum?: components["schemas"]["GeoPoint"] | null;
+            /** Radius M */
+            radius_m?: number | null;
+            /**
+             * Second Pass
+             * @default false
+             */
+            second_pass: boolean;
+            /**
+             * Height Agl M
+             * @description Contour search: height above the contour lines.
+             */
+            height_agl_m?: number | null;
+            /** Aircraft Ids */
+            aircraft_ids?: string[] | null;
+            /** Group Id */
+            group_id?: string | null;
+            /** Overrides */
+            overrides?: components["schemas"]["TaskOverride"][];
+        };
+        /**
+         * PlannedTask
+         * @description One aircraft's part of a plan.
+         */
+        PlannedTask: {
+            /** Aircraft Id */
+            aircraft_id: string;
+            /** Callsign */
+            callsign: string;
+            airframe: components["schemas"]["Airframe"];
+            /**
+             * Companion
+             * @description Has a swarm companion (onboard obstacle avoidance).
+             */
+            companion: boolean;
+            /**
+             * Layer M
+             * @description Metres added to the planned altitude for separation.
+             */
+            layer_m: number;
+            /** Speed Mps */
+            speed_mps: number;
+            /** Start Delay S */
+            start_delay_s: number;
+            /** Strip Area M2 */
+            strip_area_m2: number | null;
+            /** Length M */
+            length_m: number;
+            /** Duration S */
+            duration_s: number;
+            /** Fallback */
+            fallback: boolean;
+            /** Infeasible Turns */
+            infeasible_turns: number;
+            /** Notes */
+            notes: string[];
+            /** Waypoints */
+            waypoints: components["schemas"]["PlannedWaypoint"][];
+        };
+        /**
+         * PlannedWaypoint
+         * @description One waypoint of a planned route (altitude above the aircraft's home).
+         */
+        PlannedWaypoint: {
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
+            /** Altitude Relative M */
+            altitude_relative_m: number;
+            /** Speed Mps */
+            speed_mps: number | null;
+            /** Loiter S */
+            loiter_s: number | null;
+        };
+        /**
+         * PoiCreate
+         * @description A point an operator marks.
+         */
+        PoiCreate: {
+            /** @default poi */
+            kind: components["schemas"]["PoiKind"];
+            position: components["schemas"]["GeoPoint"];
+            /** Uncertainty M */
+            uncertainty_m?: number | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /**
+         * PoiKind
+         * @description A point of interest: a place operators mark, or a survivor sighting a drone reports.
+         * @enum {string}
+         */
+        PoiKind: "poi" | "survivor_sighting" | "clue" | "hazard";
+        /**
+         * PoiPage
+         * @description A page of points of interest.
+         */
+        PoiPage: {
+            /** Items */
+            items: components["schemas"]["PoiView"][];
+            /**
+             * Next Cursor
+             * @description Null when this is the last page.
+             */
+            next_cursor: string | null;
+        };
+        /**
+         * PoiStatus
+         * @description What operators made of a point of interest.
+         * @enum {string}
+         */
+        PoiStatus: "new" | "confirmed" | "dismissed" | "resolved";
+        /**
+         * PoiUpdate
+         * @description What operators decide about a point, or add to it.
+         */
+        PoiUpdate: {
+            kind?: components["schemas"]["PoiKind"];
+            status?: components["schemas"]["PoiStatus"];
+            /** Notes */
+            notes?: string | null;
+        };
+        /**
+         * PoiView
+         * @description A point of interest: marked by an operator, or a survivor sighting a drone reported.
+         */
+        PoiView: {
+            /** Id */
+            id: string;
+            /** Incident Id */
+            incident_id: string;
+            kind: components["schemas"]["PoiKind"];
+            status: components["schemas"]["PoiStatus"];
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
+            /**
+             * Uncertainty M
+             * @description 1-sigma horizontal uncertainty [m].
+             */
+            uncertainty_m: number | null;
+            /**
+             * Aircraft Id
+             * @description The reporting aircraft (null: an operator).
+             */
+            aircraft_id: string | null;
+            /** Reported At */
+            reported_at: string | null;
+            /** Notes */
+            notes: string | null;
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /**
          * PolygonGeoJSON
          * @description A GeoJSON Polygon with one ring (no holes), 3 to 256 distinct vertices, valid
@@ -2169,6 +2620,11 @@ export interface components {
             callsign: string;
             /** Warnings */
             warnings: string[];
+            target?: components["schemas"]["GeoPoint"] | null;
+            /** Altitude Relative M */
+            altitude_relative_m?: number | null;
+            /** Start Delay S */
+            start_delay_s?: number | null;
         };
         /**
          * SummaryRejection
@@ -2322,6 +2778,20 @@ export interface components {
             updated_at: string;
         };
         /**
+         * TaskOverride
+         * @description Per-aircraft changes to the mission's defaults.
+         */
+        TaskOverride: {
+            /** Aircraft Id */
+            aircraft_id: string;
+            /** Altitude Relative M */
+            altitude_relative_m?: number | null;
+            /** Speed Mps */
+            speed_mps?: number | null;
+            /** Start Delay S */
+            start_delay_s?: number | null;
+        };
+        /**
          * TaskPage
          * @description A page of tasks.
          */
@@ -2333,6 +2803,29 @@ export interface components {
              * @description Null when this is the last page.
              */
             next_cursor: string | null;
+        };
+        /**
+         * TaskProgressView
+         * @description How far one aircraft is through its part of a mission.
+         */
+        TaskProgressView: {
+            /** Task Id */
+            task_id: string;
+            /** Aircraft Id */
+            aircraft_id: string;
+            /** Callsign */
+            callsign: string;
+            status: components["schemas"]["TaskStatus"];
+            /**
+             * Item
+             * @description Waypoint being flown (0-based). Null: unknown.
+             */
+            item: number | null;
+            /**
+             * Items
+             * @description Waypoints of its route. Null: unknown.
+             */
+            items: number | null;
         };
         /**
          * TaskStatus
@@ -2437,6 +2930,16 @@ export interface components {
             home: components["schemas"]["GeoPoint"] | null;
             /** @description Only for aircraft with a swarm link. */
             swarm: components["schemas"]["SwarmView"] | null;
+            /**
+             * Mission Item
+             * @description Mission item flown (0-based); equals mission_items once done. Null: none.
+             */
+            mission_item?: number | null;
+            /**
+             * Mission Items
+             * @description Items of the loaded mission.
+             */
+            mission_items?: number | null;
         };
         /**
          * UserCreate
@@ -6178,6 +6681,559 @@ export interface operations {
             };
         };
     };
+    get_plan_api_v1_missions__mission_id__plan_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanOut"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    plan_api_v1_missions__mission_id__plan_post: {
+        parameters: {
+            query?: {
+                /** @description Only compute and answer; save nothing. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path: {
+                mission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanOut"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_progress_api_v1_missions__mission_id__progress_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MissionProgressOut"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_pois_api_v1_incidents__incident_id__pois_get: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["PoiStatus"] | null;
+                /** @description Maximum items to return. */
+                limit?: number;
+                /** @description Opaque cursor from a previous page's next_cursor. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                incident_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoiPage"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    create_poi_api_v1_incidents__incident_id__pois_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                incident_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PoiCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoiView"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_poi_api_v1_pois__poi_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                poi_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoiView"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_poi_api_v1_pois__poi_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                poi_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PoiUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoiView"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     list_video_streams_api_v1_video_streams_get: {
         parameters: {
             query?: {
@@ -6884,7 +7940,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ArmCommand"] | components["schemas"]["DisarmCommand"] | components["schemas"]["TakeoffCommand"] | components["schemas"]["HoldCommand"] | components["schemas"]["ResumeCommand"] | components["schemas"]["ReturnCommand"] | components["schemas"]["LandCommand"] | components["schemas"]["GotoCommand"] | components["schemas"]["MissionStartCommand"];
+                "application/json": components["schemas"]["ArmCommand"] | components["schemas"]["DisarmCommand"] | components["schemas"]["TakeoffCommand"] | components["schemas"]["HoldCommand"] | components["schemas"]["ResumeCommand"] | components["schemas"]["ReturnCommand"] | components["schemas"]["LandCommand"] | components["schemas"]["GotoCommand"] | components["schemas"]["MissionStartCommand"] | components["schemas"]["MissionPauseCommand"];
             };
         };
         responses: {

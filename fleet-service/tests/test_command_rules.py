@@ -14,10 +14,19 @@ from fleet_service.domain.commands import (
     authority,
     confirmation_reasons,
     expected_effect,
+    gcs_mission_problem,
     precondition,
     warnings,
 )
-from fleet_service.domain.enums import CommandKind, FlightMode, GeofenceKind, GpsFix, LinkState
+from fleet_service.domain.enums import (
+    CommandKind,
+    FlightMode,
+    GeofenceKind,
+    GpsFix,
+    LinkState,
+    MissionKind,
+    MissionStatus,
+)
 from fleet_service.domain.geofence import Fence, GeofenceSet
 from fleet_service.domain.telemetry import TelemetrySample
 
@@ -287,5 +296,104 @@ def test_warnings_name_what_the_operator_should_notice() -> None:
 def test_expected_effects(kind: CommandKind, after: TelemetrySample, verified: bool) -> None:
     effect = expected_effect(kind)
 
+    assert effect is not None
+    assert effect(after) is verified
+
+
+# --- GCS-planned missions (ADR 0028) ------------------------------------------------------------
+
+MISSION = replace(FLYING, flight_mode=FlightMode.MISSION)
+OFFBOARD = replace(FLYING, flight_mode=FlightMode.OFFBOARD)
+
+
+@pytest.mark.parametrize(
+    ("sample", "expected"),
+    [
+        (FLYING, None),
+        (GROUND, "not-in-air"),  # the autopilot flies it from the air: take off first
+        (OFFBOARD, "companion-in-control"),  # the companion flies it: hold it first
+        (replace(FLYING, gps_fix=GpsFix.NONE), "no-gps-fix"),
+        (replace(FLYING, latitude=None, longitude=None), "no-gps-fix"),
+    ],
+)
+def test_a_gcs_mission_starts_only_in_the_air_with_a_position(
+    sample: TelemetrySample, expected: str | None
+) -> None:
+    rejection = precondition(CommandKind.MISSION_START, view(sample), LIMITS, gcs_mission=True)
+    assert (rejection.code if rejection else None) == expected
+
+
+@pytest.mark.parametrize(
+    ("sample", "expected"),
+    [(MISSION, None), (FLYING, "not-in-mission"), (GROUND, "not-in-mission")],
+)
+def test_pause_needs_a_mission_in_progress(sample: TelemetrySample, expected: str | None) -> None:
+    rejection = precondition(CommandKind.MISSION_PAUSE, view(sample), LIMITS)
+    assert (rejection.code if rejection else None) == expected
+
+
+def test_any_autopilot_link_can_start_a_gcs_mission_even_without_a_swarm_link() -> None:
+    # A two-link aircraft with its swarm link down offers no mission_start (swarm missions
+    # need it), but a GCS mission is the autopilot's: mission_pause shows an autopilot.
+    autopilot_only = VehicleView(
+        "HX-1", LinkState.LIVE, FLIGHT_COMMANDS - {CommandKind.MISSION_START}, FLYING
+    )
+    swarm_only = VehicleView("HX-1", LinkState.LIVE, frozenset({CommandKind.HOLD}), FLYING)
+
+    assert precondition(CommandKind.MISSION_START, autopilot_only, LIMITS, gcs_mission=True) is None
+    refused = precondition(CommandKind.MISSION_START, swarm_only, LIMITS, gcs_mission=True)
+    assert refused is not None
+    assert refused.code == "unsupported"
+
+
+@pytest.mark.parametrize(
+    ("kind", "status", "active", "planned", "expected"),
+    [
+        (MissionKind.AREA_SEARCH, MissionStatus.PLANNED, True, True, None),
+        (MissionKind.WAYPOINT, MissionStatus.PLANNED, True, True, None),
+        (MissionKind.AREA_SEARCH, MissionStatus.DRAFT, True, True, "mission-not-planned"),
+        (MissionKind.AREA_SEARCH, MissionStatus.PLANNED, True, False, "mission-not-planned"),
+        (MissionKind.AREA_SEARCH, MissionStatus.PLANNED, False, True, "incident-not-active"),
+        (MissionKind.SWARM_AREA, MissionStatus.PLANNED, True, True, "unsupported"),
+    ],
+)
+def test_gcs_mission_problem(
+    kind: MissionKind, status: MissionStatus, active: bool, planned: bool, expected: str | None
+) -> None:
+    problem = gcs_mission_problem(kind, status, incident_active=active, planned=planned)
+    assert (problem.code if problem else None) == expected
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "reason"),
+    [
+        ({"without_avoidance": 2}, "onboard obstacle avoidance is not active on 2 aircraft"),
+        ({"plan_issues": 3}, "the plan has 3 deconfliction or clearance issue(s)"),
+        ({"swarm_mission": True}, "every drone on the swarm link adopts the mission"),
+    ],
+)
+def test_m4_confirmation_reasons(kwargs: dict[str, Any], reason: str) -> None:
+    reasons = confirmation_reasons(
+        CommandKind.GOTO,
+        target_count=1,
+        any_override=False,
+        goto_distance_m=100.0,
+        limits=LIMITS,
+        **kwargs,
+    )
+    assert reasons == [reason]
+
+
+@pytest.mark.parametrize(
+    ("kind", "after", "verified"),
+    [
+        (CommandKind.MISSION_START, MISSION, True),
+        (CommandKind.MISSION_START, FLYING, False),
+        (CommandKind.MISSION_PAUSE, FLYING, True),  # FLYING is in hold
+        (CommandKind.MISSION_PAUSE, MISSION, False),
+    ],
+)
+def test_mission_effects(kind: CommandKind, after: TelemetrySample, verified: bool) -> None:
+    effect = expected_effect(kind)
     assert effect is not None
     assert effect(after) is verified

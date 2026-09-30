@@ -90,6 +90,24 @@ MAX_MISSION_WAYPOINTS = 1000
 MAX_SWARM_MISSION_WAYPOINTS = 64
 
 
+class PoiKind(StrEnum):
+    """A point of interest: a place operators mark, or a survivor sighting a drone reports."""
+
+    POI = "poi"
+    SURVIVOR_SIGHTING = "survivor_sighting"
+    CLUE = "clue"
+    HAZARD = "hazard"
+
+
+class PoiStatus(StrEnum):
+    """What operators made of a point of interest."""
+
+    NEW = "new"
+    CONFIRMED = "confirmed"
+    DISMISSED = "dismissed"
+    RESOLVED = "resolved"
+
+
 class TaskStatus(StrEnum):
     """An aircraft's assignment to a mission."""
 
@@ -129,6 +147,9 @@ class AlertKind(StrEnum):
     COMMAND_UNVERIFIED = "command_unverified"
     CONTROL_ORPHANED = "control_orphaned"
     VIDEO_DOWN = "video_down"
+    SURVIVOR_SIGHTING = "survivor_sighting"  # a drone reports a possible survivor (M4)
+    RETURN_ENERGY = "return_energy"  # the battery barely covers the way home (M4)
+    LINK_PARTIAL = "link_partial"  # one of an aircraft's two links is lost (M4)
 
 
 class AlertSeverity(StrEnum):

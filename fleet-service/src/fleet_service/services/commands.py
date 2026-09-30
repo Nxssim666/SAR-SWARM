@@ -11,6 +11,13 @@ Every stage is audited. The database transaction is committed before waiting for
 aircraft, so no connection is held while radios answer (ADR 0019). Authorization and
 preconditions run again when a confirmed command is dispatched: whatever changed during
 the confirmation window can only reject more aircraft, never add risk.
+
+Some commands differ per aircraft (M4): a GCS-planned mission sends each aircraft its own
+route, and a goto to several aircraft sends each its own point and altitude layer
+(ADR 0029). Both are checked in 4D from where the aircraft are when the command is sent;
+conflicts reject the aircraft unless a supervisor overrides, confirmed and audited.
+Aircraft with a swarm companion that the autopilot would fly (goto, GCS mission) are
+flagged: onboard obstacle avoidance is not active then, and the command is confirmed.
 """
 
 import asyncio
@@ -19,7 +26,7 @@ import hmac
 import logging
 import secrets
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -48,24 +55,31 @@ from fleet_service.domain.commands import (
     authority,
     confirmation_reasons,
     expected_effect,
+    gcs_mission_problem,
     precondition,
     swarm_mission_problem,
     warnings,
 )
+from fleet_service.domain.deconfliction import Flight, Separation, find_conflicts, layer_offsets
 from fleet_service.domain.enums import (
+    Airframe,
     AlertKind,
     AlertSeverity,
     CommandKind,
     CommandState,
     CommandTargetState,
     IncidentStatus,
+    MissionKind,
     MissionStatus,
+    SearchAreaStatus,
     TaskStatus,
 )
 from fleet_service.domain.geo import GeoPoint, distance_m
 from fleet_service.domain.geofence import Fence, GeofenceSet
+from fleet_service.domain.patterns import LocalFrame, RoutePoint
+from fleet_service.domain.spread import spread_targets
 from fleet_service.domain.telemetry import TelemetrySample
-from fleet_service.drivers.base import AreaMission, DriverCommand, Outcome
+from fleet_service.drivers.base import AreaMission, DriverCommand, Outcome, RouteMission
 from fleet_service.errors import Conflict, InvalidRequest, ProblemError
 from fleet_service.services import audit
 from fleet_service.services.alerts import AlertService
@@ -91,6 +105,7 @@ class CommandSpec:
     takeoff_altitude_m: float | None = None
     goto: GotoTarget | None = None
     mission_id: str | None = None
+    spread_m: float | None = None  # bulk goto: distance between the aircraft's points
 
     def driver_command(self, mission: AreaMission | None = None) -> DriverCommand:
         """What each aircraft is told."""
@@ -112,6 +127,9 @@ class SummaryAircraft(BaseModel):
     aircraft_id: str
     callsign: str
     warnings: list[str]
+    target: GeoPoint | None = None  # its own point (bulk goto) or first waypoint (mission)
+    altitude_relative_m: float | None = None
+    start_delay_s: float | None = None
 
 
 class SummaryRejection(BaseModel):
@@ -132,6 +150,7 @@ class ConfirmationSummary(BaseModel):
     override: bool
     aircraft: list[SummaryAircraft]
     rejected: list[SummaryRejection]
+    conflicts: list[str] = []  # deconfliction and clearance issues a supervisor overrides
 
 
 class ConfirmationRequiredError(ProblemError):
@@ -200,6 +219,24 @@ class _Plan:
     override: bool = False
     reasons: list[str] = field(default_factory=list)
     mission: AreaMission | None = None  # mission_start: what the swarm is sent
+    swarm_mission: bool = False
+    commands: dict[str, DriverCommand] = field(default_factory=dict)  # per aircraft
+    targets: dict[str, tuple[float, float, float | None, float | None]] = field(
+        default_factory=dict
+    )  # latitude, longitude, altitude, start delay: for the summary
+    conflicts: list[str] = field(default_factory=list)
+    without_avoidance: int = 0
+    timeout_s: float | None = None
+    gcs_mission_ids: set[str] = field(default_factory=set)
+
+
+@dataclass(frozen=True)
+class _GcsTask:
+    """What a GCS mission start sends one aircraft."""
+
+    route: tuple[RoutePoint, ...]
+    start_delay_s: float
+    speed_mps: float
 
 
 @dataclass(frozen=True)
@@ -230,6 +267,9 @@ class CommandService:
         confirmation_ttl_s: float,
         swarm_grid_resolution_m: float = 5.0,
         swarm_aircraft: Callable[[], list[str]] = list,
+        separation: Separation | None = None,
+        goto_spread_m: float = 60.0,
+        mission_timeout_s: float = 60.0,
     ) -> None:
         self._bus = bus
         self._clock = clock
@@ -244,6 +284,9 @@ class CommandService:
         self._ttl = timedelta(seconds=confirmation_ttl_s)
         self._grid_resolution_m = swarm_grid_resolution_m
         self._swarm_aircraft = swarm_aircraft
+        self._separation = separation or Separation()
+        self._goto_spread_m = goto_spread_m
+        self._mission_timeout = mission_timeout_s
         self._secret = secrets.token_bytes(32)  # tokens do not survive a restart, by design
         self._last_dispatch: dict[str, datetime] = {}
         self._verifications: list[_Verification] = []
@@ -292,8 +335,21 @@ class CommandService:
         geofences = await self._geofences(db) if spec.kind is CommandKind.GOTO else None
         farthest: float | None = None
         mission_problem: Rejection | None = None
+        gcs_tasks: dict[str, _GcsTask] | None = None
+        gcs_aircraft: set[str] = set()
         if spec.kind is CommandKind.MISSION_START:
-            mission_problem, plan.mission = await self._swarm_mission(db, spec)
+            mission = await self._mission(db, spec)
+            if mission.kind is MissionKind.SWARM_AREA:
+                plan.swarm_mission = True
+                mission_problem, plan.mission = await self._swarm_mission(db, spec)
+            else:
+                mission_problem, gcs_tasks, plan.conflicts = await self._gcs_mission(db, mission)
+                gcs_aircraft = set(spec.aircraft_ids)
+        elif spec.kind in (CommandKind.RESUME, CommandKind.MISSION_PAUSE):
+            plan.gcs_mission_ids = await self._gcs_missions_of(db, spec.aircraft_ids)
+            if spec.kind is CommandKind.RESUME:
+                gcs_aircraft = set(await self._gcs_aircraft(db, spec.aircraft_ids))
+        companions = set(self._swarm_aircraft())
         for aircraft_id in spec.aircraft_ids:
             vehicle = self._registry.vehicle_view(aircraft_id)
             assert vehicle is not None  # noqa: S101 - unknown ids were rejected above
@@ -307,6 +363,10 @@ class CommandService:
             )
             if rejection is None:
                 rejection = mission_problem
+            if rejection is None and gcs_tasks is not None and aircraft_id not in gcs_tasks:
+                rejection = Rejection(
+                    "not-tasked", f"{vehicle.callsign} has no route in this mission's plan."
+                )
             if rejection is None:
                 rejection = precondition(
                     spec.kind,
@@ -315,6 +375,7 @@ class CommandService:
                     takeoff_altitude_m=spec.takeoff_altitude_m,
                     goto=spec.goto,
                     geofences=geofences,
+                    gcs_mission=aircraft_id in gcs_aircraft,
                 )
             last = self._last_dispatch.get(aircraft_id)
             if rejection is None and last is not None and now - last < self._min_interval:
@@ -325,6 +386,13 @@ class CommandService:
             plan.accepted.append(aircraft_id)
             plan.override |= override
             plan.warnings[aircraft_id] = warnings(vehicle, self._battery_low)
+            autopilot_flies = spec.kind is CommandKind.GOTO or aircraft_id in gcs_aircraft
+            if aircraft_id in companions and autopilot_flies:
+                plan.warnings[aircraft_id].append(
+                    "onboard obstacle avoidance not active: the autopilot flies this, not the "
+                    "companion"
+                )
+                plan.without_avoidance += 1
             sample = vehicle.sample
             if (
                 spec.goto is not None
@@ -337,14 +405,287 @@ class CommandService:
                     GeoPoint(latitude=spec.goto.latitude, longitude=spec.goto.longitude),
                 )
                 farthest = max(farthest or 0.0, distance)
+        if gcs_tasks is not None and plan.accepted:
+            await self._plan_gcs_start(db, principal, spec, plan, gcs_tasks)
+        elif spec.kind is CommandKind.GOTO and len(plan.accepted) > 1 and spec.goto is not None:
+            await self._plan_bulk_goto(db, principal, spec, plan, geofences)
+        elif spec.kind is CommandKind.RESUME:
+            for aircraft_id in plan.accepted:
+                if aircraft_id in gcs_aircraft:
+                    plan.commands[aircraft_id] = DriverCommand(
+                        CommandKind.RESUME, command_id=spec.command_id, gcs_mission=True
+                    )
         plan.reasons = confirmation_reasons(
             spec.kind,
             target_count=len(plan.accepted),
             any_override=plan.override,
             goto_distance_m=farthest,
             limits=self._limits,
+            swarm_mission=plan.swarm_mission,
+            without_avoidance=plan.without_avoidance,
+            plan_issues=len(plan.conflicts),
         )
         return plan
+
+    async def _mission(self, db: AsyncSession, spec: CommandSpec) -> Mission:
+        mission = await db.get(Mission, spec.mission_id) if spec.mission_id else None
+        if mission is None:
+            raise InvalidRequest(
+                f"Mission {spec.mission_id} does not exist.",
+                slug="unknown-reference",
+                extensions={"field": "mission_id"},
+            )
+        return mission
+
+    async def _gcs_mission(
+        self, db: AsyncSession, mission: Mission
+    ) -> tuple[Rejection | None, dict[str, _GcsTask], list[str]]:
+        """Check a GCS mission start (ADR 0028); each tasked aircraft's route; plan issues."""
+        incident = await db.get(Incident, mission.incident_id)
+        problem = gcs_mission_problem(
+            mission.kind,
+            mission.status,
+            incident_active=incident is not None and incident.status is IncidentStatus.ACTIVE,
+            planned=mission.plan is not None,
+        )
+        tasks: dict[str, _GcsTask] = {}
+        rows = await db.scalars(
+            select(Task).where(Task.mission_id == mission.id, Task.status == TaskStatus.PENDING)
+        )
+        for task in rows.all():
+            if not task.route:
+                continue
+            tasks[task.aircraft_id] = _GcsTask(
+                route=tuple(
+                    RoutePoint(
+                        w["latitude"],
+                        w["longitude"],
+                        w["altitude_relative_m"],
+                        w.get("speed_mps"),
+                        w.get("loiter_s"),
+                    )
+                    for w in task.route
+                ),
+                start_delay_s=task.start_delay_s or 0.0,
+                speed_mps=float((task.plan or {}).get("speed_mps") or 10.0),
+            )
+        saved = mission.plan or {}
+        issues = [
+            f"{' and '.join(c['callsigns'])} closer than the separation "
+            f"({c['horizontal_m']:.0f} m, {c['vertical_m']:.0f} m) at {c['t_s']:.0f} s"
+            for c in saved.get("conflicts", [])
+        ] + [
+            f"{c['callsign']} waypoint {c['waypoint']} {c['kind'].replace('-', ' ')} "
+            f"({c['height_m']:.0f} m)"
+            for c in saved.get("clearance", [])
+        ]
+        return problem, tasks, issues
+
+    async def _gcs_missions_of(self, db: AsyncSession, aircraft_ids: tuple[str, ...]) -> set[str]:
+        """The GCS missions the aircraft are flying (active tasks, active or paused missions)."""
+        rows = await db.scalars(
+            select(Mission.id)
+            .join(Task, Task.mission_id == Mission.id)
+            .where(
+                Task.aircraft_id.in_(aircraft_ids),
+                Task.status == TaskStatus.ACTIVE,
+                Mission.kind != MissionKind.SWARM_AREA,
+                Mission.status.in_((MissionStatus.ACTIVE, MissionStatus.PAUSED)),
+            )
+        )
+        return set(rows.all())
+
+    async def _gcs_aircraft(self, db: AsyncSession, aircraft_ids: tuple[str, ...]) -> list[str]:
+        """Of ``aircraft_ids``, those flying a GCS mission (resume means that mission)."""
+        rows = await db.scalars(
+            select(Task.aircraft_id)
+            .join(Mission, Mission.id == Task.mission_id)
+            .where(
+                Task.aircraft_id.in_(aircraft_ids),
+                Task.status == TaskStatus.ACTIVE,
+                Mission.kind != MissionKind.SWARM_AREA,
+                Mission.status.in_((MissionStatus.ACTIVE, MissionStatus.PAUSED)),
+            )
+        )
+        return list(rows.all())
+
+    def _flight(
+        self,
+        aircraft_id: str,
+        route: tuple[RoutePoint, ...],
+        speed: float,
+        delay: float,
+        returns: bool,
+    ) -> Flight:
+        """A planned flight from where the aircraft is now."""
+        record = self._registry.get(aircraft_id)
+        sample = record.sample if record else None
+        position = home = None
+        home_amsl = altitude = None
+        if sample is not None:
+            if sample.latitude is not None and sample.longitude is not None:
+                position = (sample.latitude, sample.longitude)
+            if sample.home_latitude is not None and sample.home_longitude is not None:
+                home = (sample.home_latitude, sample.home_longitude)
+            altitude = sample.altitude_relative_m
+            if sample.altitude_amsl_m is not None and sample.altitude_relative_m is not None:
+                home_amsl = sample.altitude_amsl_m - sample.altitude_relative_m
+        return Flight(
+            aircraft_id=aircraft_id,
+            callsign=record.callsign if record else aircraft_id,
+            fixed_wing=record is not None and record.airframe is Airframe.FIXED_WING,
+            route=route,
+            speed_mps=speed,
+            start=position,
+            home=home,
+            home_amsl_m=home_amsl,
+            start_altitude_relative_m=altitude,
+            start_delay_s=delay,
+            returns_home=returns,
+        )
+
+    async def _check_flights(
+        self, db: AsyncSession, principal: Principal, plan: _Plan, flights: list[Flight]
+    ) -> None:
+        """4D-check ``flights`` from where the aircraft are now; conflicts reject the later
+        aircraft of each pair, unless a supervisor overrides (confirmed, audited)."""
+        if len(flights) < 2:
+            return
+        frame = LocalFrame(flights[0].route[0].latitude, flights[0].route[0].longitude)
+        await db.commit()  # no transaction open during the check (ADR 0019)
+        conflicts = await asyncio.to_thread(find_conflicts, flights, frame, self._separation)
+        if not conflicts:
+            return
+        described = [
+            f"{c.callsigns[0]} and {c.callsigns[1]} closer than the separation "
+            f"({c.horizontal_m:.0f} m, {c.vertical_m:.0f} m) at {c.t_s:.0f} s"
+            for c in conflicts
+        ]
+        if principal.can(Permission.CONTROL_OVERRIDE):
+            plan.override = True
+            plan.conflicts.extend(d for d in described if d not in plan.conflicts)
+            return
+        for conflict, text in zip(conflicts, described, strict=True):
+            later = conflict.aircraft[1]
+            if later in plan.accepted:
+                plan.accepted.remove(later)
+                plan.rejected[later] = Rejection(
+                    "deconfliction", f"{text}; a supervisor may override."
+                )
+
+    async def _plan_gcs_start(
+        self,
+        db: AsyncSession,
+        principal: Principal,
+        spec: CommandSpec,
+        plan: _Plan,
+        tasks: dict[str, _GcsTask],
+    ) -> None:
+        """Each aircraft's route, from a first item where it is (climb there to its layer,
+        and wait out its start delay), then its planned route, then home."""
+        if plan.conflicts and not principal.can(Permission.CONTROL_OVERRIDE):
+            for aircraft_id in list(plan.accepted):  # a plan with issues needs a supervisor
+                plan.accepted.remove(aircraft_id)
+                plan.rejected[aircraft_id] = Rejection(
+                    "plan-conflicts",
+                    f"The plan has {len(plan.conflicts)} deconfliction or clearance issue(s); "
+                    "re-plan, or a supervisor may override.",
+                )
+            return
+        flights = []
+        for aircraft_id in plan.accepted:
+            task = tasks[aircraft_id]
+            record = self._registry.get(aircraft_id)
+            sample = record.sample if record else None
+            first = task.route[0]
+            items = task.route
+            if sample is not None and sample.latitude is not None and sample.longitude is not None:
+                start = RoutePoint(
+                    sample.latitude,
+                    sample.longitude,
+                    first.altitude_relative_m,
+                    None,
+                    task.start_delay_s or None,
+                )
+                items = (start, *task.route)
+            plan.commands[aircraft_id] = DriverCommand(
+                CommandKind.MISSION_START,
+                command_id=spec.command_id,
+                route=RouteMission(spec.mission_id or "", items, return_home=True),
+                gcs_mission=True,
+            )
+            plan.targets[aircraft_id] = (
+                first.latitude,
+                first.longitude,
+                first.altitude_relative_m,
+                task.start_delay_s,
+            )
+            flights.append(
+                self._flight(aircraft_id, task.route, task.speed_mps, task.start_delay_s, True)
+            )
+        plan.timeout_s = self._mission_timeout
+        if plan.conflicts:  # the saved plan's issues: only a supervisor gets here
+            plan.override = True
+        await self._check_flights(db, principal, plan, flights)
+
+    async def _plan_bulk_goto(
+        self,
+        db: AsyncSession,
+        principal: Principal,
+        spec: CommandSpec,
+        plan: _Plan,
+        geofences: GeofenceSet | None,
+    ) -> None:
+        """Each aircraft its own point around the datum and its own layer (ADR 0029)."""
+        assert spec.goto is not None  # noqa: S101 - checked by the caller
+        positions: dict[str, tuple[float, float] | None] = {}
+        altitudes: list[float] = []
+        for aircraft_id in plan.accepted:
+            record = self._registry.get(aircraft_id)
+            sample = record.sample if record else None
+            positions[aircraft_id] = None
+            if sample is None:
+                continue
+            if sample.latitude is not None and sample.longitude is not None:
+                positions[aircraft_id] = (sample.latitude, sample.longitude)
+            if sample.altitude_relative_m is not None:
+                altitudes.append(sample.altitude_relative_m)
+        points = spread_targets(
+            (spec.goto.latitude, spec.goto.longitude),
+            positions,
+            spec.spread_m or self._goto_spread_m,
+        )
+        base = spec.goto.altitude_relative_m
+        if base is None:
+            base = max(altitudes) if altitudes else 0.0
+        order = sorted(plan.accepted, key=lambda a: points[a])
+        draft = [self._flight(a, (RoutePoint(*points[a], base),), 10.0, 0.0, False) for a in order]
+        offsets = layer_offsets(draft, self._separation)
+        flights = []
+        for flight in draft:
+            altitude = base + offsets[flight.aircraft_id]
+            if altitude > self._limits.max_altitude_relative_m:
+                altitude = base  # no layer left under the ceiling: the spread keeps them apart
+            lat, lon = points[flight.aircraft_id]
+            if geofences is not None and (reason := geofences.violation(lat, lon, altitude)):
+                plan.accepted.remove(flight.aircraft_id)
+                plan.rejected[flight.aircraft_id] = Rejection(
+                    "geofence", f"Its point near the target is {reason}."
+                )
+                continue
+            speed = 18.0 if flight.fixed_wing else 10.0
+            flights.append(
+                replace(flight, route=(RoutePoint(lat, lon, altitude),), speed_mps=speed)
+            )
+            plan.commands[flight.aircraft_id] = DriverCommand(
+                CommandKind.GOTO,
+                altitude_relative_m=altitude,
+                latitude=lat,
+                longitude=lon,
+                command_id=spec.command_id,
+            )
+            plan.targets[flight.aircraft_id] = (lat, lon, altitude, None)
+        await self._check_flights(db, principal, plan, flights)
 
     async def _swarm_mission(
         self, db: AsyncSession, spec: CommandSpec
@@ -533,7 +874,10 @@ class CommandService:
         for aircraft_id in plan.accepted:
             self._last_dispatch[aircraft_id] = now
         driver_command = spec.driver_command(plan.mission)
-        results = await asyncio.gather(*(self._send(a, driver_command) for a in plan.accepted))
+        timeout = plan.timeout_s or self._timeout
+        results = await asyncio.gather(
+            *(self._send(a, plan.commands.get(a, driver_command), timeout) for a in plan.accepted)
+        )
 
         done = self._clock.now()
         outcomes: dict[str, str] = {}
@@ -565,6 +909,10 @@ class CommandService:
         acked = [a for a, state, _, _ in results if state is CommandTargetState.ACKED]
         if spec.kind is CommandKind.MISSION_START and acked and spec.mission_id is not None:
             await self._activate_mission(db, actor, done, spec.mission_id, acked)
+        if acked and plan.gcs_mission_ids and spec.kind is CommandKind.MISSION_PAUSE:
+            await self._set_missions(db, actor, done, plan.gcs_mission_ids, MissionStatus.PAUSED)
+        if acked and plan.gcs_mission_ids and spec.kind is CommandKind.RESUME:
+            await self._set_missions(db, actor, done, plan.gcs_mission_ids, MissionStatus.ACTIVE)
         command = await db.merge(command)
         command.state = CommandState.COMPLETED
         command.completed_at = done
@@ -595,6 +943,10 @@ class CommandService:
         )
         for task in tasks.all():
             task.status, task.updated_at = TaskStatus.ACTIVE, now
+        if mission.search_area_id is not None:
+            area = await db.get(SearchArea, mission.search_area_id)
+            if area is not None and area.status is not SearchAreaStatus.SEARCHED:
+                area.status, area.updated_at = SearchAreaStatus.IN_PROGRESS, now
         await audit.record(
             db,
             actor,
@@ -605,20 +957,46 @@ class CommandService:
             details={"aircraft": sorted(acked)},
         )
 
+    async def _set_missions(
+        self,
+        db: AsyncSession,
+        actor: Actor,
+        now: datetime,
+        mission_ids: set[str],
+        status: MissionStatus,
+    ) -> None:
+        """Paused or resumed: the GCS missions of the aircraft change status."""
+        for mission_id in sorted(mission_ids):
+            mission = await db.get(Mission, mission_id)
+            if mission is None or mission.status is status:
+                continue
+            if mission.status not in (MissionStatus.ACTIVE, MissionStatus.PAUSED):
+                continue
+            mission.status, mission.updated_at = status, now
+            await audit.record(
+                db,
+                actor,
+                now,
+                "mission.pause" if status is MissionStatus.PAUSED else "mission.resume",
+                entity_type="mission",
+                entity_id=mission_id,
+            )
+
     async def _send(
-        self, aircraft_id: str, command: DriverCommand
+        self, aircraft_id: str, command: DriverCommand, limit_s: float | None = None
     ) -> tuple[str, CommandTargetState, str | None, str | None]:
         record = self._registry.get(aircraft_id)
         if record is None or record.driver is None:
             return aircraft_id, CommandTargetState.REJECTED, "no-link", "No telemetry link."
+        limit = limit_s or self._timeout
         try:
-            result = await asyncio.wait_for(record.driver.execute(command), self._timeout)
+            result = await asyncio.wait_for(record.driver.execute(command), limit)
         except TimeoutError:
             return (
                 aircraft_id,
                 CommandTargetState.TIMEOUT,
                 "timeout",
-                f"No answer within {self._timeout:g} s.",
+                f"No answer within {limit:g} s.",
             )
         except Exception:
             log.exception("driver failed to execute %s on %s", command.kind, aircraft_id)
@@ -756,10 +1134,20 @@ class CommandService:
             override=plan.override,
             aircraft=[
                 SummaryAircraft(
-                    aircraft_id=a, callsign=callsign(a), warnings=plan.warnings.get(a, [])
+                    aircraft_id=a,
+                    callsign=callsign(a),
+                    warnings=plan.warnings.get(a, []),
+                    target=(
+                        GeoPoint(latitude=plan.targets[a][0], longitude=plan.targets[a][1])
+                        if a in plan.targets
+                        else None
+                    ),
+                    altitude_relative_m=plan.targets[a][2] if a in plan.targets else None,
+                    start_delay_s=plan.targets[a][3] if a in plan.targets else None,
                 )
                 for a in plan.accepted
             ],
+            conflicts=plan.conflicts,
             rejected=[
                 SummaryRejection(
                     aircraft_id=a, callsign=callsign(a), code=r.code, message=r.message

@@ -26,14 +26,18 @@ from fleet_service.clock import Clock
 from fleet_service.config import Settings
 from fleet_service.db.engine import Database
 from fleet_service.domain.commands import Limits
+from fleet_service.domain.deconfliction import Separation
 from fleet_service.domain.geo import GeoPoint
+from fleet_service.domain.terrain import TerrainSet
 from fleet_service.drivers.mavlink import MavlinkLinks
 from fleet_service.drivers.mock import MockFleet
 from fleet_service.drivers.swarm import SwarmLink
-from fleet_service.services.alerts import AlertService
+from fleet_service.services.alerts import AlertService, AlertTuning
 from fleet_service.services.commands import CommandService
 from fleet_service.services.fleet import FleetManager, FleetRegistry
 from fleet_service.services.leases import LeaseService, Presence
+from fleet_service.services.missions import MissionService
+from fleet_service.services.pois import PoiService
 from fleet_service.services.recorder import TelemetryRecorder
 
 log = logging.getLogger(__name__)
@@ -91,8 +95,20 @@ class Runtime:
             fresh_for=timedelta(seconds=settings.link_stale_after_s),
         )
         self.alerts = AlertService(
-            self.bus, settings.battery_low_pct, settings.battery_critical_pct
+            self.bus,
+            settings.battery_low_pct,
+            settings.battery_critical_pct,
+            AlertTuning(
+                reserve_pct=settings.return_reserve_pct,
+                escalate_after_s=settings.alert_escalate_after_s,
+                proximity_m=settings.proximity_alert_m,
+                proximity_vertical_m=settings.proximity_alert_vertical_m,
+                lookahead_s=settings.proximity_lookahead_s,
+                multirotor_speed_mps=settings.multirotor_speed_mps,
+                fixed_wing_speed_mps=settings.fixed_wing_speed_mps,
+            ),
         )
+        self.separation = separation_of(settings)
         self.commands = CommandService(
             bus=self.bus,
             clock=clock,
@@ -112,8 +128,14 @@ class Runtime:
             confirmation_ttl_s=settings.confirmation_ttl_s,
             swarm_grid_resolution_m=settings.swarm_grid_resolution_m,
             swarm_aircraft=self.fleet.swarm_aircraft,
+            separation=self.separation,
+            goto_spread_m=settings.goto_spread_m,
+            mission_timeout_s=settings.mission_upload_timeout_s,
         )
         self.recorder = TelemetryRecorder(self.bus, self.registry)
+        self.pois = PoiService(self.bus, self.alerts)
+        self.missions = MissionService(self.bus, self.alerts, self.registry)
+        self.terrain = TerrainSet.load(settings.terrain_directory)
         self._tasks: list[asyncio.Task[None]] = []
 
     async def start(self, start_loops: bool) -> None:
@@ -163,8 +185,12 @@ class Runtime:
         self.registry.evaluate_links(now)
         async with self.database.ops_session() as db:
             await self.leases.evaluate(db, now)
-            await self.alerts.evaluate(db, now, self.registry, self.leases.orphaned())
+            await self.missions.evaluate(db, now)
+            await self.alerts.evaluate(
+                db, now, self.registry, self.leases.orphaned(), self.missions.deviations()
+            )
             await self.commands.evaluate(db, now)
+            await self.pois.evaluate(db, now, self.registry)
 
     async def record(self) -> None:
         """Write the newest telemetry to the history."""
@@ -184,3 +210,19 @@ class Runtime:
                 await asyncio.sleep(period_s)
 
         self._tasks.append(asyncio.create_task(loop(), name=f"runtime-{name}"))
+
+
+def separation_of(settings: Settings) -> Separation:
+    """The deconfliction settings."""
+    return Separation(
+        horizontal_m=settings.separation_horizontal_m,
+        vertical_m=settings.separation_vertical_m,
+        layer_spacing_m=settings.layer_spacing_m,
+        multirotor_layers=settings.multirotor_layers,
+        airframe_band_m=settings.airframe_band_m,
+        min_clearance_m=settings.min_terrain_clearance_m,
+        max_agl_m=settings.max_height_agl_m,
+        max_altitude_relative_m=settings.max_altitude_relative_m,
+        departure_interval_s=settings.departure_interval_s,
+        max_start_delay_s=settings.max_start_delay_s,
+    )

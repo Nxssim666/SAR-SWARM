@@ -310,3 +310,40 @@ async def test_silent_clients_are_closed(
             await ws.receive_json(timeout=2)
 
     assert closed.value.code == 4408
+
+
+async def test_mission_progress_and_points_of_interest_are_live_topics(
+    app: FastAPI, client: httpx.AsyncClient, token: str, user_ids: dict[Role, str]
+) -> None:
+    supervisor = bearer_headers(await login(client, "supervisor"))
+    inc = (
+        await client.post(
+            "/api/v1/incidents",
+            json={
+                "name": "Test",
+                "base": {"latitude": 47.3977, "longitude": 8.5456},
+                "operating_radius_m": 5000.0,
+            },
+            headers=supervisor,
+        )
+    ).json()
+
+    async with connected(app, token) as ws:
+        await ws.send_json({"type": "subscribe", "topics": ["missions", "pois"]})
+        missions = await recv_until(ws, "snapshot", "missions")
+        pois = await recv_until(ws, "snapshot", "pois")
+        created = await client.post(
+            f"/api/v1/incidents/{inc['id']}/pois",
+            json={"kind": "hazard", "position": {"latitude": 47.398, "longitude": 8.546}},
+            headers=bearer_headers(token),
+        )
+        event = await recv_until(ws, "event", "pois")
+
+    assert missions["data"]["missions"] == []
+    assert pois["data"]["pois"] == []
+    assert event["data"]["id"] == created.json()["id"]
+    assert event["data"]["kind"] == "hazard"
+
+
+def bearer_headers(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}

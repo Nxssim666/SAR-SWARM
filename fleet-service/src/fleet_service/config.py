@@ -89,6 +89,18 @@ class Settings(BaseSettings):
     link_lost_after_s: float = Field(default=15.0, gt=0.0, le=600.0)
     battery_low_pct: float = Field(default=30.0, ge=0.0, le=100.0)
     battery_critical_pct: float = Field(default=15.0, ge=0.0, le=100.0)
+    return_reserve_pct: float = Field(
+        default=10.0, ge=0.0, le=50.0, description="Battery kept in reserve on the way home."
+    )
+    alert_escalate_after_s: float = Field(
+        default=60.0,
+        ge=10.0,
+        le=3600.0,
+        description="An unacknowledged warning then turns critical.",
+    )
+    proximity_alert_m: float = Field(default=10.0, ge=1.0, le=500.0)
+    proximity_alert_vertical_m: float = Field(default=5.0, ge=1.0, le=200.0)
+    proximity_lookahead_s: float = Field(default=30.0, ge=1.0, le=300.0)
 
     # --- commands and control (ADR 0011) ---
     command_timeout_s: float = Field(default=5.0, gt=0.0, le=60.0)
@@ -107,9 +119,47 @@ class Settings(BaseSettings):
     )
     min_takeoff_battery_pct: float = Field(default=40.0, ge=0.0, le=100.0)
 
+    # --- mission planning and deconfliction (ADR 0028, ADR 0029, ADR 0030) ---
+    terrain_dir: Path | None = Field(
+        default=None,
+        description="Directory of terrain grids (scripts/fetch_region.py); default "
+        "<data_dir>/terrain. Without terrain, clearance is not checked and contour searches "
+        "fall back to perimeter rings.",
+    )
+    multirotor_speed_mps: float = Field(default=10.0, gt=0.0, le=40.0)
+    fixed_wing_speed_mps: float = Field(default=18.0, gt=0.0, le=60.0)
+    multirotor_endurance_s: float = Field(default=1500.0, gt=0.0, le=86_400.0)
+    fixed_wing_endurance_s: float = Field(default=3600.0, gt=0.0, le=86_400.0)
+    fixed_wing_max_bank_deg: float = Field(default=30.0, ge=10.0, le=60.0)
+    separation_horizontal_m: float = Field(default=50.0, ge=10.0, le=1000.0)
+    separation_vertical_m: float = Field(default=15.0, ge=5.0, le=300.0)
+    layer_spacing_m: float = Field(default=15.0, ge=5.0, le=100.0)
+    multirotor_layers: int = Field(default=3, ge=1, le=10)
+    airframe_band_m: float = Field(default=30.0, ge=0.0, le=300.0)
+    min_terrain_clearance_m: float = Field(default=30.0, ge=5.0, le=500.0)
+    max_height_agl_m: float = Field(
+        default=120.0, gt=0.0, le=1500.0, description="Regulatory ceiling above ground."
+    )
+    departure_interval_s: float = Field(default=10.0, ge=0.0, le=300.0)
+    max_start_delay_s: float = Field(default=600.0, ge=0.0, le=3600.0)
+    mission_upload_timeout_s: float = Field(
+        default=60.0,
+        ge=5.0,
+        le=600.0,
+        description="How long a mission start may take: upload, read-back, start.",
+    )
+    goto_spread_m: float = Field(
+        default=60.0, ge=10.0, le=1000.0, description="Distance between bulk-goto points."
+    )
+
     # --- telemetry history and WebSocket ---
     telemetry_record_interval_s: float = Field(default=1.0, ge=0.1, le=60.0)
     ws_idle_timeout_s: float = Field(default=30.0, ge=5.0, le=600.0)
+
+    @property
+    def terrain_directory(self) -> Path:
+        """Where terrain grids are read from."""
+        return self.terrain_dir if self.terrain_dir is not None else self.data_dir / "terrain"
 
 
 @lru_cache(maxsize=1)

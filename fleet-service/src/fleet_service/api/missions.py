@@ -245,10 +245,11 @@ async def _check_search_area(
         )
 
 
-def _compatible(kind: MissionKind, aircraft: Aircraft) -> bool:
+def _compatible(kind: MissionKind, aircraft: Aircraft, simulation: bool) -> bool:
     if kind is MissionKind.SWARM_AREA:
         return aircraft.swarm_drone_id is not None
-    return aircraft.mavlink_system_id is not None
+    # In simulation mode every aircraft is simulated and flies GCS missions (ADR 0021).
+    return aircraft.mavlink_system_id is not None or simulation
 
 
 async def _mission_context(db: DbSession, mission_id: str) -> tuple[Mission, Incident]:
@@ -500,7 +501,7 @@ async def create_task(
     aircraft = await get_reference(db, Aircraft, body.aircraft_id, "aircraft_id")
     ensure_incident_open(await get_or_404(db, Incident, mission.incident_id, "Incident"))
     _ensure_editable(mission)
-    if not _compatible(mission.kind, aircraft):
+    if not _compatible(mission.kind, aircraft, context.settings.simulation):
         needed = "swarm_drone_id" if mission.kind is MissionKind.SWARM_AREA else "mavlink_system_id"
         raise Conflict(
             f"Aircraft {aircraft.callsign} has no {needed}; it cannot fly a "

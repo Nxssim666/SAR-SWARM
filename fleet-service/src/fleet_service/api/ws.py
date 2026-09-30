@@ -7,8 +7,9 @@ WebSocket hijacking). A connection never holds a database session; it opens shor
 to authenticate, re-check the session, and read snapshots.
 
 Telemetry is coalesced per client (latest state per aircraft, at the requested rate).
-Alerts, commands and control changes are reliable: if a client cannot keep up, the
-connection is closed with 4429 rather than silently skipping events.
+Alerts, commands, control changes, mission progress and points of interest are reliable:
+if a client cannot keep up, the connection is closed with 4429 rather than silently
+skipping events.
 """
 
 import asyncio
@@ -39,7 +40,13 @@ from fleet_service.api.ws_messages import (
     ControlSnapshot,
     ControlSnapshotData,
     ErrorMessage,
+    MissionEvent,
+    MissionsSnapshot,
+    MissionsSnapshotData,
     PingMessage,
+    PoiEvent,
+    PoisSnapshot,
+    PoisSnapshotData,
     PongMessage,
     ServerMessage,
     SessionEndedMessage,
@@ -58,6 +65,8 @@ from fleet_service.bus import (
     ALERTS,
     COMMANDS,
     CONTROL,
+    MISSIONS,
+    POIS,
     SESSIONS,
     TELEMETRY,
     Event,
@@ -65,8 +74,9 @@ from fleet_service.bus import (
     SubscriptionBrokenError,
 )
 from fleet_service.context import AppContext
-from fleet_service.db.models import Command
-from fleet_service.services.views import UserRef
+from fleet_service.db.models import Command, Incident, Poi
+from fleet_service.domain.enums import IncidentStatus
+from fleet_service.services.views import PoiView, UserRef
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -74,6 +84,7 @@ log = logging.getLogger(__name__)
 AUTH_TIMEOUT_S = 5.0
 SESSION_CHECK_S = 10.0
 RECENT_COMMANDS = 20
+RECENT_POIS = 500
 RELIABLE_QUEUE = 1000
 _CLIENT = TypeAdapter[Any](ClientMessage)
 
@@ -228,6 +239,23 @@ class Connection:
             await self.send(
                 ControlSnapshot, data=ControlSnapshotData(leases=self.runtime.leases.views())
             )
+        if "missions" in new:
+            async with self.context.database().ops_session() as db:
+                missions = await self.runtime.missions.snapshot(db)
+            await self.send(MissionsSnapshot, data=MissionsSnapshotData(missions=missions))
+        if "pois" in new:
+            async with self.context.database().ops_session() as db:
+                marked = (
+                    await db.scalars(
+                        select(Poi)
+                        .join(Incident, Incident.id == Poi.incident_id)
+                        .where(Incident.status != IncidentStatus.CLOSED)
+                        .order_by(Poi.created_at.desc())
+                        .limit(RECENT_POIS)
+                    )
+                ).all()
+                pois = [PoiView.model_validate(p) for p in marked]
+            await self.send(PoisSnapshot, data=PoisSnapshotData(pois=pois))
 
     def _unsubscribe(self, topics: set[Topic]) -> None:
         self._topics -= topics
@@ -278,6 +306,10 @@ class Connection:
             await self.send(CommandEvent, data=event.data)
         elif event.topic == CONTROL:
             await self.send(ControlEvent, data=event.data)
+        elif event.topic == MISSIONS:
+            await self.send(MissionEvent, data=event.data)
+        elif event.topic == POIS:
+            await self.send(PoiEvent, data=event.data)
 
     async def _forward_telemetry(self) -> None:
         while True:

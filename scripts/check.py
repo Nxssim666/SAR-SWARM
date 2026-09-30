@@ -56,8 +56,12 @@ def node_environment() -> dict[str, str]:
     if not tools.is_dir():
         return env
     extra: list[str] = []
-    binaries = [p for name in ("node.exe", "node")
-                for p in tools.rglob(f"nodejs_wheel/**/{name}") if p.is_file()]
+    binaries = [
+        p
+        for name in ("node.exe", "node")
+        for p in tools.rglob(f"nodejs_wheel/**/{name}")
+        if p.is_file()
+    ]
     if binaries:
         extra.append(str(min(binaries, key=lambda p: len(p.parts)).parent))
     scripts = tools / ("Scripts" if os.name == "nt" else "bin")
@@ -66,8 +70,14 @@ def node_environment() -> dict[str, str]:
     return env
 
 
-def run(results: list[Result], suite: str, step: str, argv: list[str], cwd: Path,
-        env: dict[str, str] | None = None) -> bool:
+def run(
+    results: list[Result],
+    suite: str,
+    step: str,
+    argv: list[str],
+    cwd: Path,
+    env: dict[str, str] | None = None,
+) -> bool:
     """Run one step, stream its output, and record the outcome."""
     print(f"\n=== [{suite}] {step}: {' '.join(argv)}", flush=True)
     resolved = shutil.which(argv[0], path=(env or os.environ).get("PATH")) or argv[0]
@@ -82,8 +92,19 @@ def run(results: list[Result], suite: str, step: str, argv: list[str], cwd: Path
 
 
 def check_onboard(results: list[Result], fast: bool) -> None:
-    argv = [*uv_command(), "run", "--no-project", "--with-requirements",
-            "requirements-standalone.txt", "python", "-m", "pytest", "-q", "-p", "no:cacheprovider"]
+    argv = [
+        *uv_command(),
+        "run",
+        "--no-project",
+        "--with-requirements",
+        "requirements-standalone.txt",
+        "python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+    ]
     if fast:
         argv += ["-m", "not slow"]
     run(results, "onboard", "pytest", argv, ROOT)
@@ -95,29 +116,52 @@ def check_service(results: list[Result]) -> None:
     if not run(results, "service", "sync", [*uv, "sync", "--locked"], cwd):
         return
     # sim/ and the console's E2E backend share the service's environment and rules.
-    python_dirs = [".", "../sim", "../fleet-console/e2e"]
+    python_dirs = [".", "../sim", "../fleet-console/e2e", "../scripts"]
     run(results, "service", "ruff check", [*uv, "run", "ruff", "check", *python_dirs], cwd)
-    run(results, "service", "ruff format",
-        [*uv, "run", "ruff", "format", "--check", *python_dirs], cwd)
+    run(
+        results,
+        "service",
+        "ruff format",
+        [*uv, "run", "ruff", "format", "--check", *python_dirs],
+        cwd,
+    )
     # The swarm bridge (ROS package, onboard style) is linted with its own rules.
-    run(results, "service", "ruff bridge",
-        [*uv, "run", "ruff", "check", "--config", "../src/sar_gcs_bridge/ruff.toml",
-         "../src/sar_gcs_bridge"], cwd)
+    run(
+        results,
+        "service",
+        "ruff bridge",
+        [
+            *uv,
+            "run",
+            "ruff",
+            "check",
+            "--config",
+            "../src/sar_gcs_bridge/ruff.toml",
+            "../src/sar_gcs_bridge",
+        ],
+        cwd,
+    )
     run(results, "service", "mypy", [*uv, "run", "mypy"], cwd)
     env = dict(os.environ)
     if nats_server_found():
         env["SARGCS_REQUIRE_NATS"] = "1"  # found: the NATS tests must run, not skip
     else:
-        print("!!! nats-server not found (NATS_SERVER_BIN, PATH or .tools/nats): "
-              "the NATS tests will be skipped", flush=True)
+        print(
+            "!!! nats-server not found (NATS_SERVER_BIN, PATH or .tools/nats): "
+            "the NATS tests will be skipped",
+            flush=True,
+        )
     run(results, "service", "pytest", [*uv, "run", "pytest", "-q"], cwd, env)
 
 
 def nats_server_found() -> bool:
     """Whether the fleet-service NATS tests can start a nats-server (tests/nats_support.py)."""
-    candidates = [os.environ.get("NATS_SERVER_BIN"), shutil.which("nats-server"),
-                  str(ROOT / ".tools" / "nats" / "nats-server.exe"),
-                  str(ROOT / ".tools" / "nats" / "nats-server")]
+    candidates = [
+        os.environ.get("NATS_SERVER_BIN"),
+        shutil.which("nats-server"),
+        str(ROOT / ".tools" / "nats" / "nats-server.exe"),
+        str(ROOT / ".tools" / "nats" / "nats-server"),
+    ]
     return any(c and Path(c).is_file() for c in candidates)
 
 
@@ -140,12 +184,17 @@ def check_console(results: list[Result]) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--only", default=",".join(SUITES),
-                        help=f"comma-separated suites to run (default: {','.join(SUITES)})")
-    parser.add_argument("--fast", action="store_true",
-                        help="skip slow tests (onboard closed-loop simulation)")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--only",
+        default=",".join(SUITES),
+        help=f"comma-separated suites to run (default: {','.join(SUITES)})",
+    )
+    parser.add_argument(
+        "--fast", action="store_true", help="skip slow tests (onboard closed-loop simulation)"
+    )
     args = parser.parse_args()
     selected = [s.strip() for s in args.only.split(",") if s.strip()]
     unknown = sorted(set(selected) - set(SUITES))

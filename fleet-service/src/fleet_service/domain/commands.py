@@ -29,7 +29,8 @@ from fleet_service.domain.geo import GeoPoint, distance_m
 from fleet_service.domain.geofence import GeofenceSet
 from fleet_service.domain.telemetry import TelemetrySample
 
-# Commands dispatched to aircraft (mission_start: swarm area missions only, from M2b).
+# Commands dispatched to aircraft. mission_start starts a swarm area mission (M2b) or a
+# GCS-planned mission (M4: each aircraft's own route); mission_pause pauses the latter.
 FLIGHT_COMMANDS = frozenset(
     {
         CommandKind.ARM,
@@ -41,11 +42,12 @@ FLIGHT_COMMANDS = frozenset(
         CommandKind.LAND,
         CommandKind.GOTO,
         CommandKind.MISSION_START,
+        CommandKind.MISSION_PAUSE,
     }
 )
 # What each kind of link can carry: an autopilot over MAVLink (and the simulator), and a
 # swarm companion over the bridge (ADR 0003: only the operator commands and area missions).
-AUTOPILOT_COMMANDS = FLIGHT_COMMANDS - {CommandKind.MISSION_START}
+AUTOPILOT_COMMANDS = FLIGHT_COMMANDS
 SWARM_COMMANDS = frozenset(
     {
         CommandKind.HOLD,
@@ -64,17 +66,28 @@ ALWAYS_CONFIRM = frozenset({CommandKind.ARM, CommandKind.TAKEOFF, CommandKind.MI
 # Which link carries a command for an aircraft with both (ADR 0025). The safer commands go
 # to the companion while it is heard (it keeps the swarm consistent), else to the autopilot.
 _MAVLINK_ONLY = frozenset(
-    {CommandKind.ARM, CommandKind.DISARM, CommandKind.TAKEOFF, CommandKind.GOTO}
+    {
+        CommandKind.ARM,
+        CommandKind.DISARM,
+        CommandKind.TAKEOFF,
+        CommandKind.GOTO,
+        CommandKind.MISSION_PAUSE,
+    }
 )
 _SWARM_ONLY = frozenset({CommandKind.RESUME, CommandKind.MISSION_START})
+# A GCS-planned mission is the autopilot's (ADR 0028): starting and resuming it is MAVLink.
+_GCS_MISSION = frozenset({CommandKind.MISSION_START, CommandKind.RESUME})
 
 
-def route_command(kind: CommandKind, *, swarm_live: bool) -> LinkSource | None:
+def route_command(
+    kind: CommandKind, *, swarm_live: bool, gcs_mission: bool = False
+) -> LinkSource | None:
     """The link that carries ``kind`` for an aircraft with a MAVLink and a swarm link.
 
+    ``gcs_mission``: the command concerns a GCS-planned mission (flown by the autopilot).
     None: the command cannot be sent now (it needs the swarm link, which is not live).
     """
-    if kind in _MAVLINK_ONLY:
+    if kind in _MAVLINK_ONLY or (gcs_mission and kind in _GCS_MISSION):
         return LinkSource.MAVLINK
     if kind in _SWARM_ONLY:
         return LinkSource.SWARM if swarm_live else None
@@ -159,11 +172,18 @@ def precondition(
     takeoff_altitude_m: float | None = None,
     goto: GotoTarget | None = None,
     geofences: GeofenceSet | None = None,
+    gcs_mission: bool = False,
 ) -> Rejection | None:
-    """Return why ``kind`` must not be sent to ``vehicle`` now, or None."""
+    """Return why ``kind`` must not be sent to ``vehicle`` now, or None.
+
+    ``gcs_mission``: a mission_start of a GCS-planned (autopilot) mission.
+    """
     if kind not in FLIGHT_COMMANDS:
         return Rejection("unsupported", f"{kind.value} is not available yet.")
-    if kind not in vehicle.capabilities:
+    # A GCS-planned mission is the autopilot's: any link that carries mission_pause (the
+    # autopilot's own command) can start and resume it, whatever the swarm link does.
+    autopilot = CommandKind.MISSION_PAUSE in vehicle.capabilities
+    if kind not in vehicle.capabilities and not (gcs_mission and autopilot):
         return Rejection("unsupported", f"{vehicle.callsign} does not support {kind.value}.")
     if vehicle.link is LinkState.OFFLINE or vehicle.sample is None:
         return Rejection("no-link", f"{vehicle.callsign} has no telemetry link.")
@@ -174,6 +194,8 @@ def precondition(
             "can be attempted.",
         )
     s = vehicle.sample
+    if gcs_mission and kind is CommandKind.MISSION_START:
+        return _gcs_mission_start(vehicle.callsign, s)
     rule = _RULES[kind]
     return rule(vehicle.callsign, s, limits, takeoff_altitude_m, goto, geofences)
 
@@ -294,6 +316,26 @@ def _goto(
     return None
 
 
+def _gcs_mission_start(callsign: str, s: TelemetrySample) -> Rejection | None:
+    """A GCS-planned mission: the autopilot flies it from where the aircraft is."""
+    if s.flight_mode is FlightMode.OFFBOARD:
+        return Rejection(
+            "companion-in-control",
+            f"{callsign}'s onboard computer is in control; hold it first (ADR 0003).",
+        )
+    if s.in_air is not True:
+        return Rejection("not-in-air", f"{callsign} is not in the air; take off first.")
+    if s.gps_fix is None or not s.gps_fix.has_3d or s.latitude is None or s.longitude is None:
+        return Rejection("no-gps-fix", f"{callsign}'s position is unknown.")
+    return None
+
+
+def _mission_pause(callsign: str, s: TelemetrySample, *_: object) -> Rejection | None:
+    if s.flight_mode is not FlightMode.MISSION:
+        return Rejection("not-in-mission", f"{callsign} is not flying a mission.")
+    return None
+
+
 def _mission_start(callsign: str, s: TelemetrySample, *_: object) -> Rejection | None:
     if s.swarm is None:
         return Rejection("swarm-unknown", f"{callsign}'s swarm companion has not been heard.")
@@ -310,6 +352,7 @@ _RULES: dict[CommandKind, _Rule] = {
     CommandKind.LAND: _airborne,
     CommandKind.GOTO: _goto,
     CommandKind.MISSION_START: _mission_start,
+    CommandKind.MISSION_PAUSE: _mission_pause,
 }
 
 
@@ -324,12 +367,12 @@ def swarm_mission_problem(
 ) -> Rejection | None:
     """Why a mission cannot be started for ``targets`` now (ADR 0024), or None.
 
-    Only swarm area missions are started from M2b; GCS-planned missions follow in M4. The
-    onboard protocol cannot address a mission: every drone on the swarm link adopts it, so
-    the command must name every swarm aircraft, and those must be the mission's tasks.
+    The onboard protocol cannot address a mission: every drone on the swarm link adopts it,
+    so the command must name every swarm aircraft, and those must be the mission's tasks.
+    GCS-planned missions are checked by ``gcs_mission_problem``.
     """
     if kind is not MissionKind.SWARM_AREA:
-        return Rejection("unsupported", f"Starting a {kind.value} mission is not available yet.")
+        return Rejection("unsupported", f"A {kind.value} mission is not a swarm mission.")
     if not incident_active:
         return Rejection("incident-not-active", "The mission's incident is not active.")
     if status is not MissionStatus.PLANNED:
@@ -348,6 +391,28 @@ def swarm_mission_problem(
     return None
 
 
+def gcs_mission_problem(
+    kind: MissionKind,
+    status: MissionStatus,
+    *,
+    incident_active: bool,
+    planned: bool,
+) -> Rejection | None:
+    """Why a GCS-planned mission cannot be started now (ADR 0028), or None.
+
+    Which aircraft may start it is decided per aircraft: those with a planned route.
+    """
+    if kind is MissionKind.SWARM_AREA:
+        return Rejection("unsupported", "A swarm mission is started through the swarm.")
+    if not incident_active:
+        return Rejection("incident-not-active", "The mission's incident is not active.")
+    if status is not MissionStatus.PLANNED:
+        return Rejection("mission-not-planned", f"The mission is {status.value}, not planned.")
+    if not planned:
+        return Rejection("mission-not-planned", "The mission has no plan: plan it first.")
+    return None
+
+
 def confirmation_reasons(
     kind: CommandKind,
     *,
@@ -355,13 +420,25 @@ def confirmation_reasons(
     any_override: bool,
     goto_distance_m: float | None,
     limits: Limits,
+    swarm_mission: bool = False,
+    without_avoidance: int = 0,
+    plan_issues: int = 0,
 ) -> list[str]:
-    """Why this command needs an explicit confirmation (empty: it doesn't)."""
+    """Why this command needs an explicit confirmation (empty: it doesn't).
+
+    ``without_avoidance``: aircraft with a swarm companion that the autopilot will fly
+    instead (goto, GCS mission), so onboard obstacle avoidance is not active.
+    ``plan_issues``: deconfliction conflicts and clearance issues a supervisor overrides.
+    """
     reasons = []
     if kind in ALWAYS_CONFIRM:
         reasons.append(f"{kind.value} always needs confirmation")
-    if kind is CommandKind.MISSION_START:
+    if swarm_mission:
         reasons.append("every drone on the swarm link adopts the mission")
+    if without_avoidance:
+        reasons.append(f"onboard obstacle avoidance is not active on {without_avoidance} aircraft")
+    if plan_issues:
+        reasons.append(f"the plan has {plan_issues} deconfliction or clearance issue(s)")
     if target_count > 1:
         reasons.append(f"sent to {target_count} aircraft")
     if any_override:
@@ -401,7 +478,11 @@ def expected_effect(kind: CommandKind) -> Callable[[TelemetrySample], bool] | No
             s.flight_mode in {FlightMode.GOTO, FlightMode.MISSION}
             or (s.swarm is not None and s.swarm.phase in SWARM_WORKING)
         ),
-        CommandKind.MISSION_START: lambda s: s.swarm is not None and s.swarm.phase in SWARM_WORKING,
+        CommandKind.MISSION_START: lambda s: (
+            s.flight_mode is FlightMode.MISSION
+            or (s.swarm is not None and s.swarm.phase in SWARM_WORKING)
+        ),
+        CommandKind.MISSION_PAUSE: lambda s: s.flight_mode is FlightMode.HOLD,
         CommandKind.RETURN_TO_LAUNCH: lambda s: s.flight_mode is FlightMode.RETURN,
         CommandKind.LAND: lambda s: s.flight_mode is FlightMode.LAND or s.in_air is False,
         CommandKind.GOTO: lambda s: s.flight_mode in {FlightMode.GOTO, FlightMode.HOLD},
