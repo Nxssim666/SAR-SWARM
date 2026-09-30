@@ -46,6 +46,9 @@ jobs:
             --format "{{.Name}},{{.CPUPerc}},{{.MemUsage}}"; sleep 10; done' \
             > sitl-results/docker-stats.txt 2>&1 &
       - name: Scale tests
+        # Its own limit, below the job's: when an oversubscribed runner crawls, the steps
+        # below still collect logs and annotate what was measured.
+        timeout-minutes: 25
         env:
           SARGCS_SCALE_FLEET: ../sim/sitl/generated/fleet.json
           SARGCS_SCALE_REPORT: ../sitl-results/scale-report.json
