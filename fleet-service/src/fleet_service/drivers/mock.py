@@ -28,6 +28,9 @@ from fleet_service.domain.telemetry import TelemetrySample
 from fleet_service.drivers.base import CommandResult, DriverCommand, TelemetrySink
 
 EARTH_RADIUS_M = 6_371_000.0
+# Fixed-wing path following: steer at the point this far ahead on the leg (converges onto
+# the line within about a turn radius, as PX4's guidance does).
+PATH_LOOKAHEAD_M = 20.0
 FAILSAFE_LINK_LOSS_S = 10.0
 FAILSAFE_RTL_BATTERY_PCT = 10.0
 FAILSAFE_LAND_BATTERY_PCT = 5.0
@@ -266,11 +269,49 @@ class MockVehicle:
                 self.loiter_left = None
                 self.mission_index += 1
             return
-        if self._fly_to((x, y, z), dt, speed):
+        if not self.model.hovers and self.mission_index > 0:
+            px, py, _, _, _ = self.mission[self.mission_index - 1]
+            arrived = self._follow_segment((px, py), (x, y, z), dt, speed)
+        else:
+            arrived = self._fly_to((x, y, z), dt, speed)
+        if arrived:
             if loiter:
                 self.loiter_left = loiter
             else:
                 self.mission_index += 1
+
+    def _follow_segment(
+        self,
+        start: tuple[float, float],
+        end: tuple[float, float, float],
+        dt: float,
+        cruise: float | None,
+    ) -> bool:
+        """Fixed-wing path following, like PX4's NPFG: track the line from the previous
+        waypoint to this one (steering at the point ``PATH_LOOKAHEAD_M`` ahead on it), so a
+        waypoint accepted early does not turn the next leg into a diagonal. True on arrival."""
+        ex, ey, ez = end
+        if math.hypot(ex - self.x, ey - self.y) <= self.model.arrive_radius_m:
+            self._vertical_toward(ez, dt)
+            return True
+        sx, sy = start
+        lx, ly = ex - sx, ey - sy
+        length = math.hypot(lx, ly)
+        if length < 1.0:
+            return self._fly_to(end, dt, cruise)
+        along = ((self.x - sx) * lx + (self.y - sy) * ly) / length
+        ahead = min(max(along, 0.0) + PATH_LOOKAHEAD_M, length)
+        carrot = (sx + lx / length * ahead, sy + ly / length * ahead)
+        self._vertical_toward(ez, dt)
+        dx, dy = carrot[0] - self.x, carrot[1] - self.y
+        distance = math.hypot(dx, dy)
+        self.speed = min(cruise, self.model.cruise_mps) if cruise else self.model.cruise_mps
+        if distance > 0.0:
+            travel = min(distance, self.speed * dt)
+            self.x += dx / distance * travel
+            self.y += dy / distance * travel
+            self.heading_deg = math.degrees(math.atan2(dx, dy)) % 360.0
+        return False
 
     def _failsafes(self, dt: float) -> None:
         self.link_down_s = 0.0 if self.link_up else self.link_down_s + dt

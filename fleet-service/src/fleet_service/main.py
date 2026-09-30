@@ -139,6 +139,7 @@ def create_app(
         plans.router,
         pois.router,
         video_streams.router,
+        video_streams.health_router,
         live.router,
         commands.router,
         control.router,

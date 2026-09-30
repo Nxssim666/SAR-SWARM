@@ -20,6 +20,7 @@ from fleet_service.clock import Clock
 from fleet_service.db.models import Aircraft
 from fleet_service.domain.commands import VehicleView
 from fleet_service.domain.enums import Airframe, LinkSource, LinkState
+from fleet_service.domain.links import LinkThresholds, next_link_state
 from fleet_service.domain.telemetry import TelemetrySample
 from fleet_service.drivers.base import VehicleDriver
 from fleet_service.drivers.mavlink import MavlinkDriver, MavlinkLinks, normalize_url
@@ -42,6 +43,8 @@ class LiveRecord:
     link: LinkState = LinkState.OFFLINE
     route: "Route | None" = None  # the links behind the driver
     links: dict[LinkSource, LinkState] = field(default_factory=dict)  # both links: each one
+    # When samples started flowing again after the link degraded (hysteresis, M6).
+    recovering_since: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -61,10 +64,12 @@ class FleetRegistry:
         stale_after: timedelta,
         lost_after: timedelta,
         controller_of: ControllerLookup,
+        recover_after: timedelta = timedelta(seconds=2),
     ) -> None:
         self._bus = bus
         self._stale_after = stale_after
         self._lost_after = lost_after
+        self._thresholds = LinkThresholds(stale_after, lost_after, recover_after)
         self._controller_of = controller_of
         self._records: dict[str, LiveRecord] = {}
 
@@ -90,12 +95,16 @@ class FleetRegistry:
     # --- telemetry and links ---------------------------------------------------------------------
 
     def ingest(self, sample: TelemetrySample) -> None:
-        """Driver sink: record a sample; the link becomes live."""
+        """Driver sink: record a sample. A live (or first) link stays live at once; a degraded
+        one starts recovering, and turns live only once data has held (``domain.links``)."""
         record = self._records.get(sample.aircraft_id)
         if record is None:
             return
         record.sample = sample
-        record.link = LinkState.LIVE
+        if record.link in (LinkState.LIVE, LinkState.OFFLINE):
+            record.link = LinkState.LIVE
+        elif record.recovering_since is None:
+            record.recovering_since = sample.ts
         self.announce(record.aircraft_id)
 
     def evaluate_links(self, now: datetime) -> list[tuple[str, LinkState, LinkState]]:
@@ -104,7 +113,13 @@ class FleetRegistry:
         for record in self._records.values():
             if record.sample is None:
                 continue  # never heard from: stays offline, which is not a loss
-            state = self._age_state(now - record.sample.ts)
+            age = now - record.sample.ts
+            if age > self._stale_after:
+                record.recovering_since = None  # a gap: recovery starts over
+            recovering = now - record.recovering_since if record.recovering_since else None
+            state = next_link_state(record.link, age, recovering, self._thresholds)
+            if state is LinkState.LIVE:
+                record.recovering_since = None
             links = self._source_links(record, now)
             if state is not record.link or links != record.links:
                 if state is not record.link:

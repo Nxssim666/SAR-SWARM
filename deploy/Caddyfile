@@ -10,6 +10,14 @@
 		reverse_proxy fleet-service:8000
 	}
 
+	# Video (ADR 0012): WHEP signalling and LL-HLS from the relay; media goes over UDP 8189.
+	handle_path /video/webrtc/* {
+		reverse_proxy mediamtx:8889
+	}
+	handle_path /video/hls/* {
+		reverse_proxy mediamtx:8888
+	}
+
 	handle {
 		root * /srv/console
 		try_files {path} /index.html
@@ -17,7 +25,7 @@
 	}
 
 	header {
-		Content-Security-Policy "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; frame-ancestors 'none'"
+		Content-Security-Policy "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; frame-ancestors 'none'"
 		X-Content-Type-Options nosniff
 		Referrer-Policy no-referrer
 		-Server

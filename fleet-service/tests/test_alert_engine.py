@@ -201,7 +201,7 @@ def test_collision_risk_from_position_and_velocity(
         if c.kind is AlertKind.DECONFLICTION_RISK
     ]
 
-    assert sorted(c.aircraft_id for c in found) == (["a", "b"] if risk else [])
+    assert sorted(c.aircraft_id or "" for c in found) == (["a", "b"] if risk else [])
     if risk:
         assert all(c.severity is AlertSeverity.CRITICAL for c in found)
 

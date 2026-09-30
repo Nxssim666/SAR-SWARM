@@ -11,6 +11,8 @@ export const BACKEND_PORT = 8123;
 export const CONSOLE_PORT = 4173;
 // On Windows the Python launcher: `python` may be the portable Node tools' venv (no uv).
 const uv = process.env.UV ?? (process.platform === 'win32' ? 'py -m uv' : 'uv');
+// E2E_VIDEO=1: the mock video relay (sim/video) runs on this host; video tests run too.
+const video = process.env.E2E_VIDEO === '1' ? ' --video' : '';
 
 export default defineConfig({
   testDir: './e2e',
@@ -39,7 +41,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `${uv} --directory ../fleet-service run python ../fleet-console/e2e/backend.py --port ${String(BACKEND_PORT)} --aircraft 20`,
+      command: `${uv} --directory ../fleet-service run python ../fleet-console/e2e/backend.py --port ${String(BACKEND_PORT)} --aircraft 20${video}`,
       url: `http://127.0.0.1:${String(BACKEND_PORT)}/api/v1/health`,
       timeout: 180_000,
       reuseExistingServer: false,

@@ -92,6 +92,7 @@ markers = [
     "sitl: needs the PX4 SITL fleet of sim/sitl/compose.yaml; runs with SARGCS_SITL=1",
     "sitl_scale: needs a generated PX4 SIH fleet (sim/sitl/fleet.py); runs with SARGCS_SCALE_FLEET",
     "swarm: needs the swarm of sim/swarm/compose.yaml (bridge, NATS); runs with SARGCS_SWARM=1",
+    "video: needs the mock video relay of sim/video/compose.yaml; runs with SARGCS_VIDEO=1",
 ]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"

@@ -5734,6 +5734,105 @@
         "x-permission": "fleet.manage"
       }
     },
+    "/api/v1/video-streams/{stream_id}/view": {
+      "post": {
+        "tags": [
+          "video streams"
+        ],
+        "summary": "View Video Stream",
+        "description": "Start viewing a stream: its playback URLs; the viewing is audited (ADR 0012).",
+        "operationId": "view_video_stream_api_v1_video_streams__stream_id__view_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "stream_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stream Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "fleet.view"
+      }
+    },
     "/api/v1/video-streams/{stream_id}": {
       "get": {
         "tags": [
@@ -6028,6 +6127,142 @@
           }
         },
         "x-permission": "fleet.manage"
+      }
+    },
+    "/api/v1/video-health": {
+      "get": {
+        "tags": [
+          "video streams"
+        ],
+        "summary": "Video Health",
+        "description": "Each stream's state at the relay: live, stalled, offline or unknown.",
+        "operationId": "video_health_api_v1_video_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamHealthList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "x-permission": "fleet.view"
+      }
+    },
+    "/api/v1/presence": {
+      "get": {
+        "tags": [
+          "live"
+        ],
+        "summary": "List Presence",
+        "description": "Who is connected: users whose console was heard in the last 30 seconds.",
+        "operationId": "list_presence_api_v1_presence_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresenceList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body could not be parsed (not valid JSON or not UTF-8).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "x-permission": "fleet.view"
       }
     },
     "/api/v1/fleet/state": {
@@ -7670,6 +7905,39 @@
         ],
         "parameters": [
           {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "description": "Maximum items to return.",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum items to return."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque cursor from a previous page's next_cursor.",
+              "title": "Cursor"
+            },
+            "description": "Opaque cursor from a previous page's next_cursor."
+          },
+          {
             "name": "actor_user_id",
             "in": "query",
             "required": false,
@@ -7772,23 +8040,136 @@
               ],
               "title": "Until"
             }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPage"
+                }
+              }
+            }
           },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "audit.read"
+      }
+    },
+    "/api/v1/audit/verify": {
+      "get": {
+        "tags": [
+          "audit"
+        ],
+        "summary": "Verify Audit Chain",
+        "description": "Re-walk the whole chain: the first inconsistency, or the head if intact.",
+        "operationId": "verify_audit_chain_api_v1_audit_verify_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChainStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The session's role lacks the required permission.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input: malformed, out of range, or semantically invalid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
           {
-            "name": "limit",
+            "HTTPBearer": []
+          }
+        ],
+        "x-permission": "audit.read"
+      }
+    },
+    "/api/v1/audit/export": {
+      "get": {
+        "tags": [
+          "audit"
+        ],
+        "summary": "Export Audit Events",
+        "description": "Export the selected events (oldest first); the export itself is audited.",
+        "operationId": "export_audit_events_api_v1_audit_export_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "format",
             "in": "query",
             "required": false,
             "schema": {
-              "type": "integer",
-              "maximum": 500,
-              "minimum": 1,
-              "description": "Maximum items to return.",
-              "default": 100,
-              "title": "Limit"
-            },
-            "description": "Maximum items to return."
+              "$ref": "#/components/schemas/ExportFormat",
+              "default": "csv"
+            }
           },
           {
-            "name": "cursor",
+            "name": "actor_user_id",
             "in": "query",
             "required": false,
             "schema": {
@@ -7801,19 +8182,109 @@
                   "type": "null"
                 }
               ],
-              "description": "Opaque cursor from a previous page's next_cursor.",
-              "title": "Cursor"
+              "title": "Actor User Id"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Prefix, e.g. 'auth.' or 'mission.update'.",
+              "title": "Action"
             },
-            "description": "Opaque cursor from a previous page's next_cursor."
+            "description": "Prefix, e.g. 'auth.' or 'mission.update'."
+          },
+          {
+            "name": "entity_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Type"
+            }
+          },
+          {
+            "name": "entity_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Id"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "The selected events, oldest first, with their chain hashes.",
             "content": {
-              "application/json": {
+              "text/csv": {
                 "schema": {
-                  "$ref": "#/components/schemas/AuditPage"
+                  "type": "string"
+                }
+              },
+              "application/x-ndjson": {
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -8652,6 +9123,79 @@
         "title": "AuditPage",
         "description": "A page of audit events, newest first."
       },
+      "ChainStatus": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "events": {
+            "type": "integer",
+            "title": "Events"
+          },
+          "head_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Seq"
+          },
+          "head_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Hash"
+          },
+          "broken_at_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Broken At Seq"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "verified_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Verified At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "events",
+          "head_seq",
+          "head_hash",
+          "broken_at_seq",
+          "reason",
+          "verified_at"
+        ],
+        "title": "ChainStatus",
+        "description": "Whether the audit hash chain is intact, and its head (to record elsewhere)."
+      },
       "CommandKind": {
         "type": "string",
         "enum": [
@@ -9060,6 +9604,15 @@
         ],
         "title": "DisarmCommand",
         "description": "Disarm (on the ground only; never in flight)."
+      },
+      "ExportFormat": {
+        "type": "string",
+        "enum": [
+          "csv",
+          "jsonl"
+        ],
+        "title": "ExportFormat",
+        "description": "Audit export formats."
       },
       "FaultInjection": {
         "properties": {
@@ -10722,6 +11275,29 @@
         "title": "MissionUpdate",
         "description": "Fields to change. Plan fields change only in draft/planned; ``status`` may go\ndraft↔planned or to aborted."
       },
+      "OperatorPresence": {
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Seen At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user",
+          "role",
+          "last_seen_at"
+        ],
+        "title": "OperatorPresence",
+        "description": "Someone connected to this station (M5): who, their role, and when last heard."
+      },
       "PasswordChange": {
         "properties": {
           "current_password": {
@@ -11544,6 +12120,23 @@
         "title": "PolygonGeoJSON",
         "description": "A GeoJSON Polygon with one ring (no holes), 3 to 256 distinct vertices, valid\n(not self-intersecting, non-zero area), normalized to a counter-clockwise ring."
       },
+      "PresenceList": {
+        "properties": {
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/OperatorPresence"
+            },
+            "type": "array",
+            "title": "Users"
+          }
+        },
+        "type": "object",
+        "required": [
+          "users"
+        ],
+        "title": "PresenceList",
+        "description": "The users heard in the last 30 seconds, most recently heard first."
+      },
       "Problem": {
         "properties": {
           "type": {
@@ -11915,6 +12508,112 @@
         "type": "object",
         "title": "SearchAreaUpdate",
         "description": "Fields to change. The geometry is frozen while a running mission uses the area."
+      },
+      "StreamHealthList": {
+        "properties": {
+          "monitored": {
+            "type": "boolean",
+            "title": "Monitored"
+          },
+          "streams": {
+            "items": {
+              "$ref": "#/components/schemas/StreamHealthOut"
+            },
+            "type": "array",
+            "title": "Streams"
+          }
+        },
+        "type": "object",
+        "required": [
+          "monitored",
+          "streams"
+        ],
+        "title": "StreamHealthList",
+        "description": "Every registered stream's health; ``monitored`` is false without a relay API."
+      },
+      "StreamHealthOut": {
+        "properties": {
+          "stream_id": {
+            "type": "string",
+            "title": "Stream Id"
+          },
+          "relay_path": {
+            "type": "string",
+            "title": "Relay Path"
+          },
+          "state": {
+            "$ref": "#/components/schemas/StreamState"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "readers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Readers"
+          },
+          "bitrate_kbps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bitrate Kbps"
+          },
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stream_id",
+          "relay_path",
+          "state",
+          "since",
+          "readers",
+          "bitrate_kbps",
+          "checked_at"
+        ],
+        "title": "StreamHealthOut",
+        "description": "How a stream is doing at the relay; ``unknown`` when the relay cannot be asked."
+      },
+      "StreamState": {
+        "type": "string",
+        "enum": [
+          "live",
+          "stalled",
+          "offline",
+          "unknown"
+        ],
+        "title": "StreamState",
+        "description": "Whether video is flowing through the relay."
       },
       "SummaryAircraft": {
         "properties": {
@@ -13336,6 +14035,35 @@
         "type": "object",
         "title": "VideoStreamUpdate",
         "description": "Fields to change."
+      },
+      "ViewTicket": {
+        "properties": {
+          "stream_id": {
+            "type": "string",
+            "title": "Stream Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "whep_url": {
+            "type": "string",
+            "title": "Whep Url"
+          },
+          "hls_url": {
+            "type": "string",
+            "title": "Hls Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stream_id",
+          "name",
+          "whep_url",
+          "hls_url"
+        ],
+        "title": "ViewTicket",
+        "description": "Where a console plays a stream: WHEP (WebRTC) first, LL-HLS if WebRTC fails."
       },
       "WaypointIn": {
         "properties": {

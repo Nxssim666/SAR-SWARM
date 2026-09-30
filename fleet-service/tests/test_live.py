@@ -96,12 +96,36 @@ async def test_link_goes_stale_then_lost_then_live_again_with_alerts(
     lost = await active_alerts(client, auth[Role.OBSERVER])
     inject(sim, hexa, link=True)
     await sim.fly(1)
+    recovering = await active_alerts(client, auth[Role.OBSERVER])
+    await sim.fly(1.5)
     back = await active_alerts(client, auth[Role.OBSERVER])
 
     assert set(stale) == {"link_stale"}
     assert set(lost) == {"link_lost"}
     assert lost["link_lost"]["severity"] == "critical"
+    # M6 hysteresis: data again, not yet trusted (stale) until it has held for 2 s.
+    assert set(recovering) == {"link_stale"}
     assert back == {}
+
+
+async def test_a_flapping_link_never_turns_live(
+    client: httpx.AsyncClient, auth: dict[Role, dict[str, str]], hexa: str, sim: Sim
+) -> None:
+    # A radio at the edge of its range: 1.5 s of data, then 4 s of silence, again and again.
+    inject(sim, hexa, link=False)
+    await sim.fly(4)
+    states = []
+    for _ in range(4):
+        inject(sim, hexa, link=True)
+        await sim.fly(1.5)
+        states.append(sim.runtime.registry.get(hexa).link.value)  # type: ignore[union-attr]
+        inject(sim, hexa, link=False)
+        await sim.fly(4)
+        states.append(sim.runtime.registry.get(hexa).link.value)  # type: ignore[union-attr]
+    alerts = await active_alerts(client, auth[Role.OBSERVER])
+
+    assert "live" not in states  # commands stay limited to hold, return and land
+    assert set(alerts) == {"link_stale"}  # one alert, still open, not a stream of them
 
 
 async def test_battery_alerts_follow_the_thresholds(

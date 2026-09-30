@@ -106,7 +106,9 @@ test('plan an area search for a group, start it, and watch it complete', async (
   await expect(page.getByTestId('mission-status')).toHaveText('draft');
 
   const plan = page.getByRole('region', { name: 'Plan', exact: true });
-  await plan.getByLabel('Spacing (m)').fill('50');
+  // 40 m lanes: every strip gets several lanes, so the swept area does not depend on how
+  // wide the airplane's (larger) strip happens to be.
+  await plan.getByLabel('Spacing (m)').fill('40');
   await plan.getByLabel('A group').check();
   await plan.getByLabel('Group to plan for').selectOption({ label: 'Team North (5)' });
   await plan.getByRole('button', { name: 'Preview' }).click();

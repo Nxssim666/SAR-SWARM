@@ -1,6 +1,11 @@
 """Reading the audit trail through the API; every mutation leaves a verifiable record."""
 
+import csv
+import io
+import json
+
 import httpx
+from sqlalchemy import text
 
 from fleet_service.context import AppContext
 from fleet_service.domain.enums import Role
@@ -75,3 +80,63 @@ async def test_operators_cannot_read_the_audit_trail(
     response = await client.get(AUDIT, headers=auth[Role.OPERATOR])
 
     assert response.status_code == 403
+
+
+async def test_the_chain_status_reports_the_head_or_where_it_breaks(
+    client: httpx.AsyncClient, auth: dict[Role, dict[str, str]], context: AppContext
+) -> None:
+    await aircraft(client, auth[Role.SUPERVISOR], "HX-1")
+
+    intact = (await client.get(f"{AUDIT}/verify", headers=auth[Role.SUPERVISOR])).json()
+    async with context.database().ops_session() as db:
+        await db.execute(text("UPDATE audit_events SET action = 'x' WHERE seq = 1"))
+        await db.commit()
+    broken = (await client.get(f"{AUDIT}/verify", headers=auth[Role.SUPERVISOR])).json()
+
+    assert intact["ok"] is True
+    assert intact["events"] >= 2  # the logins and the aircraft
+    assert intact["head_hash"] is not None
+    assert broken["ok"] is False
+    assert broken["broken_at_seq"] == 1
+    assert broken["head_hash"] is None
+
+
+async def test_an_export_carries_the_selected_events_and_is_itself_audited(
+    client: httpx.AsyncClient, auth: dict[Role, dict[str, str]]
+) -> None:
+    for callsign in ("A1", "A2"):
+        await aircraft(client, auth[Role.SUPERVISOR], callsign)
+
+    as_csv = await client.get(
+        f"{AUDIT}/export", params={"action": "aircraft."}, headers=auth[Role.SUPERVISOR]
+    )
+    as_jsonl = await client.get(
+        f"{AUDIT}/export",
+        params={"action": "aircraft.", "format": "jsonl"},
+        headers=auth[Role.SUPERVISOR],
+    )
+    latest = (await client.get(AUDIT, params={"limit": 1}, headers=auth[Role.SUPERVISOR])).json()
+
+    assert as_csv.headers["content-type"].startswith("text/csv")
+    assert "attachment" in as_csv.headers["content-disposition"]
+    rows = list(csv.DictReader(io.StringIO(as_csv.text)))
+    assert [r["action"] for r in rows] == ["aircraft.create", "aircraft.create"]  # oldest first
+    assert json.loads(rows[0]["details"])["after"]["callsign"] == "A1"
+    lines = [json.loads(line) for line in as_jsonl.text.splitlines()]
+    assert [e["seq"] for e in lines] == [int(r["seq"]) for r in rows]
+    assert all(e["hash"] and e["prev_hash"] for e in lines)
+    export = latest["items"][0]
+    assert export["action"] == "audit.export"
+    assert export["details"] == {
+        "format": "jsonl",
+        "events": 2,
+        "filters": {"action": "aircraft."},
+    }
+
+
+async def test_operators_cannot_verify_or_export(
+    client: httpx.AsyncClient, auth: dict[Role, dict[str, str]]
+) -> None:
+    for path in ("/verify", "/export"):
+        response = await client.get(f"{AUDIT}{path}", headers=auth[Role.OPERATOR])
+        assert response.status_code == 403

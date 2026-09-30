@@ -1,6 +1,11 @@
 """
 Video stream configuration (ADR 0012). Source URLs may carry camera credentials; they
 are stored but never returned or audited: responses show the password as ``***``.
+
+M5: each stream's health as the relay reports it (``/video-health``: not under
+``/video-streams/``, where it would read as a stream id), and
+``POST /video-streams/{id}/view``, which a console calls before playing a stream: it
+answers where to play it (WHEP, and LL-HLS as the fallback) and audits the viewing.
 """
 
 from typing import Annotated
@@ -32,12 +37,16 @@ from fleet_service.domain.enums import VideoCodec
 from fleet_service.errors import Conflict, problem_responses
 from fleet_service.ids import new_id
 from fleet_service.services import audit
+from fleet_service.services.video import StreamState
 
 router = APIRouter(
     prefix="/video-streams",
     tags=["video streams"],
     responses=problem_responses(400, 401, 403, 404, 409, 422),
 )
+
+# Streams' health at the relay, beside the collection rather than inside it.
+health_router = APIRouter(tags=["video streams"], responses=problem_responses(401, 403))
 
 REDACTED = "***"
 
@@ -178,6 +187,87 @@ async def create_video_stream(
     )
     await commit_or_conflict(db, f"Relay path {body.relay_path!r} is in use.")
     return VideoStreamOut.of(stream)
+
+
+class StreamHealthOut(OutputModel):
+    """How a stream is doing at the relay; ``unknown`` when the relay cannot be asked."""
+
+    stream_id: str
+    relay_path: str
+    state: StreamState
+    since: AwareDatetime | None
+    readers: int | None
+    bitrate_kbps: float | None
+    checked_at: AwareDatetime | None
+
+
+class StreamHealthList(OutputModel):
+    """Every registered stream's health; ``monitored`` is false without a relay API."""
+
+    monitored: bool
+    streams: list[StreamHealthOut]
+
+
+@health_router.get("/video-health", **requires(Permission.FLEET_VIEW))
+async def video_health(db: DbSession, context: Context) -> StreamHealthList:
+    """Each stream's state at the relay: live, stalled, offline or unknown."""
+    rows = (await db.scalars(select(VideoStream).order_by(VideoStream.name))).all()
+    monitor = context.runtime().video
+    streams = []
+    for row in rows:
+        health = monitor.health(row.id) if monitor is not None else None
+        streams.append(
+            StreamHealthOut(
+                stream_id=row.id,
+                relay_path=row.relay_path,
+                state=health.state if health else StreamState.UNKNOWN,
+                since=health.since if health else None,
+                readers=health.readers if health else None,
+                bitrate_kbps=health.bitrate_kbps if health else None,
+                checked_at=health.checked_at if health else None,
+            )
+        )
+    return StreamHealthList(monitored=monitor is not None, streams=streams)
+
+
+class ViewTicket(OutputModel):
+    """Where a console plays a stream: WHEP (WebRTC) first, LL-HLS if WebRTC fails."""
+
+    stream_id: str
+    name: str
+    whep_url: str
+    hls_url: str
+
+
+@router.post("/{stream_id}/view", **requires(Permission.FLEET_VIEW))
+async def view_video_stream(
+    stream_id: str,
+    request: Request,
+    db: DbSession,
+    context: Context,
+    principal: CurrentPrincipal,
+) -> ViewTicket:
+    """Start viewing a stream: its playback URLs; the viewing is audited (ADR 0012)."""
+    stream = await get_or_404(db, VideoStream, stream_id, "Video stream")
+    if not stream.enabled:
+        raise Conflict(f"Video stream {stream.name} is disabled.", slug="stream-disabled")
+    await audit.record(
+        db,
+        actor(request, principal),
+        context.clock.now(),
+        "video.view",
+        entity_type="video_stream",
+        entity_id=stream.id,
+        details={"relay_path": stream.relay_path, "aircraft_id": stream.aircraft_id},
+    )
+    await db.commit()
+    base = context.settings.video_base_path.rstrip("/")
+    return ViewTicket(
+        stream_id=stream.id,
+        name=stream.name,
+        whep_url=f"{base}/webrtc/{stream.relay_path}/whep",
+        hls_url=f"{base}/hls/{stream.relay_path}/index.m3u8",
+    )
 
 
 @router.get("/{stream_id}", **requires(Permission.FLEET_VIEW))

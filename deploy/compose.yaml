@@ -1,5 +1,5 @@
 # Field ground station: `docker compose -f deploy/compose.yaml up -d --build`.
-# MediaMTX is added in M5. PX4 SITL, the swarm simulation and mock video are in sim/.
+# PX4 SITL, the swarm simulation and mock video are in sim/.
 name: sar-gcs
 
 services:
@@ -15,6 +15,8 @@ services:
       FORWARDED_ALLOW_IPS: "*"
       # The swarm bridge's broker (ADR 0024); unset SARGCS_NATS_URL to run without swarms.
       SARGCS_NATS_URL: ${SARGCS_NATS_URL:-nats://nats:4222}
+      # The video relay (ADR 0012): stream health, and the paths of registered streams.
+      SARGCS_MEDIAMTX_API_URL: http://mediamtx:9997
     # First admin (once, after `up`):
     #   docker compose -f deploy/compose.yaml exec fleet-service fleet-service create-admin --username chief
     volumes:
@@ -35,6 +37,24 @@ services:
     command: ["-p", "4222"]
     ports:
       - "127.0.0.1:4222:4222"
+
+  # The video relay (ADR 0012, ADR 0034): the same pinned MediaMTX release as sim/video.
+  mediamtx:
+    image: bluenviron/mediamtx:1.21.1-ffmpeg@sha256:00ef3d1a243f3769ca36769b47df241a0c269c83a7735005b817505c49adb651
+    restart: unless-stopped
+    environment:
+      # The station's LAN address(es), comma-separated, as WebRTC candidates for browsers.
+      MTX_WEBRTCADDITIONALHOSTS: ${SARGCS_SITE_ADDRESS:-localhost}
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+    expose:
+      - "9997" # API, for the fleet service
+      - "8889" # WHEP signalling, behind the gateway
+      - "8888" # LL-HLS, behind the gateway
+    ports:
+      - "8554:8554" # RTSP ingest (cameras that push)
+      - "8890:8890/udp" # SRT ingest (lossy links)
+      - "8189:8189/udp" # WebRTC media to operator devices
 
   # Caddy: serves the console, proxies the API, terminates TLS with its internal CA (no Internet).
   console:

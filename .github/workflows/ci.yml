@@ -124,9 +124,20 @@ jobs:
             tar -xzf "$RUNNER_TEMP/$file" -C "$RUNNER_TEMP" pmtiles
             PMTILES_BIN="$RUNNER_TEMP/pmtiles" node scripts/fetch-basemap.mjs --region zurich
           fi
+      - name: Mock video relay (sim/video, M5)
+        working-directory: .
+        run: |
+          docker compose -f sim/video/compose.yaml up -d --build
+          python3 sim/video/check.py --streams 4 --timeout 120
+      - name: Video relay integration tests (the fleet service against MediaMTX)
+        working-directory: fleet-service
+        env:
+          SARGCS_VIDEO: "1"
+        run: uv run pytest -m video tests/integration/test_video_relay.py -v -p no:cacheprovider
       - name: E2E tests
         env:
           UV: uv
+          E2E_VIDEO: "1"
         run: npx playwright test
       - name: Results as annotations (readable without signing in)
         if: always()

@@ -87,6 +87,12 @@ class Settings(BaseSettings):
     )
     link_stale_after_s: float = Field(default=3.0, gt=0.0, le=60.0)
     link_lost_after_s: float = Field(default=15.0, gt=0.0, le=600.0)
+    link_recover_after_s: float = Field(
+        default=2.0,
+        ge=0.0,
+        le=60.0,
+        description="A degraded link turns live again only after data has held this long.",
+    )
     battery_low_pct: float = Field(default=30.0, ge=0.0, le=100.0)
     battery_critical_pct: float = Field(default=15.0, ge=0.0, le=100.0)
     return_reserve_pct: float = Field(
@@ -150,6 +156,27 @@ class Settings(BaseSettings):
     )
     goto_spread_m: float = Field(
         default=60.0, ge=10.0, le=1000.0, description="Distance between bulk-goto points."
+    )
+
+    # --- video (ADR 0012, M5) ---
+    mediamtx_api_url: str | None = Field(
+        default=None,
+        description="The video relay's API, e.g. http://127.0.0.1:9997; unset: no video health.",
+    )
+    video_base_path: str = Field(
+        default="/video",
+        pattern=r"^(/[A-Za-z0-9._-]+)+$|^https?://\S+$",
+        description="Where consoles reach the relay: <base>/webrtc/<path>/whep, <base>/hls/...",
+    )
+    video_poll_interval_s: float = Field(default=2.0, ge=0.5, le=60.0)
+
+    # --- data retention (M5; 0 keeps forever; the audit trail is never purged) ---
+    telemetry_retention_days: int = Field(default=30, ge=0, le=36_500)
+    alert_retention_days: int = Field(
+        default=90, ge=0, le=36_500, description="Cleared alerts older than this are purged."
+    )
+    command_retention_days: int = Field(
+        default=90, ge=0, le=36_500, description="Finished commands older than this are purged."
     )
 
     # --- telemetry history and WebSocket ---

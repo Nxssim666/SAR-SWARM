@@ -3,6 +3,7 @@
 //   live: filled; stale: hollow outline; lost/offline: hollow with a cross.
 // An unknown heading draws no nose (never a guessed direction).
 import type { AircraftLive, Airframe, LinkState } from '../api/types';
+import { ownerColor } from '../control/ownership';
 
 export type Shape = 'solid' | 'hollow' | 'crossed';
 export type Kind = 'fixed-wing' | 'multirotor';
@@ -48,6 +49,8 @@ export interface AircraftFeatureProps {
   heading: number;
   selected: boolean;
   link: LinkState;
+  /** The controller's colour (M5), or '' when nobody controls it. */
+  owner: string;
 }
 
 /** Map properties of an aircraft; null when its position is unknown (nothing to draw). */
@@ -68,6 +71,7 @@ export function aircraftProps(
       heading: heading ?? 0,
       selected,
       link: aircraft.link,
+      owner: aircraft.controller ? ownerColor(aircraft.controller.holder.user_id) : '',
     },
   };
 }

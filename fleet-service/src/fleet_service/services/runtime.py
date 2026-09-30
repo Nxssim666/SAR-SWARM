@@ -6,7 +6,11 @@ Three periodic activities:
 * simulation step, 10 Hz (simulation mode only);
 * evaluation, 2 Hz: link states, control leases, alerts, command confirmations and
   effect verification;
-* telemetry recording, once per ``telemetry_record_interval_s``.
+* telemetry recording, once per ``telemetry_record_interval_s``;
+* video relay polling (M5, when ``mediamtx_api_url`` is set): stream health and
+  ``video_down`` alerts (``services.video``);
+* data retention (M5), every six hours: old telemetry, cleared alerts and finished
+  commands are purged (``services.retention``).
 
 In production they run as asyncio tasks. Tests create the app with ``start_loops=False``
 and call ``step_simulation``/``evaluate``/``record`` themselves with a fake clock, so
@@ -21,10 +25,13 @@ from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
+from sqlalchemy import select
+
 from fleet_service.bus import EventBus
 from fleet_service.clock import Clock
 from fleet_service.config import Settings
 from fleet_service.db.engine import Database
+from fleet_service.db.models import VideoStream
 from fleet_service.domain.commands import Limits
 from fleet_service.domain.deconfliction import Separation
 from fleet_service.domain.geo import GeoPoint
@@ -33,17 +40,22 @@ from fleet_service.drivers.mavlink import MavlinkLinks
 from fleet_service.drivers.mock import MockFleet
 from fleet_service.drivers.swarm import SwarmLink
 from fleet_service.services.alerts import AlertService, AlertTuning
+from fleet_service.services.audit import Actor
 from fleet_service.services.commands import CommandService
 from fleet_service.services.fleet import FleetManager, FleetRegistry
 from fleet_service.services.leases import LeaseService, Presence
 from fleet_service.services.missions import MissionService
 from fleet_service.services.pois import PoiService
 from fleet_service.services.recorder import TelemetryRecorder
+from fleet_service.services.retention import PurgeReport, RetentionPolicy, purge
+from fleet_service.services.video import RelayConfig, StreamInfo, VideoMonitor, mediamtx_fetch
 
 log = logging.getLogger(__name__)
 
 SIMULATION_STEP_S = 0.1
 EVALUATION_PERIOD_S = 0.5
+RETENTION_PERIOD_S = 6 * 3600.0
+RETENTION_ACTOR = Actor(user_id=None, username="system:retention")
 
 
 class Runtime:
@@ -77,6 +89,7 @@ class Runtime:
             stale_after=timedelta(seconds=settings.link_stale_after_s),
             lost_after=timedelta(seconds=settings.link_lost_after_s),
             controller_of=self.leases.view,
+            recover_after=timedelta(seconds=settings.link_recover_after_s),
         )
         self.links = (
             MavlinkLinks(clock) if settings.mavlink_links and not settings.simulation else None
@@ -136,6 +149,14 @@ class Runtime:
         self.pois = PoiService(self.bus, self.alerts)
         self.missions = MissionService(self.bus, self.alerts, self.registry)
         self.terrain = TerrainSet.load(settings.terrain_directory)
+        self.video = (
+            VideoMonitor(
+                mediamtx_fetch(settings.mediamtx_api_url),
+                config=RelayConfig(settings.mediamtx_api_url),
+            )
+            if settings.mediamtx_api_url
+            else None
+        )
         self._tasks: list[asyncio.Task[None]] = []
 
     async def start(self, start_loops: bool) -> None:
@@ -155,6 +176,9 @@ class Runtime:
                 self._spawn("simulation", SIMULATION_STEP_S, self._simulation_tick)
             self._spawn("evaluation", EVALUATION_PERIOD_S, self.evaluate)
             self._spawn("recorder", self.settings.telemetry_record_interval_s, self.record)
+            self._spawn("retention", RETENTION_PERIOD_S, self._retention_tick)
+            if self.video is not None:
+                self._spawn("video", self.settings.video_poll_interval_s, self.poll_video)
 
     async def stop(self) -> None:
         """Cancel the loops and release drivers."""
@@ -186,8 +210,13 @@ class Runtime:
         async with self.database.ops_session() as db:
             await self.leases.evaluate(db, now)
             await self.missions.evaluate(db, now)
+            video = self.video.conditions(now) if self.video is not None else []
             await self.alerts.evaluate(
-                db, now, self.registry, self.leases.orphaned(), self.missions.deviations()
+                db,
+                now,
+                self.registry,
+                self.leases.orphaned(),
+                [*self.missions.deviations(), *video],
             )
             await self.commands.evaluate(db, now)
             await self.pois.evaluate(db, now, self.registry)
@@ -196,6 +225,39 @@ class Runtime:
         """Write the newest telemetry to the history."""
         async with self.database.telemetry_session() as db:
             await self.recorder.flush(db)
+
+    async def purge(self, *, dry_run: bool = False) -> PurgeReport:
+        """Apply the retention policy (short sessions of its own)."""
+        async with (
+            self.database.ops_session() as ops,
+            self.database.telemetry_session() as telemetry,
+        ):
+            return await purge(
+                ops,
+                telemetry,
+                retention_policy(self.settings),
+                self.clock.now(),
+                RETENTION_ACTOR,
+                dry_run=dry_run,
+            )
+
+    async def poll_video(self) -> None:
+        """Read the registered streams (a short session), then ask the relay (no session)."""
+        if self.video is None:
+            return
+        async with self.database.ops_session() as db:
+            rows = (await db.scalars(select(VideoStream))).all()
+            streams = [
+                StreamInfo(r.id, r.name, r.relay_path, r.aircraft_id, r.enabled, r.source_url)
+                for r in rows
+            ]
+        self.video.set_streams(streams)
+        await self.video.poll(self.clock.now())
+
+    async def _retention_tick(self) -> None:
+        report = await self.purge()
+        if report.telemetry_samples or report.alerts or report.commands:
+            log.info("retention purge: %s", report)
 
     async def _simulation_tick(self) -> None:
         self.step_simulation(SIMULATION_STEP_S)
@@ -210,6 +272,15 @@ class Runtime:
                 await asyncio.sleep(period_s)
 
         self._tasks.append(asyncio.create_task(loop(), name=f"runtime-{name}"))
+
+
+def retention_policy(settings: Settings) -> RetentionPolicy:
+    """The retention settings."""
+    return RetentionPolicy(
+        telemetry_days=settings.telemetry_retention_days,
+        alert_days=settings.alert_retention_days,
+        command_days=settings.command_retention_days,
+    )
 
 
 def separation_of(settings: Settings) -> Separation:

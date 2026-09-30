@@ -62,7 +62,14 @@ function Single({ a, lease }: { a: AircraftLive; lease: LeaseView | null }) {
             )}
           </>
         )}
-        <Row label="Control" value={lease ? lease.holder.display_name : 'free'} />
+        <Row
+          label="Control"
+          value={
+            lease
+              ? `${lease.holder.display_name}${lease.pending_request ? ` (handover asked by ${lease.pending_request.requested_by.display_name})` : ''}`
+              : 'free'
+          }
+        />
       </dl>
       <LeaseControls aircraftIds={[a.aircraft_id]} />
     </>

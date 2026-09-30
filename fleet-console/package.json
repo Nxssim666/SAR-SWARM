@@ -30,6 +30,7 @@
     "@protomaps/basemaps": "^5.7.2",
     "@radix-ui/react-dialog": "^1.1.23",
     "@tanstack/react-query": "^5.104.0",
+    "hls.js": "^1.7.3",
     "maplibre-gl": "^6.11.2",
     "mgrs": "^2.2.0",
     "pmtiles": "^4.5.0",

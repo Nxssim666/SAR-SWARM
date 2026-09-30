@@ -1,9 +1,18 @@
 # MediaMTX for mock video (sim/video/compose.yaml). Each path publishes itself at start:
-# an ffmpeg test pattern, restarted if it exits.
+# an ffmpeg test pattern with its path, the wall-clock time and the frame number burned in
+# (to judge latency by eye, M5), restarted if it exits. Browsers play it over WebRTC (WHEP,
+# port 8889) or LL-HLS (port 8888, the console's fallback).
+#
+# aircraft-01..04 are H.264, the aircraft baseline (ADR 0012). test-vp9 is the same pattern in
+# VP9, for browsers built without H.264 (Playwright's Chromium): the E2E tests play it to
+# prove the pipeline, and check that H.264 tiles say they cannot be decoded there.
 api: yes
 apiAddress: 127.0.0.1:9997
 rtspAddress: :8554
-hls: no
+webrtcAddress: :8889
+hls: yes
+hlsAddress: :8888
+hlsVariant: lowLatency
 srt: no
 rtmp: no
 
@@ -14,20 +23,30 @@ paths:
   aircraft-01:
     runOnInit: >-
       ffmpeg -hide_banner -loglevel warning -re -f lavfi -i testsrc2=size=640x360:rate=15
+      -vf "drawtext=fontfile=/usr/share/fonts/dejavu/DejaVuSansMono.ttf:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=6:x=10:y=h-th-12:text='%{localtime} $MTX_PATH #%{n}'"
       -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -pix_fmt yuv420p
       -f rtsp rtsp://127.0.0.1:$RTSP_PORT/$MTX_PATH
   aircraft-02:
     runOnInit: >-
       ffmpeg -hide_banner -loglevel warning -re -f lavfi -i testsrc2=size=640x360:rate=15
+      -vf "drawtext=fontfile=/usr/share/fonts/dejavu/DejaVuSansMono.ttf:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=6:x=10:y=h-th-12:text='%{localtime} $MTX_PATH #%{n}'"
       -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -pix_fmt yuv420p
       -f rtsp rtsp://127.0.0.1:$RTSP_PORT/$MTX_PATH
   aircraft-03:
     runOnInit: >-
       ffmpeg -hide_banner -loglevel warning -re -f lavfi -i testsrc2=size=640x360:rate=15
+      -vf "drawtext=fontfile=/usr/share/fonts/dejavu/DejaVuSansMono.ttf:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=6:x=10:y=h-th-12:text='%{localtime} $MTX_PATH #%{n}'"
       -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -pix_fmt yuv420p
       -f rtsp rtsp://127.0.0.1:$RTSP_PORT/$MTX_PATH
   aircraft-04:
     runOnInit: >-
       ffmpeg -hide_banner -loglevel warning -re -f lavfi -i testsrc2=size=640x360:rate=15
+      -vf "drawtext=fontfile=/usr/share/fonts/dejavu/DejaVuSansMono.ttf:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=6:x=10:y=h-th-12:text='%{localtime} $MTX_PATH #%{n}'"
       -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -pix_fmt yuv420p
+      -f rtsp rtsp://127.0.0.1:$RTSP_PORT/$MTX_PATH
+  test-vp9:
+    runOnInit: >-
+      ffmpeg -hide_banner -loglevel warning -re -f lavfi -i testsrc2=size=640x360:rate=15
+      -vf "drawtext=fontfile=/usr/share/fonts/dejavu/DejaVuSansMono.ttf:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=6:x=10:y=h-th-12:text='%{localtime} $MTX_PATH #%{n}'"
+      -c:v libvpx-vp9 -deadline realtime -cpu-used 8 -row-mt 1 -b:v 800k -g 30 -pix_fmt yuv420p -strict experimental
       -f rtsp rtsp://127.0.0.1:$RTSP_PORT/$MTX_PATH

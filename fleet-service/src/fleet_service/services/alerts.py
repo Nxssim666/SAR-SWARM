@@ -105,13 +105,16 @@ class Condition:
 
     kind: AlertKind
     severity: AlertSeverity
-    aircraft_id: str
+    aircraft_id: str | None
     message: str
+    # What else tells two alerts of one kind apart (a video stream: an aircraft may have
+    # several, or none).
+    key_suffix: str | None = None
 
     @property
     def key(self) -> str:
         """Dedupe key."""
-        return f"{self.kind.value}:{self.aircraft_id}"
+        return f"{self.kind.value}:{self.key_suffix or self.aircraft_id}"
 
 
 class AlertService:

@@ -1,6 +1,7 @@
-"""Live fleet state, telemetry history, and fault injection in simulation mode."""
+"""Live fleet state, telemetry history, operator presence, and fault injection in simulation
+mode."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Request
@@ -11,16 +12,54 @@ from fleet_service.api.common import InputModel, StrictBool
 from fleet_service.api.deps import Context, CurrentPrincipal, DbSession, actor, requires
 from fleet_service.auth.permissions import Permission
 from fleet_service.db.models import TelemetrySample as TelemetryRow
-from fleet_service.domain.enums import FlightMode, GpsFix
+from fleet_service.db.models import User
+from fleet_service.domain.enums import FlightMode, GpsFix, Role
 from fleet_service.domain.geo import GeoPoint
 from fleet_service.drivers.mock import MockDriver
 from fleet_service.errors import Conflict, NotFound, problem_responses
 from fleet_service.services import audit
-from fleet_service.services.views import AircraftLive, FleetState
+from fleet_service.services.views import AircraftLive, FleetState, UserRef
 
 router = APIRouter(tags=["live"], responses=problem_responses(400, 401, 403, 404, 409, 422))
 
 _GPS_BY_CODE = {fix.code: fix for fix in GpsFix} | {1: GpsFix.NONE}
+
+# A console pings every 10 s: someone not heard for this long has left (or lost the link).
+PRESENCE_WINDOW = timedelta(seconds=30)
+
+
+class OperatorPresence(BaseModel):
+    """Someone connected to this station (M5): who, their role, and when last heard."""
+
+    user: UserRef
+    role: Role
+    last_seen_at: AwareDatetime
+
+
+class PresenceList(BaseModel):
+    """The users heard in the last 30 seconds, most recently heard first."""
+
+    users: list[OperatorPresence]
+
+
+@router.get("/presence", **requires(Permission.FLEET_VIEW))
+async def list_presence(db: DbSession, context: Context) -> PresenceList:
+    """Who is connected: users whose console was heard in the last 30 seconds."""
+    recent = context.runtime().presence.recent(context.clock.now() - PRESENCE_WINDOW)
+    if not recent:
+        return PresenceList(users=[])
+    users = (await db.scalars(select(User).where(User.id.in_(recent)))).all()
+    listed = [
+        OperatorPresence(
+            user=UserRef(user_id=u.id, username=u.username, display_name=u.display_name),
+            role=u.role,
+            last_seen_at=recent[u.id],
+        )
+        for u in users
+        if u.is_active
+    ]
+    listed.sort(key=lambda p: p.last_seen_at, reverse=True)
+    return PresenceList(users=listed)
 
 
 class TelemetryPoint(BaseModel):

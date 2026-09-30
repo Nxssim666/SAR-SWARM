@@ -694,6 +694,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-streams/{stream_id}/view": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * View Video Stream
+         * @description Start viewing a stream: its playback URLs; the viewing is audited (ADR 0012).
+         */
+        post: operations["view_video_stream_api_v1_video_streams__stream_id__view_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-streams/{stream_id}": {
         parameters: {
             query?: never;
@@ -720,6 +740,46 @@ export interface paths {
          * @description Change a video source.
          */
         patch: operations["update_video_stream_api_v1_video_streams__stream_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/video-health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Video Health
+         * @description Each stream's state at the relay: live, stalled, offline or unknown.
+         */
+        get: operations["video_health_api_v1_video_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/presence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Presence
+         * @description Who is connected: users whose console was heard in the last 30 seconds.
+         */
+        get: operations["list_presence_api_v1_presence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/fleet/state": {
@@ -994,6 +1054,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/audit/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Verify Audit Chain
+         * @description Re-walk the whole chain: the first inconsistency, or the head if intact.
+         */
+        get: operations["verify_audit_chain_api_v1_audit_verify_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Audit Events
+         * @description Export the selected events (oldest first); the export itself is audited.
+         */
+        get: operations["export_audit_events_api_v1_audit_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1260,6 +1360,29 @@ export interface components {
             next_cursor: string | null;
         };
         /**
+         * ChainStatus
+         * @description Whether the audit hash chain is intact, and its head (to record elsewhere).
+         */
+        ChainStatus: {
+            /** Ok */
+            ok: boolean;
+            /** Events */
+            events: number;
+            /** Head Seq */
+            head_seq: number | null;
+            /** Head Hash */
+            head_hash: string | null;
+            /** Broken At Seq */
+            broken_at_seq: number | null;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Verified At
+             * Format: date-time
+             */
+            verified_at: string;
+        };
+        /**
          * CommandKind
          * @description Commands the GCS can send (ADR 0002 scope; no flight termination).
          * @enum {string}
@@ -1420,6 +1543,12 @@ export interface components {
              */
             kind: "disarm";
         };
+        /**
+         * ExportFormat
+         * @description Audit export formats.
+         * @enum {string}
+         */
+        ExportFormat: "csv" | "jsonl";
         /**
          * FaultInjection
          * @description Simulation only: inject faults into a simulated aircraft.
@@ -2132,6 +2261,19 @@ export interface components {
             status?: components["schemas"]["MissionStatus"];
         };
         /**
+         * OperatorPresence
+         * @description Someone connected to this station (M5): who, their role, and when last heard.
+         */
+        OperatorPresence: {
+            user: components["schemas"]["UserRef"];
+            role: components["schemas"]["Role"];
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+        };
+        /**
          * PasswordChange
          * @description Change one's own password; other sessions of the user are revoked.
          */
@@ -2444,6 +2586,14 @@ export interface components {
             ][][];
         };
         /**
+         * PresenceList
+         * @description The users heard in the last 30 seconds, most recently heard first.
+         */
+        PresenceList: {
+            /** Users */
+            users: components["schemas"]["OperatorPresence"][];
+        };
+        /**
          * Problem
          * @description RFC 9457 problem details. Extension members depend on ``type``.
          */
@@ -2609,6 +2759,41 @@ export interface components {
             /** Notes */
             notes?: string | null;
         };
+        /**
+         * StreamHealthList
+         * @description Every registered stream's health; ``monitored`` is false without a relay API.
+         */
+        StreamHealthList: {
+            /** Monitored */
+            monitored: boolean;
+            /** Streams */
+            streams: components["schemas"]["StreamHealthOut"][];
+        };
+        /**
+         * StreamHealthOut
+         * @description How a stream is doing at the relay; ``unknown`` when the relay cannot be asked.
+         */
+        StreamHealthOut: {
+            /** Stream Id */
+            stream_id: string;
+            /** Relay Path */
+            relay_path: string;
+            state: components["schemas"]["StreamState"];
+            /** Since */
+            since: string | null;
+            /** Readers */
+            readers: number | null;
+            /** Bitrate Kbps */
+            bitrate_kbps: number | null;
+            /** Checked At */
+            checked_at: string | null;
+        };
+        /**
+         * StreamState
+         * @description Whether video is flowing through the relay.
+         * @enum {string}
+         */
+        StreamState: "live" | "stalled" | "offline" | "unknown";
         /**
          * SummaryAircraft
          * @description An aircraft the command would be sent to, with what the operator should notice.
@@ -3121,6 +3306,20 @@ export interface components {
             codec?: components["schemas"]["VideoCodec"];
             /** Enabled */
             enabled?: boolean;
+        };
+        /**
+         * ViewTicket
+         * @description Where a console plays a stream: WHEP (WebRTC) first, LL-HLS if WebRTC fails.
+         */
+        ViewTicket: {
+            /** Stream Id */
+            stream_id: string;
+            /** Name */
+            name: string;
+            /** Whep Url */
+            whep_url: string;
+            /** Hls Url */
+            hls_url: string;
         };
         /**
          * WaypointIn
@@ -7391,6 +7590,82 @@ export interface operations {
             };
         };
     };
+    view_video_stream_api_v1_video_streams__stream_id__view_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                stream_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ViewTicket"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     get_video_stream_api_v1_video_streams__stream_id__get: {
         parameters: {
             query?: never;
@@ -7563,6 +7838,118 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VideoStreamOut"];
+                };
+            };
+            /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    video_health_api_v1_video_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamHealthList"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_presence_api_v1_presence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresenceList"];
                 };
             };
             /** @description The request body could not be parsed (not valid JSON or not UTF-8). */
@@ -8786,6 +9173,10 @@ export interface operations {
     list_audit_events_api_v1_audit_get: {
         parameters: {
             query?: {
+                /** @description Maximum items to return. */
+                limit?: number;
+                /** @description Opaque cursor from a previous page's next_cursor. */
+                cursor?: string | null;
                 actor_user_id?: string | null;
                 /** @description Prefix, e.g. 'auth.' or 'mission.update'. */
                 action?: string | null;
@@ -8793,10 +9184,6 @@ export interface operations {
                 entity_id?: string | null;
                 since?: string | null;
                 until?: string | null;
-                /** @description Maximum items to return. */
-                limit?: number;
-                /** @description Opaque cursor from a previous page's next_cursor. */
-                cursor?: string | null;
             };
             header?: never;
             path?: never;
@@ -8811,6 +9198,110 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditPage"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    verify_audit_chain_api_v1_audit_verify_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChainStatus"];
+                };
+            };
+            /** @description Missing, invalid or expired session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The session's role lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input: malformed, out of range, or semantically invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    export_audit_events_api_v1_audit_export_get: {
+        parameters: {
+            query?: {
+                format?: components["schemas"]["ExportFormat"];
+                actor_user_id?: string | null;
+                /** @description Prefix, e.g. 'auth.' or 'mission.update'. */
+                action?: string | null;
+                entity_type?: string | null;
+                entity_id?: string | null;
+                since?: string | null;
+                until?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The selected events, oldest first, with their chain hashes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                    "application/x-ndjson": string;
                 };
             };
             /** @description Missing, invalid or expired session. */

@@ -22,7 +22,7 @@ the development host and is checked in CI.
 | M2b Scale and swarm: SIH 25/50, NATS, ROS 2 bridge, mock video | **Done** (2026-09-30); swarm acceptance green, tracking verified to 25 in CI; **50 SIH deferred to M5/M6 field hardware** (user) |
 | M3 Console MVP | **Done** (2026-09-30); 7/7 E2E, 46–54 fps with 50 aircraft on this PC's GPU |
 | M4 Mission planning, patterns, bulk tasking, deconfliction, alerts | **Done** (2026-09-30); E2E 3/3 (plan, start, complete), SITL battery and geofence |
-| M5 Video, roles, audit viewer, multi-operator, load tests | — |
+| M5 Video, roles, audit viewer, multi-operator, load tests | **Done** (2026-09-30); E2E 14/14 with the mock relay, load budgets met at 25 and 50 (simulated) |
 | M6 Hardening, degraded comms, packaging, runbooks, acceptance | — |
 
 M1 and M2 from the original brief are each split into two stop points (a and b), because each
@@ -812,6 +812,85 @@ GitHub (run 36703251173, commit `53c40c5`); `swarm` green on GitHub; `scripts/ch
 - Playwright multi-context: a two-operator handover, a supervisor force, observer denial.
 - Video E2E with mock streams, including latency via the timestamp overlay.
 - Load suite (nightly).
+
+**Built** (2026-09-30; ADR 0034)
+
+- [x] **Video:**
+  - [x] MediaMTX in `deploy/compose.yaml` (the pinned release of `sim/video`), gateway
+        routes `/video/webrtc/*` (WHEP) and `/video/hls/*` (LL-HLS), WebRTC media on UDP
+        8189, CSP `media-src`.
+  - [x] The fleet service reconciles the relay's paths from the registry (continuous pull)
+        and polls its health: live, stalled, offline, unknown; `video_down` alerts;
+        `GET /video-health`.
+  - [x] `POST /video-streams/{id}/view`: playback URLs, the viewing audited.
+  - [x] Console video panel: 1/4/9 grid, WHEP with LL-HLS fallback (hls.js), health,
+        transport, bitrate and latency estimate per tile, picture-in-picture, fullscreen;
+        a browser without the stream's codec says so on the tile.
+  - [x] Mock video with path, wall-clock time and frame number burned in, and a VP9 test
+        stream for browsers without H.264.
+- [x] **Roles and multi-operator:** user administration (create, role, deactivate,
+      password reset), `GET /presence` and the presence list, ownership colours (map ring
+      and list), handover request with countdown, accept or decline, supervisor
+      assignment or forced release with a reason. Observers stay read-only.
+- [x] **Audit and retention:** audit viewer (filters, older pages), `GET /audit/verify`
+      (chain status), `GET /audit/export` (CSV, JSON Lines; audited); retention of
+      telemetry (30 d), cleared alerts and finished commands (90 d), every six hours and
+      `fleet-service purge [--dry-run]`, audited; the audit trail is never purged.
+- [x] **Load suite** `scripts/load_suite.py` (budgets of `docs/architecture.md`, exit 1 if
+      exceeded) and the nightly `load` workflow (25 and 50 aircraft).
+
+**Found while building, and fixed**
+
+- The console's LL-HLS fallback reported success in a browser that cannot decode H.264,
+  leaving a black tile: the codec is now checked first and the reason shown.
+- `GET /video-streams/health` also matched `/video-streams/{stream_id}` (a PATCH or DELETE
+  would have been routed to a stream called "health"); found by the contract tests and
+  moved to `GET /video-health`.
+- The first load run measured rejected commands (HOLD to aircraft on the ground) and
+  decompressed WebSocket bytes; the suite now flies the fleet first and counts bytes on
+  the wire (verified: equal to the payload without compression, 14x less with it).
+- The missions E2E covered 78-79 % of the area, not 80 %: the simulated airplane accepted
+  each waypoint 60 m early (its turn radius) and flew straight to the next one, cutting
+  every lane diagonally. It now follows the leg between waypoints (a 20 m lookahead, as
+  PX4's path guidance does); a regression test checks it flies each lane within 10 m.
+
+**Load results** (this development container, 4 cores; simulated aircraft, no radio):
+
+| Measure (p95 unless noted) | 25 aircraft | 50 aircraft | Budget |
+|---|---|---|---|
+| Telemetry → console | 103 ms | 104 ms | ≤ 250 ms |
+| Command accepted → dispatched | 40 ms | 76 ms | ≤ 100 ms |
+| Link change → alert, after the threshold | 251 ms | 439 ms | ≤ 1 s |
+| Fleet-service CPU (average) | 0.14 core | 0.23 core | ≤ 1 core |
+| Fleet-service peak RSS | 140 MB | 143 MB | ≤ 500 MB |
+| WebSocket per console, on the wire | 13 KB/s | 26 KB/s | ≤ 150 KB/s |
+
+6 consoles on every topic with telemetry at 10 Hz (the console's rate); the decompressed
+payload is 163 and 328 KB/s per console.
+
+**Tests**
+
+- fleet-service: **605 passed** (26 skipped: SITL, swarm, NATS, video relay without their
+  environments); new: video monitor and reconciliation, video view and health, presence,
+  audit verify and export, retention, the airplane's lane following. The count includes
+  the first M6 item, link hysteresis (committed with M5, see M6).
+- Video relay integration against real MediaMTX (`-m video`): 2/2 (path added and live
+  with a measured bitrate, removed when disabled; a missing source raises `video_down`).
+- Console: **94 Vitest**.
+- E2E (Playwright, this container's Chromium, mock relay running, `E2E_VIDEO=1`):
+  **14/14**. That covers the M3/M4 specs, multi-operator (handover, observer refused,
+  audit viewer) and video. VP9 plays over WebRTC with an estimated latency of 6 ms
+  (jitter buffer + RTT/2). This Chromium build has no H.264, so the H.264 tiles show
+  "cannot decode H.264" as designed; field browsers (Chrome, Edge) decode it.
+
+**Known gaps**
+
+- The 50-aircraft PX4 SIH measurement and the MAVLink driver's thread pool at 50 remain
+  deferred to the field hardware (the user, M2b): this container has 4 cores, where 50 SIH
+  overloaded the CI runner.
+- Relay access control (only signed-in consoles may play) is not built: anyone on the
+  station LAN who knows a path can play it. M6 hardening.
+- Field consoles need a browser with H.264 (Chrome, Edge).
 
 **Stop:** report, then wait.
 

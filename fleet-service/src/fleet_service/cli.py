@@ -9,6 +9,7 @@
     fleet-service db upgrade                   migrate both databases now
     fleet-service db revision --database ops -m "message"   (development) new migration
     fleet-service audit-verify                 check the audit hash chain; exit 1 if broken
+    fleet-service purge [--dry-run]            apply the data retention policy now (M5)
 
 Passwords are never command-line arguments (they would show in the process list and
 shell history): they are prompted, or read from stdin with ``--password-stdin``.
@@ -82,6 +83,8 @@ def build_parser() -> argparse.ArgumentParser:
     revision.add_argument("-m", "--message", required=True)
 
     sub.add_parser("audit-verify", help="verify the audit hash chain")
+    purge_cmd = sub.add_parser("purge", help="apply the data retention policy now")
+    purge_cmd.add_argument("--dry-run", action="store_true", help="only count what would go")
     return parser
 
 
@@ -109,6 +112,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     if command == "audit-verify":
         return audit_verify(get_settings())
+    if command == "purge":
+        return purge_now(get_settings(), dry_run=args.dry_run)
     raise AssertionError(f"unhandled command {command}")  # pragma: no cover
 
 
@@ -257,3 +262,33 @@ async def _audit_verify(settings: Settings) -> int:
         file=sys.stderr,
     )
     return 1
+
+
+def purge_now(settings: Settings, *, dry_run: bool) -> int:
+    """Apply the retention policy (services.retention) and print what it removed."""
+    return asyncio.run(_purge_now(settings, dry_run))
+
+
+async def _purge_now(settings: Settings, dry_run: bool) -> int:
+    from fleet_service.services.retention import purge
+    from fleet_service.services.runtime import retention_policy
+
+    database = Database(settings.data_dir)
+    try:
+        async with database.ops_session() as ops, database.telemetry_session() as telemetry:
+            report = await purge(
+                ops,
+                telemetry,
+                retention_policy(settings),
+                SystemClock().now(),
+                audit.CLI_ACTOR,
+                dry_run=dry_run,
+            )
+    finally:
+        await database.dispose()
+    verb = "would remove" if dry_run else "removed"
+    print(
+        f"retention {verb}: {report.telemetry_samples} telemetry samples, "
+        f"{report.alerts} cleared alerts, {report.commands} finished commands"
+    )
+    return 0

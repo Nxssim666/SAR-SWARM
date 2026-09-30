@@ -354,3 +354,30 @@ def test_a_mission_without_items_or_on_the_ground_is_refused() -> None:
 
     assert empty.outcome is Outcome.NACKED
     assert on_ground.outcome is Outcome.NACKED
+
+
+def test_an_airplane_flies_each_lane_on_its_line_not_diagonally() -> None:
+    # Found by the M5 E2E suite: the simulated airplane accepts a waypoint 60 m early. Flying
+    # straight to the next point then cut every lane of a 40 m lawnmower diagonally. Like
+    # PX4's path following, it now tracks the line between waypoints.
+    v = airborne(Airframe.FIXED_WING, altitude=60.0)
+    lanes = [(-60.0, 40.0), (-20.0, 40.0), (20.0, 40.0)]  # east of each lane, 400 m long
+    points = []
+    for i, (east, _) in enumerate(lanes):
+        south, north = (-200.0, 200.0) if i % 2 == 0 else (200.0, -200.0)
+        points += [v.to_geo(east, south), v.to_geo(east, north)]
+    ok(v, CommandKind.MISSION_START, route=route(*points, altitude=60.0))
+
+    worst = {east: 0.0 for east, _ in lanes}
+    for _ in range(3000):  # 300 s
+        v.step(DT)
+        if v.mode is not FlightMode.MISSION:
+            break
+        if -120.0 <= v.y <= 120.0:  # the middle of the lanes, where the search is
+            lane = v.mission_index // 2
+            if v.mission_index % 2 == 1 and lane < len(lanes):
+                east = lanes[lane][0]
+                worst[east] = max(worst[east], abs(v.x - east))
+
+    assert v.mission_index == len(points)
+    assert max(worst.values()) < 10.0, worst  # on its lane, 40 m from the next one

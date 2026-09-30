@@ -1,0 +1,31 @@
+# The field video relay (ADR 0012, ADR 0034). The fleet service configures one path per
+# registered video stream through the API (pulled from its source) and watches its health;
+# consoles play through the gateway: WHEP at /video/webrtc/<path>/whep, LL-HLS at
+# /video/hls/<path>/index.m3u8. Aircraft and cameras may also push (RTSP 8554, SRT 8890).
+logLevel: info
+
+api: yes
+apiAddress: :9997  # reached by the fleet service only (not published)
+
+rtsp: yes
+rtspAddress: :8554
+srt: yes
+srtAddress: :8890
+rtmp: no
+moq: no  # not used; one listener fewer
+
+webrtc: yes
+webrtcAddress: :8889  # signalling, behind the gateway
+webrtcLocalUDPAddress: :8189  # media, directly to the operator devices on the LAN
+# MTX_WEBRTCADDITIONALHOSTS (compose) gives browsers the station's LAN address as a
+# candidate. No STUN/TURN: the field has no Internet.
+
+hls: yes
+hlsAddress: :8888
+hlsVariant: lowLatency
+
+pathDefaults:
+  record: no  # recording and its retention are an operator decision (ADR 0012)
+
+paths:
+  all_others:

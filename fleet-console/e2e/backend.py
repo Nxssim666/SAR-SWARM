@@ -5,7 +5,10 @@ group, and an open incident around the fleet (for mission planning). Run in the 
 service's environment:
 
     python -m uv --directory ../fleet-service run python ../fleet-console/e2e/backend.py \
-        --port 8123 --aircraft 20
+        --port 8123 --aircraft 20 [--video]
+
+With ``--video``, the first four aircraft get video streams from the mock relay of
+``sim/video`` (MediaMTX on this host, started separately), and the station monitors it.
 
 The accounts are test accounts of this throwaway station (TEST_PASSWORD below); the data
 directory is deleted and recreated on every start. Never point this at a real station.
@@ -42,7 +45,7 @@ def fleet_service(*args: str, env: dict[str, str], stdin: str | None = None) -> 
     )
 
 
-def seed(base: str, aircraft: int) -> None:
+def seed(base: str, aircraft: int, video: bool) -> None:
     with httpx.Client(base_url=base, timeout=10.0) as http:
         token = http.post(
             "/api/v1/auth/login", json={"username": "chief", "password": TEST_PASSWORD}
@@ -75,6 +78,29 @@ def seed(base: str, aircraft: int) -> None:
             json={"name": "Team North", "aircraft_ids": ids[: max(1, len(ids) // 4)]},
             headers=headers,
         ).raise_for_status()
+        if video:
+            for i, aircraft_id in enumerate(ids[:4], start=1):
+                http.post(
+                    "/api/v1/video-streams",
+                    json={
+                        "aircraft_id": aircraft_id,
+                        "name": f"HX-{i:02d} camera",
+                        "source_url": f"rtsp://127.0.0.1:8554/aircraft-{i:02d}",
+                        "relay_path": f"aircraft-{i:02d}",
+                    },
+                    headers=headers,
+                ).raise_for_status()
+            http.post(  # VP9, for browsers without H.264 (sim/video/mediamtx.yml)
+                "/api/v1/video-streams",
+                json={
+                    "aircraft_id": ids[4] if len(ids) > 4 else None,
+                    "name": "Test pattern VP9",
+                    "source_url": "rtsp://127.0.0.1:8554/test-vp9",
+                    "relay_path": "test-vp9",
+                    "codec": "unknown",
+                },
+                headers=headers,
+            ).raise_for_status()
         http.post(
             "/api/v1/incidents",
             json={
@@ -91,6 +117,7 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=8123)
     parser.add_argument("--aircraft", type=int, default=20)
     parser.add_argument("--data-dir", type=Path, default=None, help="default: a temp dir per port")
+    parser.add_argument("--video", action="store_true", help="streams from the sim/video relay")
     args = parser.parse_args()
     data_dir: Path = args.data_dir or Path(tempfile.gettempdir()) / f"sargcs-e2e-{args.port}"
 
@@ -104,6 +131,8 @@ def main() -> int:
         "SARGCS_PORT": str(args.port),
         "SARGCS_STATION_NAME": "e2e",
     }
+    if args.video:
+        env["SARGCS_MEDIAMTX_API_URL"] = "http://127.0.0.1:9997"
     fleet_service("db", "upgrade", env=env)
     fleet_service(
         "create-admin", "--username", "chief", "--password-stdin", env=env, stdin=TEST_PASSWORD
@@ -121,7 +150,7 @@ def main() -> int:
     else:
         server.terminate()
         raise SystemExit("the fleet service did not start")
-    seed(base, args.aircraft)
+    seed(base, args.aircraft, args.video)
     print(f"e2e backend ready on {base} with {args.aircraft} aircraft", flush=True)  # noqa: T201
 
     def stop(*_: object) -> None:

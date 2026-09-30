@@ -7,6 +7,7 @@ import { useThrottledLive } from '../live/useThrottled';
 import { modeFor, useSelection } from '../selection/store';
 import { LINK_ICON, LINK_LABEL, MODE_LABEL, number } from './format';
 import { filterAircraft, type ListFilter, type SortKey, sortAircraft } from './listing';
+import { ownerColor } from '../control/ownership';
 
 interface Props {
   groups: GroupOut[];
@@ -126,7 +127,21 @@ export function AircraftList({ groups, filter, onFilter, onVisible }: Props) {
                 <td title={a.telemetry?.battery_pct == null ? 'unknown' : undefined}>
                   {number(a.telemetry?.battery_pct, '%')}
                 </td>
-                <td>{lease ? lease.holder.username : 'free'}</td>
+                <td>
+                  {lease ? (
+                    <>
+                      <span
+                        className="owner-chip"
+                        style={{ background: ownerColor(lease.holder.user_id) }}
+                        aria-hidden="true"
+                      />{' '}
+                      {lease.holder.username}
+                      {lease.pending_request ? ' ⇄' : ''}
+                    </>
+                  ) : (
+                    'free'
+                  )}
+                </td>
               </tr>
             );
           })}

@@ -3,12 +3,15 @@
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
 
+import { AdminButton } from '../admin/AdminDialog';
 import { AlertsStrip } from '../alerts/AlertsStrip';
 import { useAlertCues } from '../alerts/useAlertCues';
 import { api } from '../api/client';
 import type { GroupPage } from '../api/types';
 import { CommandBar } from '../commands/CommandBar';
 import { ConnectionBadge } from '../components/ConnectionBadge';
+import { HandoverPrompts } from '../control/HandoverPrompts';
+import { PresenceList } from '../control/PresenceList';
 import { AircraftList } from '../fleet/AircraftList';
 import type { ListFilter } from '../fleet/listing';
 import { TelemetryPanel } from '../fleet/TelemetryPanel';
@@ -25,6 +28,7 @@ import { useSelection } from '../selection/store';
 import { logout, type Session, useSession } from '../session/session';
 import { Banners } from './Banners';
 import { HelpOverlay } from './HelpOverlay';
+import { VideoPanel } from '../video/VideoPanel';
 import { useShortcuts } from './shortcuts';
 
 /** One WebSocket for the session; its state goes to the live store. */
@@ -82,6 +86,7 @@ export function Console({ session }: { session: Session }) {
   });
   const role = useLive((s) => s.welcome?.role);
   const [tab, setTab] = useState<SideTab>('fleet');
+  const [video, setVideo] = useState(false);
   const sightings = useLive(
     (s) =>
       Object.values(s.pois).filter((p) => p.kind === 'survivor_sighting' && p.status === 'new')
@@ -93,11 +98,22 @@ export function Console({ session }: { session: Session }) {
       <header className="topbar">
         <h1 className="title">SAR Fleet Console</h1>
         <IncidentPicker />
+        <PresenceList />
         <ConnectionBadge status={health} />
         <span className="user">
           {session.user.display_name}
           {role ? ` · ${role}` : ''}
         </span>
+        <button
+          type="button"
+          aria-pressed={video}
+          onClick={() => {
+            setVideo((v) => !v);
+          }}
+        >
+          Video
+        </button>
+        <AdminButton />
         <button type="button" onClick={toggleHelp} aria-label="Keyboard shortcuts">
           ?
         </button>
@@ -106,6 +122,7 @@ export function Console({ session }: { session: Session }) {
         </button>
       </header>
       <Banners />
+      <HandoverPrompts />
       <main className="workspace">
         <div className="map-pane">
           <FleetMap />
@@ -115,6 +132,13 @@ export function Console({ session }: { session: Session }) {
           <div className="map-overlay-bottom">
             <CoordinateReadout />
           </div>
+          {video && (
+            <VideoPanel
+              onClose={() => {
+                setVideo(false);
+              }}
+            />
+          )}
         </div>
         <aside className="side">
           <div className="tabs" role="tablist" aria-label="Side pane">

@@ -87,6 +87,18 @@ function addLayers(map: MapLibreMap, labels: boolean): void {
     },
   });
   map.addLayer({
+    id: 'owners',
+    type: 'circle',
+    source: 'aircraft',
+    filter: ['!=', ['get', 'owner'], ''],
+    paint: {
+      'circle-radius': 15,
+      'circle-color': 'rgba(0,0,0,0)',
+      'circle-stroke-color': ['get', 'owner'],
+      'circle-stroke-width': 2.5,
+    },
+  });
+  map.addLayer({
     id: 'aircraft',
     type: 'symbol',
     source: 'aircraft',

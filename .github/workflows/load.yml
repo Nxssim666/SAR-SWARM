@@ -1,0 +1,50 @@
+# Nightly load suite (M5, ADR 0034): the budgets of docs/architecture.md at 25 and 50
+# simulated aircraft x 10 Hz with 6 consoles (scripts/load_suite.py fails if one is
+# exceeded). The ground station only: no radio links, no browser. Results are annotations
+# (readable without signing in) and an artifact.
+name: load
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  load:
+    name: load suite (${{ matrix.aircraft }} aircraft)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        aircraft: [25, 50]
+    defaults:
+      run:
+        working-directory: fleet-service
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Load suite
+        run: >-
+          uv run python scripts/load_suite.py --aircraft ${{ matrix.aircraft }} --consoles 6
+          --seconds 90 --report ../load-${{ matrix.aircraft }}.json
+      - name: Report as an annotation
+        if: always()
+        working-directory: .
+        run: |
+          if [ -f load-${{ matrix.aircraft }}.json ]; then
+            echo "::notice title=Load ${{ matrix.aircraft }} aircraft::$(python3 -c "import json;r=json.load(open('load-${{ matrix.aircraft }}.json'));print(json.dumps({'measured': r['measured'], 'failures': r['failures']}))")"
+          fi
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: load-${{ matrix.aircraft }}
+          path: load-${{ matrix.aircraft }}.json
+          retention-days: 30

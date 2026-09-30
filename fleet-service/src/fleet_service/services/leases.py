@@ -44,6 +44,10 @@ class Presence:
         """When ``user_id`` was last seen, if ever since startup."""
         return self._seen.get(user_id)
 
+    def recent(self, since: datetime) -> dict[str, datetime]:
+        """Users seen at or after ``since``, with when."""
+        return {user_id: seen for user_id, seen in self._seen.items() if seen >= since}
+
 
 @dataclass
 class _Lease:
